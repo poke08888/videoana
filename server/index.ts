@@ -38,6 +38,58 @@ function resolveKey(reqKey?: string): string | null {
   return env.length >= 10 ? env : null;
 }
 
+const DB_FILE = path.join(__dirname, "db.json");
+
+function readDb(): any[] {
+  try {
+    if (fs.existsSync(DB_FILE)) {
+      const content = fs.readFileSync(DB_FILE, "utf8");
+      return JSON.parse(content);
+    }
+  } catch (e) {
+    console.error("Lỗi đọc database:", e);
+  }
+  return [];
+}
+
+function writeDb(data: any[]) {
+  try {
+    fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2), "utf8");
+  } catch (e) {
+    console.error("Lỗi ghi database:", e);
+  }
+}
+
+app.get("/api/history", (_req, res) => {
+  res.json(readDb());
+});
+
+app.post("/api/history/seed", (req, res) => {
+  const seeds = req.body?.history;
+  if (Array.isArray(seeds)) {
+    const current = readDb();
+    if (current.length === 0) {
+      writeDb(seeds);
+      return res.json({ ok: true, count: seeds.length });
+    }
+  }
+  res.json({ ok: true, count: 0 });
+});
+
+app.post("/api/history", (req, res) => {
+  const entry = req.body;
+  if (entry && entry.id) {
+    const data = readDb();
+    const exists = data.some((x: any) => x.id === entry.id);
+    if (!exists) {
+      data.unshift(entry);
+      writeDb(data);
+    }
+    return res.json({ ok: true });
+  }
+  res.status(400).json({ ok: false, error: "invalid-entry" });
+});
+
 app.get("/api/health", (_req, res) => {
   res.json({ ok: true, model: DEFAULT_MODEL, hasEnvKey: !!(process.env.GEMINI_API_KEY || "").trim() });
 });

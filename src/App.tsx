@@ -124,7 +124,7 @@ export default function App() {
   const ivRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const progressRef = useRef(0);
 
-  // load saved Gemini integration
+  // load saved Gemini integration & database history
   useEffect(() => {
     try {
       const raw = localStorage.getItem("nonelab_gemini");
@@ -135,6 +135,27 @@ export default function App() {
     } catch {
       /* ignore */
     }
+
+    // Fetch history from backend database
+    fetch("/api/history")
+      .then((res) => res.json())
+      .then((data) => {
+        if (Array.isArray(data) && data.length > 0) {
+          setHistory(data);
+        } else {
+          // If database is empty, seed it
+          const seeds = seedHistory();
+          setHistory(seeds);
+          fetch("/api/history/seed", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ history: seeds }),
+          }).catch(() => {});
+        }
+      })
+      .catch(() => {
+        setHistory(seedHistory());
+      });
   }, []);
 
   useEffect(() => {
@@ -242,6 +263,14 @@ export default function App() {
         const entry = makeEntry(result, f, "Vừa xong");
         setAnalysis(result);
         setHistory((h) => [entry, ...h]);
+
+        // Save to database
+        fetch("/api/history", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(entry),
+        }).catch((err) => console.error("Lưu lịch sử lỗi:", err));
+
         setScreen("report");
         showToast(r.watchedVideo ? "Phân tích hoàn tất — Gemini đã xem video" : "Phân tích hoàn tất bằng Gemini (từ mô tả)");
       } else {
