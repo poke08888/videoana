@@ -1,0 +1,10 @@
+services:
+  videoana:
+    build: .
+    container_name: videoana-app
+    ports:
+      - "8787:8787"
+    environment:
+      - NODE_ENV=production
+      - PORT=8787
+    restart: unless-stopped
