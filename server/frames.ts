@@ -9,8 +9,8 @@
 import { spawn } from "node:child_process";
 import ffmpegStatic from "ffmpeg-static";
 
-// ffmpeg-static export đường dẫn binary (string) — ép kiểu cho chắc.
-const FFMPEG = (ffmpegStatic as unknown as string) || "";
+// Ưu tiên FFMPEG_PATH (vd ffmpeg hệ thống trong Docker), rồi tới ffmpeg-static.
+const FFMPEG = (process.env.FFMPEG_PATH || "").trim() || (ffmpegStatic as unknown as string) || "ffmpeg";
 
 /** "0:02" → 2s, "1:34" → 94s, "01:02:03" → 3723s. */
 function parseTs(ts: string): number {

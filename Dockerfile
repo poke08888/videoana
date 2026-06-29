@@ -2,6 +2,9 @@ FROM node:22-alpine
 
 WORKDIR /app
 
+# Công cụ build cho native module sqlite3 (alpine/musl) + ffmpeg cho trích frame.
+RUN apk add --no-cache python3 make g++ ffmpeg
+
 # Copy package definition
 COPY package*.json ./
 

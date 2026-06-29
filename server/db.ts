@@ -1,10 +1,13 @@
 import sqlite3 from "sqlite3";
+import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import crypto from "node:crypto";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const DB_PATH = path.join(__dirname, "db.sqlite");
+// DB_PATH cho phép trỏ DB ra volume bền vững (production). Mặc định: cạnh source.
+const DB_PATH = (process.env.DB_PATH || "").trim() || path.join(__dirname, "db.sqlite");
+fs.mkdirSync(path.dirname(DB_PATH), { recursive: true }); // đảm bảo thư mục DB tồn tại
 
 // Kết nối cơ sở dữ liệu SQLite
 export const db = new sqlite3.Database(DB_PATH, (err) => {

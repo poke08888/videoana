@@ -14,3 +14,4 @@ server/db.sqlite
 server/db.sqlite-wal
 server/db.sqlite-shm
 server/db.json
+data/

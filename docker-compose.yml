@@ -4,7 +4,15 @@ services:
     container_name: videoana-app
     ports:
       - "8787:8787"
+    env_file:
+      - .env
     environment:
       - NODE_ENV=production
       - PORT=8787
+      # DB nằm trong volume bền vững (không mất khi rebuild container).
+      - DB_PATH=/app/data/db.sqlite
+      # ffmpeg hệ thống (cài trong image) để trích frame ổn định trên alpine.
+      - FFMPEG_PATH=/usr/bin/ffmpeg
+    volumes:
+      - ./data:/app/data
     restart: unless-stopped
