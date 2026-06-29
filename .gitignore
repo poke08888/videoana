@@ -1,0 +1,16 @@
+node_modules
+dist
+.env
+.env.local
+server/uploads/*
+!server/uploads/.gitkeep
+*.log
+.DS_Store
+
+tsconfig.tsbuildinfo
+
+# CSDL/runtime cục bộ (tự tạo lại khi chạy) — không commit dữ liệu người dùng
+server/db.sqlite
+server/db.sqlite-wal
+server/db.sqlite-shm
+server/db.json
