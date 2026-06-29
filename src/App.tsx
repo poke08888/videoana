@@ -29,14 +29,75 @@ function seedHistory(): HistoryEntry[] {
   });
 }
 
+/* ── Responsive hook ── */
+function useIsMobile() {
+  const [mob, setMob] = useState(typeof window !== "undefined" ? window.innerWidth < 768 : false);
+  useEffect(() => {
+    const fn = () => setMob(window.innerWidth < 768);
+    window.addEventListener("resize", fn);
+    return () => window.removeEventListener("resize", fn);
+  }, []);
+  return mob;
+}
+
+/* ── VideoFrame: trích frame thật từ video file bằng Canvas API ── */
+function VideoFrame({ file, ts, width = 86, height = 150 }: { file: File | null; ts: string; width?: number; height?: number }) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [ready, setReady] = useState(false);
+
+  useEffect(() => {
+    if (!file || !canvasRef.current) return;
+    const url = URL.createObjectURL(file);
+    const video = document.createElement("video");
+    video.src = url;
+    video.crossOrigin = "anonymous";
+    video.muted = true;
+    video.preload = "metadata";
+
+    // Parse timestamp "0:02" → 2s, "1:34" → 94s
+    const parts = ts.replace(/^\s*|\s*$/g, "").split(":").map(Number);
+    const secs = parts.length === 2 ? parts[0] * 60 + parts[1] : parts[0];
+
+    const onSeeked = () => {
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+      canvas.width = video.videoWidth || width * 2;
+      canvas.height = video.videoHeight || height * 2;
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      setReady(true);
+      video.removeEventListener("seeked", onSeeked);
+      URL.revokeObjectURL(url);
+    };
+
+    video.addEventListener("loadedmetadata", () => {
+      video.currentTime = Math.min(secs, video.duration - 0.1);
+    });
+    video.addEventListener("seeked", onSeeked);
+    video.load();
+
+    return () => {
+      video.removeEventListener("seeked", onSeeked);
+      try { URL.revokeObjectURL(url); } catch(e){}
+    };
+  }, [file, ts]);
+
+  return (
+    <div style={c(`position:relative;flex:none;width:${width}px;height:${height}px;border-radius:10px;overflow:hidden;border:1px solid rgba(140,96,40,.22);background:linear-gradient(150deg,#e7d4b0,#c9a86f 55%,#a07c44)`)}>
+      <canvas ref={canvasRef} style={{ width: "100%", height: "100%", objectFit: "cover", display: ready ? "block" : "none" }} />
+      {!ready && <span style={c("position:absolute;inset:0;display:grid;place-items:center;font-size:24px;opacity:.55")}>🎬</span>}
+      <span style={c("position:absolute;left:0;bottom:0;font-family:'Space Grotesk',sans-serif;font-size:9px;font-weight:600;background:#b06a16;color:#fff;padding:1px 5px;border-top-right-radius:6px;letter-spacing:.04em")}>{ts}</span>
+    </div>
+  );
+}
+
 export default function App() {
   const [screen, setScreen] = useState<string>("auth");
   const [authMode, setAuthMode] = useState<"login" | "signup">("login");
   const [user, setUser] = useState<User | null>(null);
   const [auth, setAuth] = useState({ email: "", pass: "", name: "" });
 
-  const [uploadVariant, setUploadVariant] = useState<"A" | "B" | "C">("A");
-  const [wizStep, setWizStep] = useState(1);
   const [form, setForm] = useState<FormState>({ title: "", platform: "TikTok / Douyin", product: "", genre: "Reviewer độc thoại (Vlog + Test)", notes: "", file: "" });
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [youtubeUrl, setYoutubeUrl] = useState("");
@@ -44,6 +105,8 @@ export default function App() {
   const [progress, setProgress] = useState(0);
   const [stageIdx, setStageIdx] = useState(0);
   const [analyzeNote, setAnalyzeNote] = useState("");
+  const [navOpen, setNavOpen] = useState(false);
+  const isMobile = useIsMobile();
 
   const [analysis, setAnalysis] = useState<Analysis | null>(null);
   const [history, setHistory] = useState<HistoryEntry[]>(seedHistory);
@@ -445,11 +508,22 @@ export default function App() {
   const userInitial = user ? (user.name[0] || "?").toUpperCase() : "?";
   const userRoleLabel = user && user.role === "admin" ? "Quản trị viên" : "Thành viên";
 
+  const closeMobileNav = () => setNavOpen(false);
+
   return (
     <div style={c("min-height:100vh;background:radial-gradient(1100px 560px at 88% -8%,rgba(176,106,22,.10),transparent 60%),radial-gradient(820px 460px at -4% 24%,rgba(60,122,94,.07),transparent 60%),#f6f1e7;color:#2a2016")}>
       <div style={c("display:flex;min-height:100vh")}>
+        {/* MOBILE OVERLAY */}
+        {isMobile && navOpen && (
+          <div onClick={closeMobileNav} style={c("position:fixed;inset:0;z-index:40;background:rgba(36,26,16,.45);backdrop-filter:blur(2px)")} />
+        )}
+
         {/* SIDEBAR */}
-        <aside style={c("width:248px;flex:none;background:#fffdf8;border-right:1px solid rgba(140,96,40,.18);display:flex;flex-direction:column;position:sticky;top:0;height:100vh")}>
+        <aside style={{
+          ...c("width:248px;flex:none;background:#fffdf8;border-right:1px solid rgba(140,96,40,.18);display:flex;flex-direction:column;position:fixed;top:0;left:0;height:100vh;z-index:50;transition:transform .25s cubic-bezier(.4,0,.2,1)"),
+          transform: isMobile ? (navOpen ? "translateX(0)" : "translateX(-100%)") : "translateX(0)",
+          boxShadow: isMobile && navOpen ? "4px 0 32px rgba(36,26,16,.18)" : "none",
+        }}>
           <div style={c("padding:22px 22px 16px;display:flex;align-items:center;gap:11px;border-bottom:1px solid rgba(140,96,40,.12)")}>
             <div style={c("width:34px;height:34px;border-radius:10px;background:linear-gradient(150deg,#e0a64e,#b06a16);display:grid;place-items:center;font-family:'Fraunces',serif;font-weight:900;color:#241a10;font-size:18px")}>N</div>
             <div style={c("font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:15px")}>Nonelab <span style={c("opacity:.55;font-weight:400")}>Studio</span></div>
@@ -458,13 +532,13 @@ export default function App() {
             {navDef.map((it) => {
               const on = screen === it.key;
               return (
-                <div key={it.key} onClick={() => go(it.key)} style={{ ...c("display:flex;align-items:center;gap:12px;padding:11px 13px;border-radius:11px;cursor:pointer;font-family:'Space Grotesk',sans-serif;font-size:14px;transition:.18s"), fontWeight: on ? 600 : 500, color: on ? "#9a5a12" : "#574a3a", background: on ? "rgba(176,106,22,.12)" : "transparent" }}>
+                <div key={it.key} onClick={() => { go(it.key); closeMobileNav(); }} style={{ ...c("display:flex;align-items:center;gap:12px;padding:11px 13px;border-radius:11px;cursor:pointer;font-family:'Space Grotesk',sans-serif;font-size:14px;transition:.18s"), fontWeight: on ? 600 : 500, color: on ? "#9a5a12" : "#574a3a", background: on ? "rgba(176,106,22,.12)" : "transparent" }}>
                   <span style={c("font-size:17px;width:20px;text-align:center")}>{it.icon}</span>
                   {it.label}
                 </div>
               );
             })}
-            <button onClick={() => setScreen("upload")} style={c("margin-top:14px;display:flex;align-items:center;justify-content:center;gap:8px;padding:12px;border:none;border-radius:12px;background:linear-gradient(150deg,#c07c1e,#9a5a12);color:#fff;font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:14px;cursor:pointer;box-shadow:0 6px 16px rgba(154,90,18,.28)")}>＋ Phân tích mới</button>
+            <button onClick={() => { setScreen("upload"); closeMobileNav(); }} style={c("margin-top:14px;display:flex;align-items:center;justify-content:center;gap:8px;padding:12px;border:none;border-radius:12px;background:linear-gradient(150deg,#c07c1e,#9a5a12);color:#fff;font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:14px;cursor:pointer;box-shadow:0 6px 16px rgba(154,90,18,.28)")}>＋ Phân tích mới</button>
           </nav>
           <div style={c("padding:14px;border-top:1px solid rgba(140,96,40,.12)")}>
             <div style={c("display:flex;align-items:center;gap:11px;padding:8px 6px")}>
@@ -473,38 +547,43 @@ export default function App() {
                 <div style={c("font-size:13.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis")}>{userName}</div>
                 <div style={c("font-size:11px;color:#8a7c67")}>{userRoleLabel}</div>
               </div>
-              <span onClick={() => { setUser(null); setScreen("auth"); setAuth({ email: "", pass: "", name: "" }); }} title="Đăng xuất" style={c("cursor:pointer;color:#8a7c67;font-size:16px;padding:4px")}>⎋</span>
+              <span onClick={() => { setUser(null); setScreen("auth"); setAuth({ email: "", pass: "", name: "" }); closeMobileNav(); }} title="Đăng xuất" style={c("cursor:pointer;color:#8a7c67;font-size:16px;padding:4px")}>⎋</span>
             </div>
           </div>
         </aside>
 
+        {/* SPACER for desktop sidebar */}
+        {!isMobile && <div style={{ width: 248, flexShrink: 0 }} />}
+
         {/* MAIN */}
         <main ref={mainRef} className="ns-scroll" style={c("flex:1;min-width:0;height:100vh;overflow-y:auto")}>
           {/* topbar */}
-          <div style={c("position:sticky;top:0;z-index:20;backdrop-filter:blur(8px);background:rgba(246,241,231,.82);border-bottom:1px solid rgba(140,96,40,.14);padding:16px 34px;display:flex;align-items:center;justify-content:space-between")}>
-            <div>
-              <div style={c("font-family:'Fraunces',serif;font-size:22px;font-weight:600;letter-spacing:-.01em")}>{screenTitle}</div>
-              <div style={c("font-size:12.5px;color:#8a7c67")}>{screenSub}</div>
+          <div style={c("position:sticky;top:0;z-index:20;backdrop-filter:blur(8px);background:rgba(246,241,231,.82);border-bottom:1px solid rgba(140,96,40,.14);padding:14px 20px;display:flex;align-items:center;justify-content:space-between")}>
+            <div style={c("display:flex;align-items:center;gap:12px")}>
+              {/* hamburger on mobile */}
+              {isMobile && (
+                <button onClick={() => setNavOpen(v => !v)} style={c("width:38px;height:38px;border:none;background:transparent;cursor:pointer;display:grid;place-items:center;border-radius:9px;color:#574a3a;font-size:20px;flex:none")} aria-label="Menu">☰</button>
+              )}
+              <div>
+                <div style={c("font-family:'Fraunces',serif;font-size:clamp(17px,3vw,22px);font-weight:600;letter-spacing:-.01em")}>{screenTitle}</div>
+                {!isMobile && <div style={c("font-size:12.5px;color:#8a7c67")}>{screenSub}</div>}
+              </div>
             </div>
-            <div style={c("display:flex;gap:10px;align-items:center")}>
+            <div style={c("display:flex;gap:8px;align-items:center")}>
               {screen === "report" && (
                 <>
-                  <button onClick={() => setScreen("upload")} style={c("padding:9px 15px;border:1px solid rgba(140,96,40,.3);border-radius:10px;background:#fffdf8;color:#574a3a;font-family:'Space Grotesk',sans-serif;font-weight:500;font-size:13px;cursor:pointer")}>↻ Phân tích lại</button>
-                  <button onClick={() => setExportOpen(true)} style={c("padding:9px 16px;border:none;border-radius:10px;background:linear-gradient(150deg,#c07c1e,#9a5a12);color:#fff;font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:13px;cursor:pointer;box-shadow:0 5px 14px rgba(154,90,18,.26)")}>⬇ Xuất HTML</button>
+                  {!isMobile && <button onClick={() => setScreen("upload")} style={c("padding:9px 15px;border:1px solid rgba(140,96,40,.3);border-radius:10px;background:#fffdf8;color:#574a3a;font-family:'Space Grotesk',sans-serif;font-weight:500;font-size:13px;cursor:pointer")}>↻ Phân tích lại</button>}
+                  <button onClick={() => setExportOpen(true)} style={c("padding:9px 14px;border:none;border-radius:10px;background:linear-gradient(150deg,#c07c1e,#9a5a12);color:#fff;font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:13px;cursor:pointer;box-shadow:0 5px 14px rgba(154,90,18,.26)")}>⬇ {isMobile ? "" : "Xuất HTML"}</button>
                 </>
               )}
             </div>
           </div>
 
-          <div style={c("padding:30px 34px 60px")}>
-            {screen === "dashboard" && <Dashboard stats={stats} recent={history.slice(0, 3)} onOpen={openReport} onAll={() => go("history")} />}
+          <div style={c(`padding:${isMobile ? "16px 16px 90px" : "30px 34px 60px"}`)}>
+            {screen === "dashboard" && <Dashboard stats={stats} recent={history.slice(0, 3)} onOpen={openReport} onAll={() => go("history")} isMobile={isMobile} />}
             {screen === "history" && <HistoryView history={history} onOpen={openReport} />}
             {screen === "upload" && (
               <UploadView
-                uploadVariant={uploadVariant}
-                setUploadVariant={(v: "A" | "B" | "C") => { setUploadVariant(v); setWizStep(1); }}
-                wizStep={wizStep}
-                setWizStep={setWizStep}
                 form={form}
                 setFormPatch={setFormPatch}
                 youtubeUrl={youtubeUrl}
@@ -518,9 +597,10 @@ export default function App() {
                 dropBg={dropBg}
                 startAnalyze={startAnalyze}
                 label={label}
+                isMobile={isMobile}
               />
             )}
-            {screen === "report" && a && <ReportView a={a} metaList={metaList} />}
+            {screen === "report" && a && <ReportView a={a} metaList={metaList} videoFile={selectedFile} isMobile={isMobile} />}
             {screen === "admin" && (
               <AdminView
                 adminStats={adminStats}
@@ -538,6 +618,24 @@ export default function App() {
           </div>
         </main>
       </div>
+
+      {/* MOBILE BOTTOM NAV */}
+      {isMobile && isApp && (
+        <nav style={c("position:fixed;bottom:0;left:0;right:0;z-index:30;background:rgba(255,253,248,.96);backdrop-filter:blur(12px);border-top:1px solid rgba(140,96,40,.16);display:flex;align-items:stretch;height:60px;padding:0 6px;safe-area-inset-bottom:env(safe-area-inset-bottom,0)")}
+          role="navigation"
+        >
+          {navDef.map((it) => {
+            const on = screen === it.key;
+            return (
+              <button key={it.key} onClick={() => { go(it.key); closeMobileNav(); }} style={{ ...c("flex:1;border:none;background:transparent;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;cursor:pointer;border-radius:10px;transition:.15s"), color: on ? "#9a5a12" : "#8a7c67" }}>
+                <span style={{ fontSize: 20 }}>{it.icon}</span>
+                <span style={{ fontFamily: "'Space Grotesk',sans-serif", fontSize: 10, fontWeight: on ? 700 : 500 }}>{it.label}</span>
+              </button>
+            );
+          })}
+          <button onClick={() => { setScreen("upload"); closeMobileNav(); }} style={c("flex:none;width:50px;border:none;background:linear-gradient(150deg,#c07c1e,#9a5a12);color:#fff;border-radius:12px;margin:6px 4px;cursor:pointer;font-size:22px;display:grid;place-items:center;box-shadow:0 4px 14px rgba(154,90,18,.35)")}>＋</button>
+        </nav>
+      )}
 
       {/* PERMISSION MODAL */}
       {permDraft && (
@@ -587,15 +685,15 @@ function Toast({ text }: { text: string }) {
   );
 }
 
-function Dashboard({ stats, recent, onOpen, onAll }: { stats: { label: string; value: string; sub: string }[]; recent: HistoryEntry[]; onOpen: (h: HistoryEntry) => void; onAll: () => void }) {
+function Dashboard({ stats, recent, onOpen, onAll, isMobile }: { stats: { label: string; value: string; sub: string }[]; recent: HistoryEntry[]; onOpen: (h: HistoryEntry) => void; onAll: () => void; isMobile: boolean }) {
   return (
     <div className="ns-fade">
-      <div className="ns-rise" style={c("display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:16px;margin-bottom:30px")}>
+      <div className="ns-rise" style={c(`display:grid;grid-template-columns:${isMobile ? "1fr 1fr" : "repeat(auto-fit,minmax(170px,1fr))"};gap:${isMobile ? "10px" : "16px"};margin-bottom:30px`)}>
         {stats.map((s, i) => (
-          <div key={i} style={c("background:#fffdf8;border:1px solid rgba(140,96,40,.18);border-radius:16px;padding:20px 22px")}>
-            <div style={c("font-family:'Space Grotesk',sans-serif;font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;color:#8a7c67;margin-bottom:10px")}>{s.label}</div>
-            <div style={c("font-family:'Fraunces',serif;font-size:34px;font-weight:600;color:#9a5a12;line-height:1")}>{s.value}</div>
-            <div style={c("font-size:12px;color:#8a7c67;margin-top:6px")}>{s.sub}</div>
+          <div key={i} style={c(`background:#fffdf8;border:1px solid rgba(140,96,40,.18);border-radius:16px;padding:${isMobile ? "14px 16px" : "20px 22px"}`)}>
+            <div style={c("font-family:'Space Grotesk',sans-serif;font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:#8a7c67;margin-bottom:8px")}>{s.label}</div>
+            <div style={c(`font-family:'Fraunces',serif;font-size:${isMobile ? "28px" : "34px"};font-weight:600;color:#9a5a12;line-height:1`)}>{s.value}</div>
+            <div style={c("font-size:11.5px;color:#8a7c67;margin-top:4px")}>{s.sub}</div>
           </div>
         ))}
       </div>
@@ -643,164 +741,58 @@ function HistoryView({ history, onOpen }: { history: HistoryEntry[]; onOpen: (h:
   );
 }
 
-function UploadView(props: any) {
-  const { uploadVariant, setUploadVariant, wizStep, setWizStep, form, setFormPatch, youtubeUrl, setYoutubeUrl, triggerFile, onDragOver, onDrop, dropTitle, dropSub, dropBorder, dropBg, startAnalyze, label } = props;
-  const variantTabs: [string, string][] = [["A", "A · Kéo thả lớn"], ["B", "B · Hai cột"], ["C", "C · Từng bước"]];
-  const wizardSteps: [string, string][] = [["1", "Tải video"], ["2", "Thông tin"], ["3", "Mô tả"]];
 
-  const ytField = (
-    <div style={c("grid-column:1/-1")}>
-      <label style={label()}>Hoặc dán link YouTube / video công khai (tuỳ chọn)</label>
-      <input className="ns-in" value={youtubeUrl} onChange={(e: any) => setYoutubeUrl(e.target.value)} placeholder="https://www.youtube.com/watch?v=…" style={c("width:100%;padding:12px 14px;border:1px solid rgba(140,96,40,.28);border-radius:11px;background:#fffdf8;font-size:14.5px;transition:.2s")} />
-    </div>
-  );
+
+function UploadView(props: any) {
+  const { form, setFormPatch, youtubeUrl, setYoutubeUrl, triggerFile, onDragOver, onDrop, dropTitle, dropSub, dropBorder, dropBg, startAnalyze, label, isMobile } = props;
+
+  const inputSt = c("width:100%;padding:12px 14px;border:1px solid rgba(140,96,40,.28);border-radius:11px;background:#fffdf8;font-size:14.5px;transition:.2s");
 
   return (
     <div className="ns-fade">
-      <div style={c("display:inline-flex;gap:4px;padding:4px;background:#efe6d5;border-radius:12px;margin-bottom:26px")}>
-        {variantTabs.map(([k, lbl]) => {
-          const on = uploadVariant === k;
-          return (
-            <div key={k} onClick={() => setUploadVariant(k)} style={{ ...c("padding:8px 16px;border-radius:9px;font-family:'Space Grotesk',sans-serif;font-size:13px;font-weight:600;cursor:pointer;transition:.18s"), color: on ? "#9a5a12" : "#8a7c67", background: on ? "#fffdf8" : "transparent", boxShadow: on ? "0 2px 6px rgba(70,48,20,.1)" : "none" }}>{lbl}</div>
-          );
-        })}
+      <div style={c(`max-width:${isMobile ? "100%" : "760px"}`)}>
+        {/* Drop zone */}
+        <div onClick={triggerFile} onDragOver={onDragOver} onDrop={onDrop}
+          style={{ ...c(`border-radius:18px;padding:${isMobile ? "36px 20px" : "54px 30px"};text-align:center;cursor:pointer;transition:.2s;margin-bottom:20px`), border: "2px dashed " + dropBorder, background: dropBg }}>
+          <div style={c("width:56px;height:56px;margin:0 auto 14px;border-radius:15px;background:linear-gradient(150deg,#e0a64e,#b06a16);display:grid;place-items:center;font-size:26px;box-shadow:0 8px 20px rgba(176,106,22,.3)")}>🎞️</div>
+          <div style={c("font-family:'Fraunces',serif;font-size:19px;font-weight:600;margin-bottom:5px")}>{dropTitle}</div>
+          <div style={c("color:#8a7c67;font-size:13.5px")}>{dropSub}</div>
+        </div>
+
+        {/* Form fields */}
+        <div style={c(`display:grid;grid-template-columns:${isMobile ? "1fr" : "1fr 1fr"};gap:13px`)}>
+          <div>
+            <label style={label()}>Tiêu đề video</label>
+            <input className="ns-in" value={form.title} onChange={(e: any) => setFormPatch({ title: e.target.value })} placeholder="Thử thách dội nước phấn phủ…" style={inputSt} />
+          </div>
+          <div>
+            <label style={label()}>Sản phẩm</label>
+            <input className="ns-in" value={form.product} onChange={(e: any) => setFormPatch({ product: e.target.value })} placeholder="Phấn phủ nén chống nắng" style={inputSt} />
+          </div>
+          <div>
+            <label style={label()}>Nền tảng</label>
+            <select value={form.platform} onChange={(e: any) => setFormPatch({ platform: e.target.value })} style={c("width:100%;padding:12px 14px;border:1px solid rgba(140,96,40,.28);border-radius:11px;background:#fffdf8;font-size:14.5px;cursor:pointer")}>
+              {PLATFORMS.map((p) => <option key={p} value={p}>{p}</option>)}
+            </select>
+          </div>
+          <div>
+            <label style={label()}>Thể loại</label>
+            <select value={form.genre} onChange={(e: any) => setFormPatch({ genre: e.target.value })} style={c("width:100%;padding:12px 14px;border:1px solid rgba(140,96,40,.28);border-radius:11px;background:#fffdf8;font-size:14.5px;cursor:pointer")}>
+              {GENRES.map((g) => <option key={g} value={g}>{g}</option>)}
+            </select>
+          </div>
+          <div style={c(isMobile ? "" : "grid-column:1/-1")}>
+            <label style={label()}>Hoặc dán link YouTube / video công khai (tuỳ chọn)</label>
+            <input className="ns-in" value={youtubeUrl} onChange={(e: any) => setYoutubeUrl(e.target.value)} placeholder="https://www.youtube.com/watch?v=…" style={inputSt} />
+          </div>
+          <div style={c(isMobile ? "" : "grid-column:1/-1")}>
+            <label style={label()}>Mô tả nội dung video (AI dùng kèm khi xem video)</label>
+            <textarea className="ns-in" value={form.notes} onChange={(e: any) => setFormPatch({ notes: e.target.value })} placeholder="VD: Creator dội nước lên mặt, dặm phấn, tắm vòi sen rồi lau bông tẩy trang…" style={c("width:100%;min-height:84px;resize:vertical;padding:12px 14px;border:1px solid rgba(140,96,40,.28);border-radius:11px;background:#fffdf8;font-size:14.5px;line-height:1.55;transition:.2s")} />
+          </div>
+        </div>
+
+        <button onClick={startAnalyze} style={c(`margin-top:20px;${isMobile ? "width:100%;" : ""}padding:14px 26px;border:none;border-radius:12px;background:linear-gradient(150deg,#c07c1e,#9a5a12);color:#fff;font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:15px;cursor:pointer;box-shadow:0 8px 20px rgba(154,90,18,.3)`)}>⚡ Bắt đầu mổ xẻ</button>
       </div>
-
-      {/* VARIANT A */}
-      {uploadVariant === "A" && (
-        <div className="ns-fade" style={c("max-width:760px")}>
-          <div onClick={triggerFile} onDragOver={onDragOver} onDrop={onDrop} style={{ ...c("border-radius:20px;padding:54px 30px;text-align:center;cursor:pointer;transition:.2s;margin-bottom:22px"), border: "2px dashed " + dropBorder, background: dropBg }}>
-            <div style={c("width:60px;height:60px;margin:0 auto 16px;border-radius:16px;background:linear-gradient(150deg,#e0a64e,#b06a16);display:grid;place-items:center;font-size:28px;box-shadow:0 8px 20px rgba(176,106,22,.3)")}>🎞️</div>
-            <div style={c("font-family:'Fraunces',serif;font-size:21px;font-weight:600;margin-bottom:6px")}>{dropTitle}</div>
-            <div style={c("color:#8a7c67;font-size:14px")}>{dropSub}</div>
-          </div>
-          <div style={c("display:grid;grid-template-columns:1fr 1fr;gap:14px")}>
-            <div>
-              <label style={label()}>Tiêu đề video</label>
-              <input className="ns-in" value={form.title} onChange={(e: any) => setFormPatch({ title: e.target.value })} placeholder="Thử thách dội nước phấn phủ…" style={c("width:100%;padding:12px 14px;border:1px solid rgba(140,96,40,.28);border-radius:11px;background:#fffdf8;font-size:14.5px;transition:.2s")} />
-            </div>
-            <div>
-              <label style={label()}>Sản phẩm</label>
-              <input className="ns-in" value={form.product} onChange={(e: any) => setFormPatch({ product: e.target.value })} placeholder="Phấn phủ nén chống nắng" style={c("width:100%;padding:12px 14px;border:1px solid rgba(140,96,40,.28);border-radius:11px;background:#fffdf8;font-size:14.5px;transition:.2s")} />
-            </div>
-            <div>
-              <label style={label()}>Nền tảng</label>
-              <select value={form.platform} onChange={(e: any) => setFormPatch({ platform: e.target.value })} style={c("width:100%;padding:12px 14px;border:1px solid rgba(140,96,40,.28);border-radius:11px;background:#fffdf8;font-size:14.5px;cursor:pointer")}>
-                {PLATFORMS.map((p) => <option key={p} value={p}>{p}</option>)}
-              </select>
-            </div>
-            <div>
-              <label style={label()}>Thể loại</label>
-              <select value={form.genre} onChange={(e: any) => setFormPatch({ genre: e.target.value })} style={c("width:100%;padding:12px 14px;border:1px solid rgba(140,96,40,.28);border-radius:11px;background:#fffdf8;font-size:14.5px;cursor:pointer")}>
-                {GENRES.map((g) => <option key={g} value={g}>{g}</option>)}
-              </select>
-            </div>
-            {ytField}
-            <div style={c("grid-column:1/-1")}>
-              <label style={label()}>Mô tả nội dung video (AI dùng kèm khi xem video)</label>
-              <textarea className="ns-in" value={form.notes} onChange={(e: any) => setFormPatch({ notes: e.target.value })} placeholder="VD: Creator dội nước lên mặt, dặm phấn, tắm vòi sen rồi lau bông tẩy trang chứng minh không trôi…" style={c("width:100%;min-height:84px;resize:vertical;padding:12px 14px;border:1px solid rgba(140,96,40,.28);border-radius:11px;background:#fffdf8;font-size:14.5px;line-height:1.55;transition:.2s")} />
-            </div>
-          </div>
-          <button onClick={startAnalyze} style={c("margin-top:22px;padding:14px 26px;border:none;border-radius:12px;background:linear-gradient(150deg,#c07c1e,#9a5a12);color:#fff;font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:15px;cursor:pointer;box-shadow:0 8px 20px rgba(154,90,18,.3)")}>⚡ Bắt đầu mổ xẻ</button>
-        </div>
-      )}
-
-      {/* VARIANT B */}
-      {uploadVariant === "B" && (
-        <div className="ns-fade" style={c("display:grid;grid-template-columns:1fr 1fr;gap:24px;align-items:start;max-width:900px")}>
-          <div onClick={triggerFile} onDragOver={onDragOver} onDrop={onDrop} style={{ ...c("border-radius:18px;padding:40px 26px;text-align:center;cursor:pointer;min-height:340px;display:flex;flex-direction:column;align-items:center;justify-content:center;transition:.2s"), border: "2px dashed " + dropBorder, background: dropBg }}>
-            <div style={c("width:64px;height:64px;margin-bottom:18px;border-radius:18px;background:linear-gradient(150deg,#e0a64e,#b06a16);display:grid;place-items:center;font-size:30px;box-shadow:0 8px 20px rgba(176,106,22,.3)")}>🎞️</div>
-            <div style={c("font-family:'Fraunces',serif;font-size:20px;font-weight:600;margin-bottom:6px")}>{dropTitle}</div>
-            <div style={c("color:#8a7c67;font-size:13.5px;max-width:24ch")}>{dropSub}</div>
-          </div>
-          <div style={c("display:flex;flex-direction:column;gap:14px")}>
-            <div>
-              <label style={label()}>Tiêu đề video</label>
-              <input className="ns-in" value={form.title} onChange={(e: any) => setFormPatch({ title: e.target.value })} placeholder="Thử thách dội nước…" style={c("width:100%;padding:12px 14px;border:1px solid rgba(140,96,40,.28);border-radius:11px;background:#fffdf8;font-size:14.5px;transition:.2s")} />
-            </div>
-            <div style={c("display:grid;grid-template-columns:1fr 1fr;gap:12px")}>
-              <div>
-                <label style={label()}>Nền tảng</label>
-                <select value={form.platform} onChange={(e: any) => setFormPatch({ platform: e.target.value })} style={c("width:100%;padding:12px 14px;border:1px solid rgba(140,96,40,.28);border-radius:11px;background:#fffdf8;font-size:14px;cursor:pointer")}>
-                  {PLATFORMS.map((p) => <option key={p} value={p}>{p}</option>)}
-                </select>
-              </div>
-              <div>
-                <label style={label()}>Sản phẩm</label>
-                <input className="ns-in" value={form.product} onChange={(e: any) => setFormPatch({ product: e.target.value })} placeholder="Phấn phủ…" style={c("width:100%;padding:12px 14px;border:1px solid rgba(140,96,40,.28);border-radius:11px;background:#fffdf8;font-size:14px;transition:.2s")} />
-              </div>
-            </div>
-            <div>
-              <label style={label()}>Link YouTube (tuỳ chọn)</label>
-              <input className="ns-in" value={youtubeUrl} onChange={(e: any) => setYoutubeUrl(e.target.value)} placeholder="https://youtube.com/…" style={c("width:100%;padding:12px 14px;border:1px solid rgba(140,96,40,.28);border-radius:11px;background:#fffdf8;font-size:14px;transition:.2s")} />
-            </div>
-            <div>
-              <label style={label()}>Mô tả nội dung</label>
-              <textarea className="ns-in" value={form.notes} onChange={(e: any) => setFormPatch({ notes: e.target.value })} placeholder="Diễn biến chính của video…" style={c("width:100%;min-height:110px;resize:vertical;padding:12px 14px;border:1px solid rgba(140,96,40,.28);border-radius:11px;background:#fffdf8;font-size:14px;line-height:1.55;transition:.2s")} />
-            </div>
-            <button onClick={startAnalyze} style={c("padding:13px 24px;border:none;border-radius:12px;background:linear-gradient(150deg,#c07c1e,#9a5a12);color:#fff;font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:14.5px;cursor:pointer;box-shadow:0 8px 20px rgba(154,90,18,.3)")}>⚡ Bắt đầu mổ xẻ</button>
-          </div>
-        </div>
-      )}
-
-      {/* VARIANT C — wizard */}
-      {uploadVariant === "C" && (
-        <div className="ns-fade" style={c("max-width:680px")}>
-          <div style={c("display:flex;gap:0;margin-bottom:24px")}>
-            {wizardSteps.map(([num, lbl], i) => {
-              const n = i + 1;
-              const cur = wizStep === n;
-              const done = wizStep > n;
-              return (
-                <div key={num} style={c("flex:1;text-align:center;position:relative")}>
-                  <div style={{ ...c("width:34px;height:34px;margin:0 auto 8px;border-radius:50%;display:grid;place-items:center;font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:14px"), background: done ? "#3c7a5e" : cur ? "#b06a16" : "#fff", color: done || cur ? "#fff" : "#8a7c67", border: "2px solid " + (done ? "#3c7a5e" : cur ? "#b06a16" : "rgba(140,96,40,.3)") }}>{done ? "✓" : num}</div>
-                  <div style={{ ...c("font-size:12px"), fontWeight: cur ? 600 : 500, color: cur ? "#2a2016" : "#8a7c67" }}>{lbl}</div>
-                </div>
-              );
-            })}
-          </div>
-          <div style={c("background:#fffdf8;border:1px solid rgba(140,96,40,.18);border-radius:18px;padding:28px")}>
-            {wizStep === 1 && (
-              <div className="ns-fade" onClick={triggerFile} onDragOver={onDragOver} onDrop={onDrop} style={{ ...c("border-radius:14px;padding:44px 24px;text-align:center;cursor:pointer"), border: "2px dashed " + dropBorder, background: dropBg }}>
-                <div style={c("font-size:34px;margin-bottom:12px")}>🎞️</div>
-                <div style={c("font-family:'Fraunces',serif;font-size:19px;font-weight:600;margin-bottom:5px")}>{dropTitle}</div>
-                <div style={c("color:#8a7c67;font-size:13.5px")}>{dropSub}</div>
-                <input onClick={(e) => e.stopPropagation()} className="ns-in" value={youtubeUrl} onChange={(e: any) => setYoutubeUrl(e.target.value)} placeholder="…hoặc dán link YouTube" style={c("width:100%;margin-top:16px;padding:11px 14px;border:1px solid rgba(140,96,40,.28);border-radius:11px;background:#fdfaf3;font-size:14px;transition:.2s")} />
-              </div>
-            )}
-            {wizStep === 2 && (
-              <div className="ns-fade" style={c("display:flex;flex-direction:column;gap:14px")}>
-                <div>
-                  <label style={label()}>Tiêu đề video</label>
-                  <input className="ns-in" value={form.title} onChange={(e: any) => setFormPatch({ title: e.target.value })} placeholder="Thử thách dội nước…" style={c("width:100%;padding:12px 14px;border:1px solid rgba(140,96,40,.28);border-radius:11px;background:#fdfaf3;font-size:14.5px;transition:.2s")} />
-                </div>
-                <div style={c("display:grid;grid-template-columns:1fr 1fr;gap:12px")}>
-                  <div>
-                    <label style={label()}>Nền tảng</label>
-                    <select value={form.platform} onChange={(e: any) => setFormPatch({ platform: e.target.value })} style={c("width:100%;padding:12px 14px;border:1px solid rgba(140,96,40,.28);border-radius:11px;background:#fdfaf3;font-size:14px;cursor:pointer")}>
-                      {PLATFORMS.map((p) => <option key={p} value={p}>{p}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label style={label()}>Sản phẩm</label>
-                    <input className="ns-in" value={form.product} onChange={(e: any) => setFormPatch({ product: e.target.value })} placeholder="Phấn phủ…" style={c("width:100%;padding:12px 14px;border:1px solid rgba(140,96,40,.28);border-radius:11px;background:#fdfaf3;font-size:14px;transition:.2s")} />
-                  </div>
-                </div>
-              </div>
-            )}
-            {wizStep === 3 && (
-              <div className="ns-fade">
-                <label style={label()}>Mô tả diễn biến nội dung video</label>
-                <textarea className="ns-in" value={form.notes} onChange={(e: any) => setFormPatch({ notes: e.target.value })} placeholder="VD: Creator dội nước lên mặt, dặm phấn, tắm vòi sen rồi lau bông tẩy trang…" style={c("width:100%;min-height:150px;resize:vertical;padding:13px 15px;border:1px solid rgba(140,96,40,.28);border-radius:12px;background:#fdfaf3;font-size:14.5px;line-height:1.6;transition:.2s")} />
-              </div>
-            )}
-            <div style={c("display:flex;justify-content:space-between;margin-top:22px")}>
-              <button onClick={() => wizStep > 1 && setWizStep(wizStep - 1)} style={{ ...c("padding:11px 20px;border:1px solid rgba(140,96,40,.3);border-radius:11px;background:transparent;font-family:'Space Grotesk',sans-serif;font-weight:500;font-size:14px;cursor:pointer"), color: wizStep > 1 ? "#574a3a" : "#c9bca5" }}>← Quay lại</button>
-              <button onClick={() => (wizStep < 3 ? setWizStep(wizStep + 1) : startAnalyze())} style={c("padding:11px 24px;border:none;border-radius:11px;background:linear-gradient(150deg,#c07c1e,#9a5a12);color:#fff;font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:14px;cursor:pointer;box-shadow:0 6px 16px rgba(154,90,18,.28)")}>{wizStep < 3 ? "Tiếp tục →" : "⚡ Bắt đầu mổ xẻ"}</button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
@@ -814,27 +806,30 @@ function SectionHead({ tag, title }: { tag: string; title: string }) {
   );
 }
 
-function ReportView({ a, metaList }: { a: Analysis; metaList: [string, string][] }) {
+function ReportView({ a, metaList, videoFile, isMobile }: { a: Analysis; metaList: [string, string][]; videoFile: File | null; isMobile: boolean }) {
   const chipStyle = (lv: Level): CSSProperties => {
     if (lv === "ok") return c("font-family:'Space Grotesk',sans-serif;font-size:11px;font-weight:600;padding:4px 11px;border-radius:99px;background:rgba(60,122,94,.13);color:#2f6b4f;border:1px solid rgba(60,122,94,.4);white-space:nowrap");
     if (lv === "mid") return c("font-family:'Space Grotesk',sans-serif;font-size:11px;font-weight:600;padding:4px 11px;border-radius:99px;background:rgba(176,106,22,.14);color:#8a5614;border:1px solid rgba(176,106,22,.4);white-space:nowrap");
     return c("font-family:'Space Grotesk',sans-serif;font-size:11px;font-weight:600;padding:4px 11px;border-radius:99px;background:rgba(158,58,58,.12);color:#8f3232;border:1px solid rgba(158,58,58,.4);white-space:nowrap");
   };
 
+  const frameW = isMobile ? 70 : 86;
+  const frameH = isMobile ? 124 : 150;
+
   return (
     <div className="ns-fade" style={c("max-width:1000px;margin:0 auto")}>
       {/* hero */}
       <div style={c("border:1px solid rgba(140,96,40,.2);border-radius:20px;overflow:hidden;background:#fffdf8;margin-bottom:26px")}>
-        <div style={c("padding:34px 36px;background:linear-gradient(160deg,#241a10,#3a2a16)")}>
+        <div style={c(`padding:${isMobile ? "22px 18px" : "34px 36px"};background:linear-gradient(160deg,#241a10,#3a2a16)`)}>
           <div style={c("font-family:'Space Grotesk',sans-serif;text-transform:uppercase;letter-spacing:.3em;font-size:10.5px;color:#e0a64e;font-weight:600;margin-bottom:16px")}>Nonelab · Mổ xẻ video · Khung Năm Lực</div>
-          <h1 style={c("font-family:'Fraunces',serif;font-weight:900;font-size:clamp(30px,5vw,52px);line-height:1.0;letter-spacing:-.02em;margin:0 0 10px;color:#f6efe0")}>Phiếu <span style={c("font-style:italic;font-weight:400;color:#e8bd72")}>mổ xẻ</span> video</h1>
-          <p style={c("font-family:'Fraunces',serif;font-style:italic;font-size:clamp(15px,2.4vw,20px);color:#cdbfa6;margin:0;max-width:60ch")}>{a.subtitle}</p>
+          <h1 style={c("font-family:'Fraunces',serif;font-weight:900;font-size:clamp(26px,5vw,52px);line-height:1.0;letter-spacing:-.02em;margin:0 0 10px;color:#f6efe0")}>Phiếu <span style={c("font-style:italic;font-weight:400;color:#e8bd72")}>mổ xẻ</span> video</h1>
+          <p style={c("font-family:'Fraunces',serif;font-style:italic;font-size:clamp(13px,2.4vw,20px);color:#cdbfa6;margin:0;max-width:60ch")}>{a.subtitle}</p>
         </div>
         <dl style={c("display:flex;flex-wrap:wrap;margin:0")}>
           {metaList.map((m, i) => (
-            <div key={i} style={c("flex:1 1 150px;padding:15px 20px;border-right:1px solid rgba(70,54,32,.1);border-top:1px solid rgba(70,54,32,.1)")}>
-              <dt style={c("font-family:'Space Grotesk',sans-serif;font-size:9.5px;letter-spacing:.18em;text-transform:uppercase;color:#8a7c67;margin-bottom:5px")}>{m[0]}</dt>
-              <dd style={c("margin:0;font-weight:600;font-size:14px")}>{m[1]}</dd>
+            <div key={i} style={c(`flex:1 1 ${isMobile ? "45%" : "150px"};padding:12px 16px;border-right:1px solid rgba(70,54,32,.1);border-top:1px solid rgba(70,54,32,.1)`)}>
+              <dt style={c("font-family:'Space Grotesk',sans-serif;font-size:9.5px;letter-spacing:.18em;text-transform:uppercase;color:#8a7c67;margin-bottom:4px")}>{m[0]}</dt>
+              <dd style={c("margin:0;font-weight:600;font-size:13px")}>{m[1]}</dd>
             </div>
           ))}
         </dl>
@@ -842,32 +837,32 @@ function ReportView({ a, metaList }: { a: Analysis; metaList: [string, string][]
 
       {/* verdict */}
       <SectionHead tag="Chốt nhanh" title="Vì sao nó chạy" />
-      <div className="ns-rise" style={c("display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px;margin-bottom:36px")}>
+      <div className="ns-rise" style={c(`display:grid;grid-template-columns:${isMobile ? "1fr 1fr" : "repeat(auto-fit,minmax(180px,1fr))"};gap:12px;margin-bottom:32px`)}>
         {a.verdict.map((v, i) => (
-          <div key={i} style={c("background:linear-gradient(160deg,#f7f0e2,#fffdf8);border:1px solid rgba(140,96,40,.22);border-radius:16px;padding:20px")}>
-            <div style={c("font-family:'Space Grotesk',sans-serif;font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:#8a7c67;margin-bottom:9px")}>{v.label}</div>
-            <div style={c("font-family:'Fraunces',serif;font-size:26px;font-weight:600;color:#9a5a12;line-height:1")}>{v.big}</div>
-            <p style={c("margin:10px 0 0;font-size:13px;color:#574a3a;line-height:1.5")}>{v.note}</p>
+          <div key={i} style={c("background:linear-gradient(160deg,#f7f0e2,#fffdf8);border:1px solid rgba(140,96,40,.22);border-radius:16px;padding:16px")}>
+            <div style={c("font-family:'Space Grotesk',sans-serif;font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:#8a7c67;margin-bottom:8px")}>{v.label}</div>
+            <div style={c("font-family:'Fraunces',serif;font-size:22px;font-weight:600;color:#9a5a12;line-height:1")}>{v.big}</div>
+            {!isMobile && <p style={c("margin:8px 0 0;font-size:12.5px;color:#574a3a;line-height:1.5")}>{v.note}</p>}
           </div>
         ))}
       </div>
 
-      {/* hook (Gemini) */}
+      {/* hook */}
       {a.hook && (a.hook.quote || a.hook.type) && (
         <>
           <SectionHead tag="Hook" title="3 giây đầu" />
-          <div style={c("background:#fffdf8;border:1px solid rgba(140,96,40,.2);border-left:3px solid #b06a16;border-radius:0 16px 16px 0;padding:20px 24px;margin-bottom:36px;display:flex;gap:20px;align-items:center;flex-wrap:wrap")}>
-            <div style={c("flex:1;min-width:240px")}>
-              {a.hook.quote && <div style={c("font-family:'Fraunces',serif;font-style:italic;font-size:18px;color:#2a2016;line-height:1.4;margin-bottom:8px")}>“{a.hook.quote}”</div>}
+          <div style={c("background:#fffdf8;border:1px solid rgba(140,96,40,.2);border-left:3px solid #b06a16;border-radius:0 16px 16px 0;padding:18px 20px;margin-bottom:32px;display:flex;gap:16px;align-items:center;flex-wrap:wrap")}>
+            <div style={c("flex:1;min-width:200px")}>
+              {a.hook.quote && <div style={c("font-family:'Fraunces',serif;font-style:italic;font-size:16px;color:#2a2016;line-height:1.4;margin-bottom:8px")}>“{a.hook.quote}”</div>}
               <div style={c("font-size:13px;color:#574a3a;line-height:1.5")}>{a.hook.note}</div>
-              <div style={c("display:flex;gap:8px;margin-top:12px;flex-wrap:wrap")}>
+              <div style={c("display:flex;gap:8px;margin-top:10px;flex-wrap:wrap")}>
                 {a.hook.type && <span style={c("font-family:'Space Grotesk',sans-serif;font-size:11px;font-weight:600;padding:4px 11px;border-radius:99px;background:rgba(176,106,22,.12);color:#8a5614")}>Kiểu: {a.hook.type}</span>}
                 <span style={c("font-family:'Space Grotesk',sans-serif;font-size:11px;font-weight:600;padding:4px 11px;border-radius:99px;background:rgba(60,122,94,.12);color:#2f6b4f")}>{a.hook.viewerFirst ? "Viewer-first" : "Creator-first"}</span>
               </div>
             </div>
             {typeof a.hook.score === "number" && (
               <div style={c("text-align:center;flex:none")}>
-                <div style={c("font-family:'Fraunces',serif;font-size:46px;font-weight:600;color:#9a5a12;line-height:1")}>{a.hook.score}<span style={c("font-size:20px;color:#8a7c67")}>/10</span></div>
+                <div style={c("font-family:'Fraunces',serif;font-size:44px;font-weight:600;color:#9a5a12;line-height:1")}>{a.hook.score}<span style={c("font-size:18px;color:#8a7c67")}>/10</span></div>
                 <div style={c("font-family:'Space Grotesk',sans-serif;font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:#8a7c67")}>điểm hook</div>
               </div>
             )}
@@ -875,49 +870,48 @@ function ReportView({ a, metaList }: { a: Analysis; metaList: [string, string][]
         </>
       )}
 
-      {/* storyboard */}
+      {/* storyboard — real frames */}
       <SectionHead tag="Storyboard" title="Mổ theo phân cảnh" />
-      <div style={c("display:flex;flex-direction:column;gap:34px;margin-bottom:36px")}>
+      <div style={c("display:flex;flex-direction:column;gap:30px;margin-bottom:32px")}>
         {a.acts.map((act, ai) => (
           <div key={ai}>
-            <div style={c("display:flex;gap:15px;align-items:flex-start;margin-bottom:16px")}>
-              <div style={c("width:40px;height:40px;flex:none;border-radius:50%;background:#b06a16;color:#fff;display:grid;place-items:center;font-family:'Fraunces',serif;font-weight:900;font-size:18px;box-shadow:0 0 0 5px #f6f1e7,0 0 0 6px rgba(140,96,40,.25)")}>{act.no}</div>
+            <div style={c("display:flex;gap:13px;align-items:flex-start;margin-bottom:14px")}>
+              <div style={c("width:38px;height:38px;flex:none;border-radius:50%;background:#b06a16;color:#fff;display:grid;place-items:center;font-family:'Fraunces',serif;font-weight:900;font-size:17px;box-shadow:0 0 0 4px #f6f1e7,0 0 0 5px rgba(140,96,40,.25)")}>{act.no}</div>
               <div>
                 <div style={c("font-family:'Space Grotesk',sans-serif;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:#b06a16;font-weight:600")}>{act.range}</div>
-                <div style={c("font-family:'Fraunces',serif;font-size:20px;font-weight:600;margin:2px 0 5px;letter-spacing:-.01em")}>{act.title}</div>
-                <p style={c("margin:0;color:#574a3a;font-size:13.5px;max-width:66ch;line-height:1.55")}>{act.summary}</p>
+                <div style={c("font-family:'Fraunces',serif;font-size:18px;font-weight:600;margin:2px 0 4px;letter-spacing:-.01em")}>{act.title}</div>
+                <p style={c("margin:0;color:#574a3a;font-size:13px;max-width:60ch;line-height:1.55")}>{act.summary}</p>
               </div>
             </div>
-            <div style={c("display:flex;flex-direction:column;gap:12px;margin-left:55px")}>
+            <div style={c(`display:flex;flex-direction:column;gap:10px;${isMobile ? "" : "margin-left:51px"}`)}>
               {act.beats.map((beat, bi) => (
-                <div key={bi} style={c("display:flex;gap:15px;background:#fffdf8;border:1px solid rgba(70,54,32,.13);border-radius:14px;padding:14px")}>
-                  <div style={c("position:relative;flex:none;width:86px;height:150px;border-radius:10px;overflow:hidden;border:1px solid rgba(140,96,40,.22);background:linear-gradient(150deg,#e7d4b0,#c9a86f 55%,#a07c44);display:grid;place-items:center")}>
-                    <span style={c("font-size:24px;opacity:.55")}>🎬</span>
-                    <span style={c("position:absolute;left:0;bottom:0;font-family:'Space Grotesk',sans-serif;font-size:9px;font-weight:600;background:#b06a16;color:#fff;padding:1px 5px;border-top-right-radius:6px;letter-spacing:.04em")}>{beat.ts}</span>
-                  </div>
+                <div key={bi} style={c(`display:flex;gap:12px;background:#fffdf8;border:1px solid rgba(70,54,32,.13);border-radius:14px;padding:12px;${isMobile ? "flex-wrap:wrap" : ""}`)}>
+                  {/* Real video frame */}
+                  <VideoFrame file={videoFile} ts={beat.ts} width={frameW} height={frameH} />
+
                   <div style={c("min-width:0;flex:1")}>
-                    <p style={c("font-size:13.5px;color:#9a5a12;margin:0 0 6px;line-height:1.45;font-weight:600")}>{beat.vi}</p>
-                    <p style={c("font-size:11.5px;color:#8a7c67;margin:0 0 10px;line-height:1.5")}>{beat.note}</p>
-                    <div style={c("border-top:1px solid rgba(140,96,40,.18);padding-top:9px;display:flex;flex-direction:column;gap:7px")}>
-                      <div style={c("display:flex;gap:13px;background:rgba(176,106,22,.06);border-left:3px solid #b06a16;border-radius:0 9px 9px 0;padding:8px 11px")}>
-                        <div style={c("flex:none;width:70px")}>
-                          <div style={c("font-size:11.5px;font-weight:600")}>Góc máy</div>
+                    <p style={c("font-size:13px;color:#9a5a12;margin:0 0 5px;line-height:1.45;font-weight:600")}>{beat.vi}</p>
+                    <p style={c("font-size:11.5px;color:#8a7c67;margin:0 0 8px;line-height:1.5")}>{beat.note}</p>
+                    <div style={c("border-top:1px solid rgba(140,96,40,.18);padding-top:8px")}>
+                      <div style={c("background:rgba(176,106,22,.06);border-left:3px solid #b06a16;border-radius:0 8px 8px 0;padding:7px 10px;display:flex;gap:10px;flex-wrap:wrap")}>
+                        <div style={c("flex:none;width:64px")}>
+                          <div style={c("font-size:11px;font-weight:600")}>Góc máy</div>
                           <div style={c("font-family:'Space Grotesk',sans-serif;font-size:8px;letter-spacing:.13em;color:#8a7c67")}>CAMERA</div>
                         </div>
-                        <div style={c("display:grid;grid-template-columns:repeat(3,1fr);gap:6px 14px;flex:1")}>
-                          <span style={c("font-size:11.5px;line-height:1.35")}><i style={c("font-style:normal;font-family:'Space Grotesk',sans-serif;font-size:8px;letter-spacing:.12em;text-transform:uppercase;color:#b06a16;display:block;margin-bottom:2px")}>Cỡ cảnh</i>{beat.size}</span>
-                          <span style={c("font-size:11.5px;line-height:1.35")}><i style={c("font-style:normal;font-family:'Space Grotesk',sans-serif;font-size:8px;letter-spacing:.12em;text-transform:uppercase;color:#b06a16;display:block;margin-bottom:2px")}>Góc</i>{beat.angle}</span>
-                          <span style={c("font-size:11.5px;line-height:1.35")}><i style={c("font-style:normal;font-family:'Space Grotesk',sans-serif;font-size:8px;letter-spacing:.12em;text-transform:uppercase;color:#b06a16;display:block;margin-bottom:2px")}>Chuyển động</i>{beat.move}</span>
+                        <div style={c("display:flex;flex-wrap:wrap;gap:6px 12px;flex:1")}>
+                          <span style={c("font-size:11px;line-height:1.35")}><i style={c("font-style:normal;font-family:'Space Grotesk',sans-serif;font-size:8px;letter-spacing:.12em;text-transform:uppercase;color:#b06a16;display:block;margin-bottom:1px")}>Cỡ cảnh</i>{beat.size}</span>
+                          <span style={c("font-size:11px;line-height:1.35")}><i style={c("font-style:normal;font-family:'Space Grotesk',sans-serif;font-size:8px;letter-spacing:.12em;text-transform:uppercase;color:#b06a16;display:block;margin-bottom:1px")}>Góc</i>{beat.angle}</span>
+                          <span style={c("font-size:11px;line-height:1.35")}><i style={c("font-style:normal;font-family:'Space Grotesk',sans-serif;font-size:8px;letter-spacing:.12em;text-transform:uppercase;color:#b06a16;display:block;margin-bottom:1px")}>Chuyển động</i>{beat.move}</span>
                         </div>
                       </div>
-                      <div style={c("display:grid;grid-template-columns:1fr 1fr;gap:0 22px")}>
+                      <div style={c(`display:grid;grid-template-columns:${isMobile ? "1fr" : "1fr 1fr"};gap:0 20px`)}>
                         {(beat.matrix || []).map((mr, mi) => (
-                          <div key={mi} style={c("display:flex;gap:10px;align-items:baseline;padding:4px 0;border-bottom:1px solid rgba(70,54,32,.1)")}>
-                            <div style={c("flex:none;width:74px;line-height:1.1")}>
-                              <b style={c("display:block;font-size:11.5px;font-weight:600")}>{mr.k}</b>
+                          <div key={mi} style={c("display:flex;gap:8px;align-items:baseline;padding:4px 0;border-bottom:1px solid rgba(70,54,32,.1)")}>
+                            <div style={c("flex:none;width:68px;line-height:1.1")}>
+                              <b style={c("display:block;font-size:11px;font-weight:600")}>{mr.k}</b>
                               <span style={c("display:block;font-family:'Space Grotesk',sans-serif;font-size:8px;letter-spacing:.13em;color:#8a7c67")}>{mr.en}</span>
                             </div>
-                            <div style={c("font-size:11.5px;color:#574a3a;line-height:1.4")}>{mr.v}</div>
+                            <div style={c("font-size:11px;color:#574a3a;line-height:1.4")}>{mr.v}</div>
                           </div>
                         ))}
                       </div>
@@ -932,44 +926,42 @@ function ReportView({ a, metaList }: { a: Analysis; metaList: [string, string][]
 
       {/* checklist */}
       <SectionHead tag="Checklist" title="7 điểm hiệu quả" />
-      <div style={c("background:#fffdf8;border:1px solid rgba(140,96,40,.18);border-radius:16px;overflow:hidden;margin-bottom:36px")}>
+      <div style={c("background:#fffdf8;border:1px solid rgba(140,96,40,.18);border-radius:16px;overflow:hidden;margin-bottom:32px")}>
         {a.checklist.map((row, i) => (
-          <div key={i} style={c("display:flex;gap:16px;align-items:flex-start;padding:15px 20px;border-bottom:1px solid rgba(70,54,32,.1)")}>
-            <div style={c("flex:none;width:26%;font-weight:600;font-size:13.5px")}>{row.crit}</div>
-            <div style={c("flex:none")}>
-              <span style={chipStyle(row.level)}>{row.levelLabel}</span>
-            </div>
-            <div style={c("flex:1;color:#574a3a;font-size:13px;line-height:1.5")}>{row.note}</div>
+          <div key={i} style={c(`display:flex;gap:12px;align-items:flex-start;padding:13px 16px;border-bottom:1px solid rgba(70,54,32,.1);${isMobile ? "flex-wrap:wrap" : ""}`)}>
+            <div style={c(`flex:none;${isMobile ? "width:100%" : "width:26%"};font-weight:600;font-size:13px`)}>{row.crit}</div>
+            <div style={c("flex:none")}><span style={chipStyle(row.level)}>{row.levelLabel}</span></div>
+            <div style={c(`flex:1;color:#574a3a;font-size:12.5px;line-height:1.5;${isMobile ? "width:100%" : ""}`)}>{row.note}</div>
           </div>
         ))}
       </div>
 
       {/* formulas */}
       <SectionHead tag="Công thức" title="Tái dùng" />
-      <div style={c("display:flex;flex-direction:column;gap:14px;margin-bottom:14px")}>
-        <div style={c("background:#f7f0e2;border:1px solid rgba(140,96,40,.22);border-left:3px solid #b06a16;border-radius:0 14px 14px 0;padding:18px 22px")}>
-          <div style={c("font-family:'Space Grotesk',sans-serif;font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;color:#b06a16;margin-bottom:8px")}>Cấu trúc hình ảnh</div>
-          <div style={c("font-size:14.5px;line-height:1.6;color:#2a2016")}>{a.formulaVisual}</div>
+      <div style={c("display:flex;flex-direction:column;gap:12px;margin-bottom:12px")}>
+        <div style={c("background:#f7f0e2;border:1px solid rgba(140,96,40,.22);border-left:3px solid #b06a16;border-radius:0 14px 14px 0;padding:16px 20px")}>
+          <div style={c("font-family:'Space Grotesk',sans-serif;font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;color:#b06a16;margin-bottom:7px")}>Cấu trúc hình ảnh</div>
+          <div style={c("font-size:14px;line-height:1.6;color:#2a2016")}>{a.formulaVisual}</div>
         </div>
-        <div style={c("background:#f7f0e2;border:1px solid rgba(140,96,40,.22);border-left:3px solid #b06a16;border-radius:0 14px 14px 0;padding:18px 22px")}>
-          <div style={c("font-family:'Space Grotesk',sans-serif;font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;color:#b06a16;margin-bottom:8px")}>Cấu trúc lời thoại</div>
-          <div style={c("font-size:14.5px;line-height:1.6;color:#2a2016")}>{a.formulaScript}</div>
+        <div style={c("background:#f7f0e2;border:1px solid rgba(140,96,40,.22);border-left:3px solid #b06a16;border-radius:0 14px 14px 0;padding:16px 20px")}>
+          <div style={c("font-family:'Space Grotesk',sans-serif;font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;color:#b06a16;margin-bottom:7px")}>Cấu trúc lời thoại</div>
+          <div style={c("font-size:14px;line-height:1.6;color:#2a2016")}>{a.formulaScript}</div>
         </div>
       </div>
-      <p style={c("color:#574a3a;font-size:14px;line-height:1.65;max-width:66ch;margin:0 0 36px")}>{a.verdictText}</p>
+      <p style={c("color:#574a3a;font-size:14px;line-height:1.65;max-width:66ch;margin:0 0 32px")}>{a.verdictText}</p>
 
       {/* banks */}
-      <div style={c("display:grid;grid-template-columns:1fr 1fr;gap:28px")}>
+      <div style={c(`display:grid;grid-template-columns:${isMobile ? "1fr" : "1fr 1fr"};gap:24px`)}>
         <Bank title="Kho lời thoại · 文案库" dot="#b06a16" items={a.quotes} />
         <Bank title="Kho hình ảnh · 画面库" dot="#3c7a5e" items={a.visuals} />
       </div>
 
-      {/* đối chuẩn & góc mới (Gemini) */}
+      {/* đối chuẩn & góc mới */}
       {(a.objchuan || (a.newAngles && a.newAngles.length)) && (
-        <div style={c("margin-top:36px")}>
+        <div style={c("margin-top:32px")}>
           <SectionHead tag="Lắp Nonelab" title="Đối chuẩn & góc quay mới" />
           {a.objchuan && (
-            <div style={c("background:#fffdf8;border:1px solid rgba(140,96,40,.2);border-radius:14px;padding:16px 20px;margin-bottom:14px")}>
+            <div style={c("background:#fffdf8;border:1px solid rgba(140,96,40,.2);border-radius:14px;padding:14px 18px;margin-bottom:12px")}>
               <span style={c("font-family:'Space Grotesk',sans-serif;font-size:11px;font-weight:600;padding:4px 11px;border-radius:99px;background:rgba(60,122,94,.12);color:#2f6b4f;margin-right:10px")}>Đối chuẩn: {a.objchuan.type}</span>
               <span style={c("font-size:13.5px;color:#574a3a")}>{a.objchuan.note}</span>
             </div>
@@ -978,18 +970,18 @@ function ReportView({ a, metaList }: { a: Analysis; metaList: [string, string][]
         </div>
       )}
 
-      {/* điểm steal (Gemini) */}
+      {/* steals */}
       {a.steals && a.steals.length > 0 && (
-        <div style={c("margin-top:36px")}>
+        <div style={c("margin-top:32px")}>
           <SectionHead tag="Steal" title="Copy được ngay" />
-          <div style={c("display:flex;flex-direction:column;gap:12px")}>
+          <div style={c("display:flex;flex-direction:column;gap:10px")}>
             {a.steals.map((s, i) => (
-              <div key={i} style={c("background:#fffdf8;border:1px solid rgba(140,96,40,.18);border-radius:14px;padding:16px 20px")}>
-                <div style={c("display:flex;gap:10px;align-items:baseline;margin-bottom:6px;flex-wrap:wrap")}>
-                  <div style={c("font-family:'Fraunces',serif;font-size:16px;font-weight:600")}>{s.thuphap}</div>
+              <div key={i} style={c("background:#fffdf8;border:1px solid rgba(140,96,40,.18);border-radius:14px;padding:14px 18px")}>
+                <div style={c("display:flex;gap:8px;align-items:baseline;margin-bottom:5px;flex-wrap:wrap")}>
+                  <div style={c("font-family:'Fraunces',serif;font-size:15px;font-weight:600")}>{s.thuphap}</div>
                   {s.at && <span style={c("font-family:'Space Grotesk',sans-serif;font-size:11px;color:#8a7c67")}>{s.at}</span>}
                 </div>
-                <div style={c("font-size:13px;color:#574a3a;line-height:1.5;margin-bottom:6px")}><b style={c("color:#9a5a12")}>Vì sao ăn: </b>{s.why}</div>
+                <div style={c("font-size:13px;color:#574a3a;line-height:1.5;margin-bottom:5px")}><b style={c("color:#9a5a12")}>Vì sao ăn: </b>{s.why}</div>
                 <div style={c("font-size:13px;color:#574a3a;line-height:1.5")}><b style={c("color:#9a5a12")}>Cách áp dụng: </b>{s.how}</div>
               </div>
             ))}
@@ -999,6 +991,9 @@ function ReportView({ a, metaList }: { a: Analysis; metaList: [string, string][]
     </div>
   );
 }
+
+const GondolaPlaceholder = "gondola";
+
 
 function Bank({ title, dot, items }: { title: string; dot: string; items: string[] }) {
   return (
