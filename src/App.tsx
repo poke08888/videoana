@@ -16,7 +16,7 @@ const STAGES = [
 ];
 const PLATFORMS = ["TikTok / Douyin", "TikTok", "Douyin", "Reels (Instagram)", "YouTube Shorts"];
 const GENRES = ["Reviewer độc thoại (Vlog + Test)", "Trải nghiệm sản phẩm", "Before / After", "Storytelling", "Unboxing", "Khác"];
-const GEM_MODELS = ["gemini-2.0-flash", "gemini-2.0-flash-lite", "gemini-1.5-flash", "gemini-1.5-pro", "gemini-2.5-flash-preview-05-20"];
+const GEM_MODELS = ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.5-flash-preview-05-20", "gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-pro"];
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
