@@ -372,31 +372,39 @@ export default function App() {
   if (isAuth) {
     return (
       <div style={c("min-height:100vh;background:radial-gradient(1100px 560px at 88% -8%,rgba(176,106,22,.10),transparent 60%),radial-gradient(820px 460px at -4% 24%,rgba(60,122,94,.07),transparent 60%),#f6f1e7;color:#2a2016")}>
-        <div className="ns-fade" style={c("min-height:100vh;display:grid;grid-template-columns:1.05fr .95fr")}>
+        <div className="ns-fade" style={c(`min-height:100vh;display:grid;grid-template-columns:${isMobile ? "1fr" : "1.05fr .95fr"}`)}>
           {/* brand panel */}
-          <div style={c("position:relative;overflow:hidden;background:linear-gradient(155deg,#241a10,#3a2a16 60%,#4a3416);color:#f6efe0;padding:56px 60px;display:flex;flex-direction:column;justify-content:space-between")}>
-            <div style={c("display:flex;align-items:center;gap:12px")}>
-              <div style={c("width:38px;height:38px;border-radius:11px;background:linear-gradient(150deg,#e0a64e,#b06a16);display:grid;place-items:center;font-family:'Fraunces',serif;font-weight:900;color:#241a10;font-size:20px;box-shadow:0 6px 18px rgba(176,106,22,.4)")}>N</div>
-              <div style={c("font-family:'Space Grotesk',sans-serif;font-weight:600;letter-spacing:.02em;font-size:17px")}>Nonelab <span style={c("opacity:.6;font-weight:400")}>Studio</span></div>
+          {!isMobile && (
+            <div style={c("position:relative;overflow:hidden;background:linear-gradient(155deg,#241a10,#3a2a16 60%,#4a3416);color:#f6efe0;padding:56px 60px;display:flex;flex-direction:column;justify-content:space-between")}>
+              <div style={c("display:flex;align-items:center;gap:12px")}>
+                <div style={c("width:38px;height:38px;border-radius:11px;background:linear-gradient(150deg,#e0a64e,#b06a16);display:grid;place-items:center;font-family:'Fraunces',serif;font-weight:900;color:#241a10;font-size:20px;box-shadow:0 6px 18px rgba(176,106,22,.4)")}>N</div>
+                <div style={c("font-family:'Space Grotesk',sans-serif;font-weight:600;letter-spacing:.02em;font-size:17px")}>Nonelab <span style={c("opacity:.6;font-weight:400")}>Studio</span></div>
+              </div>
+              <div>
+                <div style={c("font-family:'Space Grotesk',sans-serif;text-transform:uppercase;letter-spacing:.34em;font-size:11px;color:#e0a64e;font-weight:600;margin-bottom:22px")}>Hệ thống video bùng nổ</div>
+                <h1 style={c("font-family:'Fraunces',serif;font-weight:900;font-size:clamp(34px,4.4vw,60px);line-height:1.0;letter-spacing:-.02em;margin:0 0 18px")}>Mổ xẻ mọi <span style={c("font-style:italic;font-weight:400;color:#e8bd72")}>thước phim</span> viral.</h1>
+                <p style={c("max-width:42ch;color:#cdbfa6;font-size:16px;line-height:1.65;margin:0")}>Tải video lên, AI bóc tách storyboard, lời thoại song ngữ và chấm theo khung Năm Lực — rồi xuất thành phiếu mổ xẻ HTML chỉ trong một cú nhấp.</p>
+              </div>
+              <div style={c("display:flex;gap:30px;font-family:'Space Grotesk',sans-serif")}>
+                <div><div style={c("font-size:26px;font-weight:700;color:#e8bd72")}>6 lớp</div><div style={c("font-size:12px;color:#b3a489;letter-spacing:.04em")}>phân tích sản xuất</div></div>
+                <div><div style={c("font-size:26px;font-weight:700;color:#e8bd72")}>Năm Lực</div><div style={c("font-size:12px;color:#b3a489;letter-spacing:.04em")}>khung chấm điểm</div></div>
+                <div><div style={c("font-size:26px;font-weight:700;color:#e8bd72")}>.html</div><div style={c("font-size:12px;color:#b3a489;letter-spacing:.04em")}>xuất bản tức thì</div></div>
+              </div>
+              <div style={c("position:absolute;right:-90px;bottom:-90px;width:320px;height:320px;border-radius:50%;border:1px solid rgba(224,166,78,.25)")} />
+              <div style={c("position:absolute;right:-40px;bottom:-40px;width:220px;height:220px;border-radius:50%;border:1px solid rgba(224,166,78,.18)")} />
             </div>
-            <div>
-              <div style={c("font-family:'Space Grotesk',sans-serif;text-transform:uppercase;letter-spacing:.34em;font-size:11px;color:#e0a64e;font-weight:600;margin-bottom:22px")}>Hệ thống video bùng nổ</div>
-              <h1 style={c("font-family:'Fraunces',serif;font-weight:900;font-size:clamp(34px,4.4vw,60px);line-height:1.0;letter-spacing:-.02em;margin:0 0 18px")}>Mổ xẻ mọi <span style={c("font-style:italic;font-weight:400;color:#e8bd72")}>thước phim</span> viral.</h1>
-              <p style={c("max-width:42ch;color:#cdbfa6;font-size:16px;line-height:1.65;margin:0")}>Tải video lên, AI bóc tách storyboard, lời thoại song ngữ và chấm theo khung Năm Lực — rồi xuất thành phiếu mổ xẻ HTML chỉ trong một cú nhấp.</p>
-            </div>
-            <div style={c("display:flex;gap:30px;font-family:'Space Grotesk',sans-serif")}>
-              <div><div style={c("font-size:26px;font-weight:700;color:#e8bd72")}>6 lớp</div><div style={c("font-size:12px;color:#b3a489;letter-spacing:.04em")}>phân tích sản xuất</div></div>
-              <div><div style={c("font-size:26px;font-weight:700;color:#e8bd72")}>Năm Lực</div><div style={c("font-size:12px;color:#b3a489;letter-spacing:.04em")}>khung chấm điểm</div></div>
-              <div><div style={c("font-size:26px;font-weight:700;color:#e8bd72")}>.html</div><div style={c("font-size:12px;color:#b3a489;letter-spacing:.04em")}>xuất bản tức thì</div></div>
-            </div>
-            <div style={c("position:absolute;right:-90px;bottom:-90px;width:320px;height:320px;border-radius:50%;border:1px solid rgba(224,166,78,.25)")} />
-            <div style={c("position:absolute;right:-40px;bottom:-40px;width:220px;height:220px;border-radius:50%;border:1px solid rgba(224,166,78,.18)")} />
-          </div>
+          )}
           {/* form panel */}
-          <div style={c("display:flex;align-items:center;justify-content:center;padding:40px")}>
-            <div className="ns-pop" style={c("width:100%;max-width:380px")}>
-              <div style={c("font-family:'Fraunces',serif;font-size:30px;font-weight:600;letter-spacing:-.01em;margin-bottom:6px")}>{isSignup ? "Tạo tài khoản" : "Đăng nhập"}</div>
-              <p style={c("color:#8a7c67;font-size:14.5px;margin:0 0 28px")}>{isSignup ? "Bắt đầu phân tích video chỉ trong vài phút." : "Tiếp tục mổ xẻ những thước phim viral."}</p>
+          <div style={c(`display:flex;align-items:center;justify-content:center;padding:${isMobile ? "20px 16px 40px" : "40px"}`)}>
+            <div className="ns-pop" style={c(`width:100%;max-width:400px;background:#fffdf8;border:1px solid rgba(140,96,40,0.18);border-radius:24px;padding:${isMobile ? "28px 20px" : "36px 32px"};box-shadow:0 12px 40px rgba(36,26,16,0.06)`)}>
+              {isMobile && (
+                <div style={c("display:flex;align-items:center;gap:12px;margin-bottom:28px;justify-content:center")}>
+                  <div style={c("width:38px;height:38px;border-radius:11px;background:linear-gradient(150deg,#e0a64e,#b06a16);display:grid;place-items:center;font-family:'Fraunces',serif;font-weight:900;color:#241a10;font-size:20px;box-shadow:0 6px 18px rgba(176,106,22,.4)")}>N</div>
+                  <div style={c("font-family:'Space Grotesk',sans-serif;font-weight:600;letter-spacing:.02em;font-size:17px")}>Nonelab <span style={c("opacity:.6;font-weight:400")}>Studio</span></div>
+                </div>
+              )}
+              <div style={c("font-family:'Fraunces',serif;font-size:28px;font-weight:600;letter-spacing:-.01em;margin-bottom:6px")}>{isSignup ? "Tạo tài khoản" : "Đăng nhập"}</div>
+              <p style={c("color:#8a7c67;font-size:14px;margin:0 0 24px;line-height:1.45")}>{isSignup ? "Bắt đầu phân tích video chỉ trong vài phút." : "Tiếp tục mổ xẻ những thước phim viral."}</p>
 
               {isSignup && (
                 <>
