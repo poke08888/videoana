@@ -1,0 +1,1216 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,900&family=Space+Grotesk:wght@400;500;600;700&family=Be+Vietnam+Pro:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{font-family:'Be Vietnam Pro',system-ui,sans-serif;color:#2a2016;-webkit-font-smoothing:antialiased}
+input,select,textarea,button{font-family:inherit}
+::selection{background:rgba(176,106,22,.2)}
+.ns-scroll::-webkit-scrollbar{width:10px;height:10px}
+.ns-scroll::-webkit-scrollbar-thumb{background:rgba(140,96,40,.25);border-radius:8px;border:3px solid transparent;background-clip:content-box}
+@keyframes ns-spin{to{transform:rotate(360deg)}}
+@keyframes ns-fade{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+@keyframes ns-pop{from{opacity:0;transform:scale(.96)}to{opacity:1;transform:none}}
+@keyframes ns-pulse{0%,100%{opacity:.45}50%{opacity:1}}
+@keyframes ns-sheen{0%{transform:translateX(-120%)}100%{transform:translateX(220%)}}
+@keyframes ns-reel{0%{background-position:0 0}100%{background-position:0 -56px}}
+.ns-fade{animation:ns-fade .5s cubic-bezier(.2,.7,.2,1) both}
+.ns-pop{animation:ns-pop .35s cubic-bezier(.2,.7,.2,1) both}
+.ns-rise>*{animation:ns-fade .55s cubic-bezier(.2,.7,.2,1) both}
+.ns-rise>*:nth-child(2){animation-delay:.05s}
+.ns-rise>*:nth-child(3){animation-delay:.1s}
+.ns-rise>*:nth-child(4){animation-delay:.15s}
+.ns-rise>*:nth-child(5){animation-delay:.2s}
+.ns-rise>*:nth-child(6){animation-delay:.25s}
+input:focus,select:focus,textarea:focus{outline:none}
+.ns-in:focus{border-color:#b06a16 !important;box-shadow:0 0 0 3px rgba(176,106,22,.14) !important}
+</style>
+</helmet>
+
+<div style="min-height:100vh;background:radial-gradient(1100px 560px at 88% -8%,rgba(176,106,22,.10),transparent 60%),radial-gradient(820px 460px at -4% 24%,rgba(60,122,94,.07),transparent 60%),#f6f1e7;color:#2a2016">
+
+  <!-- ============ AUTH ============ -->
+  <sc-if value="{{ isAuth }}" hint-placeholder-val="{{ true }}">
+    <div class="ns-fade" style="min-height:100vh;display:grid;grid-template-columns:1.05fr .95fr">
+      <!-- brand panel -->
+      <div style="position:relative;overflow:hidden;background:linear-gradient(155deg,#241a10,#3a2a16 60%,#4a3416);color:#f6efe0;padding:56px 60px;display:flex;flex-direction:column;justify-content:space-between">
+        <div style="display:flex;align-items:center;gap:12px">
+          <div style="width:38px;height:38px;border-radius:11px;background:linear-gradient(150deg,#e0a64e,#b06a16);display:grid;place-items:center;font-family:'Fraunces',serif;font-weight:900;color:#241a10;font-size:20px;box-shadow:0 6px 18px rgba(176,106,22,.4)">N</div>
+          <div style="font-family:'Space Grotesk',sans-serif;font-weight:600;letter-spacing:.02em;font-size:17px">Nonelab <span style="opacity:.6;font-weight:400">Studio</span></div>
+        </div>
+        <div>
+          <div style="font-family:'Space Grotesk',sans-serif;text-transform:uppercase;letter-spacing:.34em;font-size:11px;color:#e0a64e;font-weight:600;margin-bottom:22px">Hệ thống video bùng nổ</div>
+          <h1 style="font-family:'Fraunces',serif;font-weight:900;font-size:clamp(34px,4.4vw,60px);line-height:1.0;letter-spacing:-.02em;margin:0 0 18px">Mổ xẻ mọi <span style="font-style:italic;font-weight:400;color:#e8bd72">thước phim</span> viral.</h1>
+          <p style="max-width:42ch;color:#cdbfa6;font-size:16px;line-height:1.65;margin:0">Tải video lên, AI bóc tách storyboard, lời thoại song ngữ và chấm theo khung Năm Lực — rồi xuất thành phiếu mổ xẻ HTML chỉ trong một cú nhấp.</p>
+        </div>
+        <div style="display:flex;gap:30px;font-family:'Space Grotesk',sans-serif">
+          <div><div style="font-size:26px;font-weight:700;color:#e8bd72">6 lớp</div><div style="font-size:12px;color:#b3a489;letter-spacing:.04em">phân tích sản xuất</div></div>
+          <div><div style="font-size:26px;font-weight:700;color:#e8bd72">Năm Lực</div><div style="font-size:12px;color:#b3a489;letter-spacing:.04em">khung chấm điểm</div></div>
+          <div><div style="font-size:26px;font-weight:700;color:#e8bd72">.html</div><div style="font-size:12px;color:#b3a489;letter-spacing:.04em">xuất bản tức thì</div></div>
+        </div>
+        <div style="position:absolute;right:-90px;bottom:-90px;width:320px;height:320px;border-radius:50%;border:1px solid rgba(224,166,78,.25)"></div>
+        <div style="position:absolute;right:-40px;bottom:-40px;width:220px;height:220px;border-radius:50%;border:1px solid rgba(224,166,78,.18)"></div>
+      </div>
+      <!-- form panel -->
+      <div style="display:flex;align-items:center;justify-content:center;padding:40px">
+        <div class="ns-pop" style="width:100%;max-width:380px">
+          <div style="font-family:'Fraunces',serif;font-size:30px;font-weight:600;letter-spacing:-.01em;margin-bottom:6px">{{ authTitle }}</div>
+          <p style="color:#8a7c67;font-size:14.5px;margin:0 0 28px">{{ authSub }}</p>
+
+          <sc-if value="{{ isSignup }}" hint-placeholder-val="{{ true }}">
+            <label style="display:block;font-family:'Space Grotesk',sans-serif;font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:#8a7c67;margin-bottom:7px">Họ và tên</label>
+            <input class="ns-in" value="{{ auth.name }}" onInput="{{ onAuthName }}" placeholder="Nguyễn Brand Manager" style="width:100%;padding:13px 15px;border:1px solid rgba(140,96,40,.28);border-radius:12px;background:#fffdf8;font-size:15px;margin-bottom:16px;transition:.2s" />
+          </sc-if>
+
+          <label style="display:block;font-family:'Space Grotesk',sans-serif;font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:#8a7c67;margin-bottom:7px">Email công việc</label>
+          <input class="ns-in" value="{{ auth.email }}" onInput="{{ onAuthEmail }}" placeholder="ban@nonelab.asia" style="width:100%;padding:13px 15px;border:1px solid rgba(140,96,40,.28);border-radius:12px;background:#fffdf8;font-size:15px;margin-bottom:16px;transition:.2s" />
+
+          <label style="display:block;font-family:'Space Grotesk',sans-serif;font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:#8a7c67;margin-bottom:7px">Mật khẩu</label>
+          <input class="ns-in" value="{{ auth.pass }}" onInput="{{ onAuthPass }}" type="password" placeholder="••••••••" style="width:100%;padding:13px 15px;border:1px solid rgba(140,96,40,.28);border-radius:12px;background:#fffdf8;font-size:15px;margin-bottom:22px;transition:.2s" />
+
+          <button onClick="{{ submitAuth }}" style="width:100%;padding:14px;border:none;border-radius:12px;background:linear-gradient(150deg,#c07c1e,#9a5a12);color:#fff;font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:15px;letter-spacing:.02em;cursor:pointer;box-shadow:0 8px 22px rgba(154,90,18,.32)">{{ authCta }}</button>
+
+          <div style="text-align:center;margin-top:20px;font-size:14px;color:#8a7c67">{{ authSwitchText }}
+            <span onClick="{{ toggleAuth }}" style="color:#9a5a12;font-weight:600;cursor:pointer;text-decoration:underline;text-underline-offset:3px">{{ authSwitchLink }}</span>
+          </div>
+          <div style="margin-top:24px;padding:12px 14px;border-radius:11px;background:rgba(60,122,94,.08);border:1px solid rgba(60,122,94,.22);font-size:12.5px;color:#3a6b54;line-height:1.5">Demo: nhập email bất kỳ để vào. Tài khoản dùng thử có quyền <b>Quản trị</b>.</div>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+
+  <!-- ============ ANALYZING ============ -->
+  <sc-if value="{{ isAnalyzing }}" hint-placeholder-val="{{ true }}">
+    <div class="ns-fade" style="min-height:100vh;display:flex;align-items:center;justify-content:center;padding:40px;background:radial-gradient(900px 500px at 50% 0%,rgba(176,106,22,.12),transparent 60%)">
+      <div style="width:100%;max-width:560px;text-align:center">
+        <div style="position:relative;width:104px;height:104px;margin:0 auto 30px">
+          <div style="position:absolute;inset:0;border-radius:50%;border:3px solid rgba(140,96,40,.16)"></div>
+          <div style="position:absolute;inset:0;border-radius:50%;border:3px solid transparent;border-top-color:#b06a16;border-right-color:#b06a16;animation:ns-spin 1s linear infinite"></div>
+          <div style="position:absolute;inset:18px;border-radius:18px;background-image:repeating-linear-gradient(#241a10 0 8px,#3a2a16 8px 14px);animation:ns-reel 1.2s steps(7) infinite;opacity:.9"></div>
+          <div style="position:absolute;inset:0;display:grid;place-items:center;font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:22px;color:#241a10">{{ progressPct }}</div>
+        </div>
+        <div style="font-family:'Space Grotesk',sans-serif;text-transform:uppercase;letter-spacing:.3em;font-size:11px;color:#b06a16;font-weight:600;margin-bottom:10px">Đang mổ xẻ video</div>
+        <h2 style="font-family:'Fraunces',serif;font-size:30px;font-weight:600;margin:0 0 6px;letter-spacing:-.01em">{{ analyzeTitle }}</h2>
+        <p style="color:#8a7c67;margin:0 0 30px;font-size:14.5px">{{ stageLabel }}</p>
+
+        <div style="height:8px;border-radius:99px;background:rgba(140,96,40,.14);overflow:hidden;margin-bottom:34px">
+          <div style="height:100%;border-radius:99px;background:linear-gradient(90deg,#c07c1e,#9a5a12);width:{{ progressPct }};transition:width .4s ease"></div>
+        </div>
+
+        <div style="display:flex;flex-direction:column;gap:11px;text-align:left;max-width:420px;margin:0 auto">
+          <sc-for list="{{ stageList }}" as="st" hint-placeholder-count="5">
+            <div style="display:flex;align-items:center;gap:13px;padding:12px 16px;border-radius:13px;border:1px solid rgba(140,96,40,.16);background:{{ st.bg }}">
+              <div style="width:24px;height:24px;border-radius:50%;flex:none;display:grid;place-items:center;font-family:'Space Grotesk',sans-serif;font-size:12px;font-weight:700;background:{{ st.dotBg }};color:{{ st.dotColor }}">{{ st.mark }}</div>
+              <div style="font-size:14px;color:{{ st.txtColor }};font-weight:{{ st.weight }}">{{ st.label }}</div>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+
+  <!-- ============ APP SHELL ============ -->
+  <sc-if value="{{ isApp }}" hint-placeholder-val="{{ true }}">
+    <div style="display:flex;min-height:100vh">
+
+      <!-- SIDEBAR -->
+      <aside style="width:248px;flex:none;background:#fffdf8;border-right:1px solid rgba(140,96,40,.18);display:flex;flex-direction:column;position:sticky;top:0;height:100vh">
+        <div style="padding:22px 22px 16px;display:flex;align-items:center;gap:11px;border-bottom:1px solid rgba(140,96,40,.12)">
+          <div style="width:34px;height:34px;border-radius:10px;background:linear-gradient(150deg,#e0a64e,#b06a16);display:grid;place-items:center;font-family:'Fraunces',serif;font-weight:900;color:#241a10;font-size:18px">N</div>
+          <div style="font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:15px">Nonelab <span style="opacity:.55;font-weight:400">Studio</span></div>
+        </div>
+        <nav style="padding:14px 12px;display:flex;flex-direction:column;gap:3px;flex:1">
+          <sc-for list="{{ navItems }}" as="it" hint-placeholder-count="4">
+            <div onClick="{{ it.onClick }}" style="display:flex;align-items:center;gap:12px;padding:11px 13px;border-radius:11px;cursor:pointer;font-family:'Space Grotesk',sans-serif;font-weight:{{ it.weight }};font-size:14px;color:{{ it.color }};background:{{ it.bg }};transition:.18s">
+              <span style="font-size:17px;width:20px;text-align:center">{{ it.icon }}</span>{{ it.label }}
+            </div>
+          </sc-for>
+          <button onClick="{{ goUpload }}" style="margin-top:14px;display:flex;align-items:center;justify-content:center;gap:8px;padding:12px;border:none;border-radius:12px;background:linear-gradient(150deg,#c07c1e,#9a5a12);color:#fff;font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:14px;cursor:pointer;box-shadow:0 6px 16px rgba(154,90,18,.28)">＋ Phân tích mới</button>
+        </nav>
+        <div style="padding:14px;border-top:1px solid rgba(140,96,40,.12)">
+          <div style="display:flex;align-items:center;gap:11px;padding:8px 6px">
+            <div style="width:36px;height:36px;border-radius:50%;background:linear-gradient(150deg,#3c7a5e,#2a5a44);color:#fff;display:grid;place-items:center;font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:14px">{{ userInitial }}</div>
+            <div style="min-width:0;flex:1">
+              <div style="font-size:13.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ userName }}</div>
+              <div style="font-size:11px;color:#8a7c67">{{ userRoleLabel }}</div>
+            </div>
+            <span onClick="{{ logout }}" title="Đăng xuất" style="cursor:pointer;color:#8a7c67;font-size:16px;padding:4px">⎋</span>
+          </div>
+        </div>
+      </aside>
+
+      <!-- MAIN -->
+      <main class="ns-scroll" style="flex:1;min-width:0;height:100vh;overflow-y:auto">
+        <!-- topbar -->
+        <div style="position:sticky;top:0;z-index:20;backdrop-filter:blur(8px);background:rgba(246,241,231,.82);border-bottom:1px solid rgba(140,96,40,.14);padding:16px 34px;display:flex;align-items:center;justify-content:space-between">
+          <div>
+            <div style="font-family:'Fraunces',serif;font-size:22px;font-weight:600;letter-spacing:-.01em">{{ screenTitle }}</div>
+            <div style="font-size:12.5px;color:#8a7c67">{{ screenSub }}</div>
+          </div>
+          <div style="display:flex;gap:10px;align-items:center">
+            <sc-if value="{{ isReport }}" hint-placeholder-val="{{ true }}">
+              <button onClick="{{ goUpload }}" style="padding:9px 15px;border:1px solid rgba(140,96,40,.3);border-radius:10px;background:#fffdf8;color:#574a3a;font-family:'Space Grotesk',sans-serif;font-weight:500;font-size:13px;cursor:pointer">↻ Phân tích lại</button>
+              <button onClick="{{ openExport }}" style="padding:9px 16px;border:none;border-radius:10px;background:linear-gradient(150deg,#c07c1e,#9a5a12);color:#fff;font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:13px;cursor:pointer;box-shadow:0 5px 14px rgba(154,90,18,.26)">⬇ Xuất HTML</button>
+            </sc-if>
+          </div>
+        </div>
+
+        <div style="padding:30px 34px 60px">
+
+          <!-- ===== DASHBOARD ===== -->
+          <sc-if value="{{ isDashboard }}" hint-placeholder-val="{{ true }}">
+            <div class="ns-fade">
+              <div class="ns-rise" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:16px;margin-bottom:30px">
+                <sc-for list="{{ stats }}" as="s" hint-placeholder-count="4">
+                  <div style="background:#fffdf8;border:1px solid rgba(140,96,40,.18);border-radius:16px;padding:20px 22px">
+                    <div style="font-family:'Space Grotesk',sans-serif;font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;color:#8a7c67;margin-bottom:10px">{{ s.label }}</div>
+                    <div style="font-family:'Fraunces',serif;font-size:34px;font-weight:600;color:#9a5a12;line-height:1">{{ s.value }}</div>
+                    <div style="font-size:12px;color:#8a7c67;margin-top:6px">{{ s.sub }}</div>
+                  </div>
+                </sc-for>
+              </div>
+
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+                <div style="font-family:'Space Grotesk',sans-serif;font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:#8a7c67;font-weight:600">Phân tích gần đây</div>
+                <span onClick="{{ goHistory }}" style="font-size:13px;color:#9a5a12;font-weight:600;cursor:pointer">Xem tất cả →</span>
+              </div>
+              <div class="ns-rise" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px">
+                <sc-for list="{{ recent }}" as="h" hint-placeholder-count="3">
+                  <div onClick="{{ h.onOpen }}" style="background:#fffdf8;border:1px solid rgba(140,96,40,.18);border-radius:16px;overflow:hidden;cursor:pointer;transition:.2s;box-shadow:0 1px 2px rgba(70,48,20,.04)">
+                    <div style="height:118px;position:relative;background:{{ h.thumb }};display:grid;place-items:center">
+                      <div style="font-size:30px;opacity:.8">🎬</div>
+                      <div style="position:absolute;left:12px;bottom:12px;font-family:'Space Grotesk',sans-serif;font-size:10.5px;font-weight:600;letter-spacing:.08em;color:#fff;background:rgba(36,26,16,.55);padding:3px 9px;border-radius:99px">{{ h.platform }}</div>
+                      <div style="position:absolute;right:12px;top:12px;font-family:'Space Grotesk',sans-serif;font-size:13px;font-weight:700;color:#241a10;background:#e8bd72;width:38px;height:38px;border-radius:50%;display:grid;place-items:center">{{ h.score }}</div>
+                    </div>
+                    <div style="padding:15px 17px">
+                      <div style="font-family:'Fraunces',serif;font-size:16.5px;font-weight:600;line-height:1.25;margin-bottom:6px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">{{ h.title }}</div>
+                      <div style="font-size:12.5px;color:#8a7c67">{{ h.product }} · {{ h.date }}</div>
+                    </div>
+                  </div>
+                </sc-for>
+              </div>
+            </div>
+          </sc-if>
+
+          <!-- ===== HISTORY ===== -->
+          <sc-if value="{{ isHistory }}" hint-placeholder-val="{{ true }}">
+            <div class="ns-fade ns-rise" style="display:flex;flex-direction:column;gap:11px">
+              <sc-for list="{{ history }}" as="h" hint-placeholder-count="4">
+                <div onClick="{{ h.onOpen }}" style="display:flex;gap:18px;align-items:center;background:#fffdf8;border:1px solid rgba(140,96,40,.18);border-radius:15px;padding:14px 18px;cursor:pointer;transition:.18s">
+                  <div style="width:80px;height:56px;border-radius:10px;flex:none;background:{{ h.thumb }};display:grid;place-items:center;font-size:22px">🎬</div>
+                  <div style="flex:1;min-width:0">
+                    <div style="font-family:'Fraunces',serif;font-size:16px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ h.title }}</div>
+                    <div style="font-size:12.5px;color:#8a7c67;margin-top:3px">{{ h.platform }} · {{ h.product }} · {{ h.date }}</div>
+                  </div>
+                  <div style="text-align:right;flex:none">
+                    <div style="font-family:'Space Grotesk',sans-serif;font-size:20px;font-weight:700;color:#9a5a12">{{ h.score }}</div>
+                    <div style="font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:#8a7c67">điểm</div>
+                  </div>
+                  <span style="color:#b06a16;font-size:18px;flex:none">→</span>
+                </div>
+              </sc-for>
+            </div>
+          </sc-if>
+
+          <!-- ===== UPLOAD ===== -->
+          <sc-if value="{{ isUpload }}" hint-placeholder-val="{{ true }}">
+            <div class="ns-fade">
+              <div style="display:inline-flex;gap:4px;padding:4px;background:#efe6d5;border-radius:12px;margin-bottom:26px">
+                <sc-for list="{{ variantTabs }}" as="v" hint-placeholder-count="3">
+                  <div onClick="{{ v.onClick }}" style="padding:8px 16px;border-radius:9px;font-family:'Space Grotesk',sans-serif;font-size:13px;font-weight:600;cursor:pointer;color:{{ v.color }};background:{{ v.bg }};box-shadow:{{ v.shadow }};transition:.18s">{{ v.label }}</div>
+                </sc-for>
+              </div>
+
+              <!-- VARIANT A — big dropzone -->
+              <sc-if value="{{ isVariantA }}" hint-placeholder-val="{{ true }}">
+                <div class="ns-fade" style="max-width:760px">
+                  <div onClick="{{ triggerFile }}" onDragOver="{{ onDragOver }}" onDrop="{{ onDrop }}" style="border:2px dashed {{ dropBorder }};border-radius:20px;background:{{ dropBg }};padding:54px 30px;text-align:center;cursor:pointer;transition:.2s;margin-bottom:22px">
+                    <div style="width:60px;height:60px;margin:0 auto 16px;border-radius:16px;background:linear-gradient(150deg,#e0a64e,#b06a16);display:grid;place-items:center;font-size:28px;box-shadow:0 8px 20px rgba(176,106,22,.3)">🎞️</div>
+                    <div style="font-family:'Fraunces',serif;font-size:21px;font-weight:600;margin-bottom:6px">{{ dropTitle }}</div>
+                    <div style="color:#8a7c67;font-size:14px">{{ dropSub }}</div>
+                  </div>
+                  <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+                    <div>
+                      <label style="display:block;font-family:'Space Grotesk',sans-serif;font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:#8a7c67;margin-bottom:7px">Tiêu đề video</label>
+                      <input class="ns-in" value="{{ form.title }}" onInput="{{ onTitle }}" placeholder="Thử thách dội nước phấn phủ…" style="width:100%;padding:12px 14px;border:1px solid rgba(140,96,40,.28);border-radius:11px;background:#fffdf8;font-size:14.5px;transition:.2s" />
+                    </div>
+                    <div>
+                      <label style="display:block;font-family:'Space Grotesk',sans-serif;font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:#8a7c67;margin-bottom:7px">Sản phẩm</label>
+                      <input class="ns-in" value="{{ form.product }}" onInput="{{ onProduct }}" placeholder="Phấn phủ nén chống nắng" style="width:100%;padding:12px 14px;border:1px solid rgba(140,96,40,.28);border-radius:11px;background:#fffdf8;font-size:14.5px;transition:.2s" />
+                    </div>
+                    <div>
+                      <label style="display:block;font-family:'Space Grotesk',sans-serif;font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:#8a7c67;margin-bottom:7px">Nền tảng</label>
+                      <select value="{{ form.platform }}" onChange="{{ onPlatform }}" style="width:100%;padding:12px 14px;border:1px solid rgba(140,96,40,.28);border-radius:11px;background:#fffdf8;font-size:14.5px;cursor:pointer">
+                        <sc-for list="{{ platforms }}" as="p" hint-placeholder-count="4"><option value="{{ p }}">{{ p }}</option></sc-for>
+                      </select>
+                    </div>
+                    <div>
+                      <label style="display:block;font-family:'Space Grotesk',sans-serif;font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:#8a7c67;margin-bottom:7px">Thể loại</label>
+                      <select value="{{ form.genre }}" onChange="{{ onGenre }}" style="width:100%;padding:12px 14px;border:1px solid rgba(140,96,40,.28);border-radius:11px;background:#fffdf8;font-size:14.5px;cursor:pointer">
+                        <sc-for list="{{ genres }}" as="g" hint-placeholder-count="4"><option value="{{ g }}">{{ g }}</option></sc-for>
+                      </select>
+                    </div>
+                    <div style="grid-column:1/-1">
+                      <label style="display:block;font-family:'Space Grotesk',sans-serif;font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:#8a7c67;margin-bottom:7px">Mô tả nội dung video (AI dựa vào đây để phân tích)</label>
+                      <textarea class="ns-in" value="{{ form.notes }}" onInput="{{ onNotes }}" placeholder="VD: Creator dội nước lên mặt, dặm phấn, tắm vòi sen rồi lau bông tẩy trang chứng minh không trôi…" style="width:100%;min-height:84px;resize:vertical;padding:12px 14px;border:1px solid rgba(140,96,40,.28);border-radius:11px;background:#fffdf8;font-size:14.5px;line-height:1.55;transition:.2s"></textarea>
+                    </div>
+                  </div>
+                  <button onClick="{{ startAnalyze }}" style="margin-top:22px;padding:14px 26px;border:none;border-radius:12px;background:linear-gradient(150deg,#c07c1e,#9a5a12);color:#fff;font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:15px;cursor:pointer;box-shadow:0 8px 20px rgba(154,90,18,.3)">⚡ Bắt đầu mổ xẻ</button>
+                </div>
+              </sc-if>
+
+              <!-- VARIANT B — two columns -->
+              <sc-if value="{{ isVariantB }}" hint-placeholder-val="{{ true }}">
+                <div class="ns-fade" style="display:grid;grid-template-columns:1fr 1fr;gap:24px;align-items:start;max-width:900px">
+                  <div onClick="{{ triggerFile }}" onDragOver="{{ onDragOver }}" onDrop="{{ onDrop }}" style="border:2px dashed {{ dropBorder }};border-radius:18px;background:{{ dropBg }};padding:40px 26px;text-align:center;cursor:pointer;min-height:340px;display:flex;flex-direction:column;align-items:center;justify-content:center;transition:.2s">
+                    <div style="width:64px;height:64px;margin-bottom:18px;border-radius:18px;background:linear-gradient(150deg,#e0a64e,#b06a16);display:grid;place-items:center;font-size:30px;box-shadow:0 8px 20px rgba(176,106,22,.3)">🎞️</div>
+                    <div style="font-family:'Fraunces',serif;font-size:20px;font-weight:600;margin-bottom:6px">{{ dropTitle }}</div>
+                    <div style="color:#8a7c67;font-size:13.5px;max-width:24ch">{{ dropSub }}</div>
+                  </div>
+                  <div style="display:flex;flex-direction:column;gap:14px">
+                    <div>
+                      <label style="display:block;font-family:'Space Grotesk',sans-serif;font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:#8a7c67;margin-bottom:7px">Tiêu đề video</label>
+                      <input class="ns-in" value="{{ form.title }}" onInput="{{ onTitle }}" placeholder="Thử thách dội nước…" style="width:100%;padding:12px 14px;border:1px solid rgba(140,96,40,.28);border-radius:11px;background:#fffdf8;font-size:14.5px;transition:.2s" />
+                    </div>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+                      <div>
+                        <label style="display:block;font-family:'Space Grotesk',sans-serif;font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:#8a7c67;margin-bottom:7px">Nền tảng</label>
+                        <select value="{{ form.platform }}" onChange="{{ onPlatform }}" style="width:100%;padding:12px 14px;border:1px solid rgba(140,96,40,.28);border-radius:11px;background:#fffdf8;font-size:14px;cursor:pointer">
+                          <sc-for list="{{ platforms }}" as="p" hint-placeholder-count="4"><option value="{{ p }}">{{ p }}</option></sc-for>
+                        </select>
+                      </div>
+                      <div>
+                        <label style="display:block;font-family:'Space Grotesk',sans-serif;font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:#8a7c67;margin-bottom:7px">Sản phẩm</label>
+                        <input class="ns-in" value="{{ form.product }}" onInput="{{ onProduct }}" placeholder="Phấn phủ…" style="width:100%;padding:12px 14px;border:1px solid rgba(140,96,40,.28);border-radius:11px;background:#fffdf8;font-size:14px;transition:.2s" />
+                      </div>
+                    </div>
+                    <div>
+                      <label style="display:block;font-family:'Space Grotesk',sans-serif;font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:#8a7c67;margin-bottom:7px">Mô tả nội dung</label>
+                      <textarea class="ns-in" value="{{ form.notes }}" onInput="{{ onNotes }}" placeholder="Diễn biến chính của video…" style="width:100%;min-height:110px;resize:vertical;padding:12px 14px;border:1px solid rgba(140,96,40,.28);border-radius:11px;background:#fffdf8;font-size:14px;line-height:1.55;transition:.2s"></textarea>
+                    </div>
+                    <button onClick="{{ startAnalyze }}" style="padding:13px 24px;border:none;border-radius:12px;background:linear-gradient(150deg,#c07c1e,#9a5a12);color:#fff;font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:14.5px;cursor:pointer;box-shadow:0 8px 20px rgba(154,90,18,.3)">⚡ Bắt đầu mổ xẻ</button>
+                  </div>
+                </div>
+              </sc-if>
+
+              <!-- VARIANT C — wizard -->
+              <sc-if value="{{ isVariantC }}" hint-placeholder-val="{{ true }}">
+                <div class="ns-fade" style="max-width:680px">
+                  <div style="display:flex;gap:0;margin-bottom:24px">
+                    <sc-for list="{{ wizardSteps }}" as="w" hint-placeholder-count="3">
+                      <div style="flex:1;text-align:center;position:relative">
+                        <div style="width:34px;height:34px;margin:0 auto 8px;border-radius:50%;display:grid;place-items:center;font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:14px;background:{{ w.dotBg }};color:{{ w.dotColor }};border:2px solid {{ w.dotBorder }}">{{ w.num }}</div>
+                        <div style="font-size:12px;font-weight:{{ w.weight }};color:{{ w.txtColor }}">{{ w.label }}</div>
+                      </div>
+                    </sc-for>
+                  </div>
+                  <div style="background:#fffdf8;border:1px solid rgba(140,96,40,.18);border-radius:18px;padding:28px">
+                    <!-- step 1 -->
+                    <sc-if value="{{ wiz1 }}" hint-placeholder-val="{{ true }}">
+                      <div class="ns-fade" onClick="{{ triggerFile }}" onDragOver="{{ onDragOver }}" onDrop="{{ onDrop }}" style="border:2px dashed {{ dropBorder }};border-radius:14px;background:{{ dropBg }};padding:44px 24px;text-align:center;cursor:pointer">
+                        <div style="font-size:34px;margin-bottom:12px">🎞️</div>
+                        <div style="font-family:'Fraunces',serif;font-size:19px;font-weight:600;margin-bottom:5px">{{ dropTitle }}</div>
+                        <div style="color:#8a7c67;font-size:13.5px">{{ dropSub }}</div>
+                      </div>
+                    </sc-if>
+                    <!-- step 2 -->
+                    <sc-if value="{{ wiz2 }}" hint-placeholder-val="{{ true }}">
+                      <div class="ns-fade" style="display:flex;flex-direction:column;gap:14px">
+                        <div>
+                          <label style="display:block;font-family:'Space Grotesk',sans-serif;font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:#8a7c67;margin-bottom:7px">Tiêu đề video</label>
+                          <input class="ns-in" value="{{ form.title }}" onInput="{{ onTitle }}" placeholder="Thử thách dội nước…" style="width:100%;padding:12px 14px;border:1px solid rgba(140,96,40,.28);border-radius:11px;background:#fdfaf3;font-size:14.5px;transition:.2s" />
+                        </div>
+                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+                          <div>
+                            <label style="display:block;font-family:'Space Grotesk',sans-serif;font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:#8a7c67;margin-bottom:7px">Nền tảng</label>
+                            <select value="{{ form.platform }}" onChange="{{ onPlatform }}" style="width:100%;padding:12px 14px;border:1px solid rgba(140,96,40,.28);border-radius:11px;background:#fdfaf3;font-size:14px;cursor:pointer">
+                              <sc-for list="{{ platforms }}" as="p" hint-placeholder-count="4"><option value="{{ p }}">{{ p }}</option></sc-for>
+                            </select>
+                          </div>
+                          <div>
+                            <label style="display:block;font-family:'Space Grotesk',sans-serif;font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:#8a7c67;margin-bottom:7px">Sản phẩm</label>
+                            <input class="ns-in" value="{{ form.product }}" onInput="{{ onProduct }}" placeholder="Phấn phủ…" style="width:100%;padding:12px 14px;border:1px solid rgba(140,96,40,.28);border-radius:11px;background:#fdfaf3;font-size:14px;transition:.2s" />
+                          </div>
+                        </div>
+                      </div>
+                    </sc-if>
+                    <!-- step 3 -->
+                    <sc-if value="{{ wiz3 }}" hint-placeholder-val="{{ true }}">
+                      <div class="ns-fade">
+                        <label style="display:block;font-family:'Space Grotesk',sans-serif;font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:#8a7c67;margin-bottom:7px">Mô tả diễn biến nội dung video</label>
+                        <textarea class="ns-in" value="{{ form.notes }}" onInput="{{ onNotes }}" placeholder="VD: Creator dội nước lên mặt, dặm phấn, tắm vòi sen rồi lau bông tẩy trang…" style="width:100%;min-height:150px;resize:vertical;padding:13px 15px;border:1px solid rgba(140,96,40,.28);border-radius:12px;background:#fdfaf3;font-size:14.5px;line-height:1.6;transition:.2s"></textarea>
+                      </div>
+                    </sc-if>
+                    <div style="display:flex;justify-content:space-between;margin-top:22px">
+                      <button onClick="{{ wizPrev }}" style="padding:11px 20px;border:1px solid rgba(140,96,40,.3);border-radius:11px;background:transparent;color:{{ wizPrevColor }};font-family:'Space Grotesk',sans-serif;font-weight:500;font-size:14px;cursor:pointer">← Quay lại</button>
+                      <button onClick="{{ wizNext }}" style="padding:11px 24px;border:none;border-radius:11px;background:linear-gradient(150deg,#c07c1e,#9a5a12);color:#fff;font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:14px;cursor:pointer;box-shadow:0 6px 16px rgba(154,90,18,.28)">{{ wizNextLabel }}</button>
+                    </div>
+                  </div>
+                </div>
+              </sc-if>
+
+            </div>
+          </sc-if>
+
+          <!-- ===== REPORT ===== -->
+          <sc-if value="{{ isReport }}" hint-placeholder-val="{{ true }}">
+            <div class="ns-fade" style="max-width:1000px;margin:0 auto">
+              <!-- hero -->
+              <div style="border:1px solid rgba(140,96,40,.2);border-radius:20px;overflow:hidden;background:#fffdf8;margin-bottom:26px">
+                <div style="padding:34px 36px;background:linear-gradient(160deg,#241a10,#3a2a16)">
+                  <div style="font-family:'Space Grotesk',sans-serif;text-transform:uppercase;letter-spacing:.3em;font-size:10.5px;color:#e0a64e;font-weight:600;margin-bottom:16px">Nonelab · Mổ xẻ video · Khung Năm Lực</div>
+                  <h1 style="font-family:'Fraunces',serif;font-weight:900;font-size:clamp(30px,5vw,52px);line-height:1.0;letter-spacing:-.02em;margin:0 0 10px;color:#f6efe0">Phiếu <span style="font-style:italic;font-weight:400;color:#e8bd72">mổ xẻ</span> video</h1>
+                  <p style="font-family:'Fraunces',serif;font-style:italic;font-size:clamp(15px,2.4vw,20px);color:#cdbfa6;margin:0;max-width:60ch">{{ a.subtitle }}</p>
+                </div>
+                <dl style="display:flex;flex-wrap:wrap;margin:0">
+                  <sc-for list="{{ metaList }}" as="m" hint-placeholder-count="6">
+                    <div style="flex:1 1 150px;padding:15px 20px;border-right:1px solid rgba(70,54,32,.1);border-top:1px solid rgba(70,54,32,.1)">
+                      <dt style="font-family:'Space Grotesk',sans-serif;font-size:9.5px;letter-spacing:.18em;text-transform:uppercase;color:#8a7c67;margin-bottom:5px">{{ m.k }}</dt>
+                      <dd style="margin:0;font-weight:600;font-size:14px">{{ m.v }}</dd>
+                    </div>
+                  </sc-for>
+                </dl>
+              </div>
+
+              <!-- verdict -->
+              <div style="display:flex;align-items:baseline;gap:14px;margin:0 0 18px">
+                <span style="font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:12px;color:#7a4a10;border:1px solid rgba(140,96,40,.3);border-radius:99px;padding:4px 12px">Chốt nhanh</span>
+                <h2 style="font-family:'Fraunces',serif;font-weight:600;font-size:clamp(20px,3vw,28px);margin:0;letter-spacing:-.01em">Vì sao nó chạy</h2>
+              </div>
+              <div class="ns-rise" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px;margin-bottom:36px">
+                <sc-for list="{{ a.verdict }}" as="v" hint-placeholder-count="4">
+                  <div style="background:linear-gradient(160deg,#f7f0e2,#fffdf8);border:1px solid rgba(140,96,40,.22);border-radius:16px;padding:20px">
+                    <div style="font-family:'Space Grotesk',sans-serif;font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:#8a7c67;margin-bottom:9px">{{ v.label }}</div>
+                    <div style="font-family:'Fraunces',serif;font-size:26px;font-weight:600;color:#9a5a12;line-height:1">{{ v.big }}</div>
+                    <p style="margin:10px 0 0;font-size:13px;color:#574a3a;line-height:1.5">{{ v.note }}</p>
+                  </div>
+                </sc-for>
+              </div>
+
+              <!-- storyboard -->
+              <div style="display:flex;align-items:baseline;gap:14px;margin:0 0 22px">
+                <span style="font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:12px;color:#7a4a10;border:1px solid rgba(140,96,40,.3);border-radius:99px;padding:4px 12px">Storyboard</span>
+                <h2 style="font-family:'Fraunces',serif;font-weight:600;font-size:clamp(20px,3vw,28px);margin:0;letter-spacing:-.01em">Mổ theo phân cảnh</h2>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:34px;margin-bottom:36px">
+                <sc-for list="{{ a.acts }}" as="act" hint-placeholder-count="4">
+                  <div>
+                    <div style="display:flex;gap:15px;align-items:flex-start;margin-bottom:16px">
+                      <div style="width:40px;height:40px;flex:none;border-radius:50%;background:#b06a16;color:#fff;display:grid;place-items:center;font-family:'Fraunces',serif;font-weight:900;font-size:18px;box-shadow:0 0 0 5px #f6f1e7,0 0 0 6px rgba(140,96,40,.25)">{{ act.no }}</div>
+                      <div>
+                        <div style="font-family:'Space Grotesk',sans-serif;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:#b06a16;font-weight:600">{{ act.range }}</div>
+                        <div style="font-family:'Fraunces',serif;font-size:20px;font-weight:600;margin:2px 0 5px;letter-spacing:-.01em">{{ act.title }}</div>
+                        <p style="margin:0;color:#574a3a;font-size:13.5px;max-width:66ch;line-height:1.55">{{ act.summary }}</p>
+                      </div>
+                    </div>
+                    <div style="display:flex;flex-direction:column;gap:12px;margin-left:55px">
+                      <sc-for list="{{ act.beats }}" as="beat" hint-placeholder-count="2">
+                        <div style="display:flex;gap:15px;background:#fffdf8;border:1px solid rgba(70,54,32,.13);border-radius:14px;padding:14px">
+                          <div style="position:relative;flex:none;width:86px;height:150px;border-radius:10px;overflow:hidden;border:1px solid rgba(140,96,40,.22);background:linear-gradient(150deg,#e7d4b0,#c9a86f 55%,#a07c44);display:grid;place-items:center">
+                            <span style="font-size:24px;opacity:.55">🎬</span>
+                            <span style="position:absolute;left:0;bottom:0;font-family:'Space Grotesk',sans-serif;font-size:9px;font-weight:600;background:#b06a16;color:#fff;padding:1px 5px;border-top-right-radius:6px;letter-spacing:.04em">{{ beat.ts }}</span>
+                          </div>
+                          <div style="min-width:0;flex:1">
+                            <p style="font-size:13.5px;color:#9a5a12;margin:0 0 6px;line-height:1.45;font-weight:600">{{ beat.vi }}</p>
+                            <p style="font-size:11.5px;color:#8a7c67;margin:0 0 10px;line-height:1.5">{{ beat.note }}</p>
+                            <div style="border-top:1px solid rgba(140,96,40,.18);padding-top:9px;display:flex;flex-direction:column;gap:7px">
+                              <div style="display:flex;gap:13px;background:rgba(176,106,22,.06);border-left:3px solid #b06a16;border-radius:0 9px 9px 0;padding:8px 11px">
+                                <div style="flex:none;width:70px"><div style="font-size:11.5px;font-weight:600">Góc máy</div><div style="font-family:'Space Grotesk',sans-serif;font-size:8px;letter-spacing:.13em;color:#8a7c67">CAMERA</div></div>
+                                <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px 14px;flex:1">
+                                  <span style="font-size:11.5px;line-height:1.35"><i style="font-style:normal;font-family:'Space Grotesk',sans-serif;font-size:8px;letter-spacing:.12em;text-transform:uppercase;color:#b06a16;display:block;margin-bottom:2px">Cỡ cảnh</i>{{ beat.size }}</span>
+                                  <span style="font-size:11.5px;line-height:1.35"><i style="font-style:normal;font-family:'Space Grotesk',sans-serif;font-size:8px;letter-spacing:.12em;text-transform:uppercase;color:#b06a16;display:block;margin-bottom:2px">Góc</i>{{ beat.angle }}</span>
+                                  <span style="font-size:11.5px;line-height:1.35"><i style="font-style:normal;font-family:'Space Grotesk',sans-serif;font-size:8px;letter-spacing:.12em;text-transform:uppercase;color:#b06a16;display:block;margin-bottom:2px">Chuyển động</i>{{ beat.move }}</span>
+                                </div>
+                              </div>
+                              <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 22px">
+                                <sc-for list="{{ beat.matrix }}" as="mr" hint-placeholder-count="4">
+                                  <div style="display:flex;gap:10px;align-items:baseline;padding:4px 0;border-bottom:1px solid rgba(70,54,32,.1)">
+                                    <div style="flex:none;width:74px;line-height:1.1"><b style="display:block;font-size:11.5px;font-weight:600">{{ mr.k }}</b><span style="display:block;font-family:'Space Grotesk',sans-serif;font-size:8px;letter-spacing:.13em;color:#8a7c67">{{ mr.en }}</span></div>
+                                    <div style="font-size:11.5px;color:#574a3a;line-height:1.4">{{ mr.v }}</div>
+                                  </div>
+                                </sc-for>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </sc-for>
+                    </div>
+                  </div>
+                </sc-for>
+              </div>
+
+              <!-- checklist -->
+              <div style="display:flex;align-items:baseline;gap:14px;margin:0 0 18px">
+                <span style="font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:12px;color:#7a4a10;border:1px solid rgba(140,96,40,.3);border-radius:99px;padding:4px 12px">Checklist</span>
+                <h2 style="font-family:'Fraunces',serif;font-weight:600;font-size:clamp(20px,3vw,28px);margin:0;letter-spacing:-.01em">7 điểm hiệu quả</h2>
+              </div>
+              <div style="background:#fffdf8;border:1px solid rgba(140,96,40,.18);border-radius:16px;overflow:hidden;margin-bottom:36px">
+                <sc-for list="{{ a.checklist }}" as="row" hint-placeholder-count="7">
+                  <div style="display:flex;gap:16px;align-items:flex-start;padding:15px 20px;border-bottom:1px solid rgba(70,54,32,.1)">
+                    <div style="flex:none;width:26%;font-weight:600;font-size:13.5px">{{ row.crit }}</div>
+                    <div style="flex:none">
+                      <sc-if value="{{ row.isOk }}" hint-placeholder-val="{{ true }}"><span style="font-family:'Space Grotesk',sans-serif;font-size:11px;font-weight:600;padding:4px 11px;border-radius:99px;background:rgba(60,122,94,.13);color:#2f6b4f;border:1px solid rgba(60,122,94,.4);white-space:nowrap">{{ row.levelLabel }}</span></sc-if>
+                      <sc-if value="{{ row.isMid }}" hint-placeholder-val="{{ true }}"><span style="font-family:'Space Grotesk',sans-serif;font-size:11px;font-weight:600;padding:4px 11px;border-radius:99px;background:rgba(176,106,22,.14);color:#8a5614;border:1px solid rgba(176,106,22,.4);white-space:nowrap">{{ row.levelLabel }}</span></sc-if>
+                      <sc-if value="{{ row.isLow }}" hint-placeholder-val="{{ true }}"><span style="font-family:'Space Grotesk',sans-serif;font-size:11px;font-weight:600;padding:4px 11px;border-radius:99px;background:rgba(158,58,58,.12);color:#8f3232;border:1px solid rgba(158,58,58,.4);white-space:nowrap">{{ row.levelLabel }}</span></sc-if>
+                    </div>
+                    <div style="flex:1;color:#574a3a;font-size:13px;line-height:1.5">{{ row.note }}</div>
+                  </div>
+                </sc-for>
+              </div>
+
+              <!-- formulas -->
+              <div style="display:flex;align-items:baseline;gap:14px;margin:0 0 18px">
+                <span style="font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:12px;color:#7a4a10;border:1px solid rgba(140,96,40,.3);border-radius:99px;padding:4px 12px">Công thức</span>
+                <h2 style="font-family:'Fraunces',serif;font-weight:600;font-size:clamp(20px,3vw,28px);margin:0;letter-spacing:-.01em">Tái dùng</h2>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:14px;margin-bottom:14px">
+                <div style="background:#f7f0e2;border:1px solid rgba(140,96,40,.22);border-left:3px solid #b06a16;border-radius:0 14px 14px 0;padding:18px 22px">
+                  <div style="font-family:'Space Grotesk',sans-serif;font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;color:#b06a16;margin-bottom:8px">Cấu trúc hình ảnh</div>
+                  <div style="font-size:14.5px;line-height:1.6;color:#2a2016">{{ a.formulaVisual }}</div>
+                </div>
+                <div style="background:#f7f0e2;border:1px solid rgba(140,96,40,.22);border-left:3px solid #b06a16;border-radius:0 14px 14px 0;padding:18px 22px">
+                  <div style="font-family:'Space Grotesk',sans-serif;font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;color:#b06a16;margin-bottom:8px">Cấu trúc lời thoại</div>
+                  <div style="font-size:14.5px;line-height:1.6;color:#2a2016">{{ a.formulaScript }}</div>
+                </div>
+              </div>
+              <p style="color:#574a3a;font-size:14px;line-height:1.65;max-width:66ch;margin:0 0 36px">{{ a.verdictText }}</p>
+
+              <!-- banks -->
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:28px">
+                <div>
+                  <div style="font-family:'Space Grotesk',sans-serif;font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:#b06a16;font-weight:600;margin-bottom:8px">Kho lời thoại · 文案库</div>
+                  <div style="display:flex;flex-direction:column">
+                    <sc-for list="{{ a.quotes }}" as="q" hint-placeholder-count="5">
+                      <div style="position:relative;padding:10px 0 10px 24px;border-bottom:1px solid rgba(70,54,32,.1);font-size:13.5px;color:#574a3a;line-height:1.5">
+                        <span style="position:absolute;left:4px;top:17px;width:7px;height:7px;border-radius:50%;background:#b06a16"></span>{{ q }}
+                      </div>
+                    </sc-for>
+                  </div>
+                </div>
+                <div>
+                  <div style="font-family:'Space Grotesk',sans-serif;font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:#b06a16;font-weight:600;margin-bottom:8px">Kho hình ảnh · 画面库</div>
+                  <div style="display:flex;flex-direction:column">
+                    <sc-for list="{{ a.visuals }}" as="vs" hint-placeholder-count="5">
+                      <div style="position:relative;padding:10px 0 10px 24px;border-bottom:1px solid rgba(70,54,32,.1);font-size:13.5px;color:#574a3a;line-height:1.5">
+                        <span style="position:absolute;left:4px;top:17px;width:7px;height:7px;border-radius:50%;background:#3c7a5e"></span>{{ vs }}
+                      </div>
+                    </sc-for>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </sc-if>
+
+          <!-- ===== ADMIN ===== -->
+          <sc-if value="{{ isAdmin }}" hint-placeholder-val="{{ true }}">
+            <div class="ns-fade">
+              <div class="ns-rise" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:16px;margin-bottom:26px">
+                <sc-for list="{{ adminStats }}" as="s" hint-placeholder-count="3">
+                  <div style="background:#fffdf8;border:1px solid rgba(140,96,40,.18);border-radius:16px;padding:20px 22px">
+                    <div style="font-family:'Space Grotesk',sans-serif;font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;color:#8a7c67;margin-bottom:10px">{{ s.label }}</div>
+                    <div style="font-family:'Fraunces',serif;font-size:32px;font-weight:600;color:#9a5a12;line-height:1">{{ s.value }}</div>
+                  </div>
+                </sc-for>
+              </div>
+
+              <!-- Gemini API integration -->
+              <div style="background:#fffdf8;border:1px solid rgba(140,96,40,.18);border-radius:16px;padding:22px 24px;margin-bottom:22px">
+                <div style="display:flex;align-items:center;gap:13px;margin-bottom:6px">
+                  <div style="width:40px;height:40px;border-radius:11px;flex:none;background:linear-gradient(150deg,#5a8de0,#3a5fc0);display:grid;place-items:center;font-size:20px;box-shadow:0 5px 14px rgba(58,95,192,.3)">✦</div>
+                  <div style="flex:1;min-width:0">
+                    <div style="font-family:'Fraunces',serif;font-size:19px;font-weight:600;letter-spacing:-.01em">Tích hợp AI · Google Gemini</div>
+                    <div style="font-size:12.5px;color:#8a7c67">Kết nối API key để chạy mổ xẻ bằng mô hình Gemini</div>
+                  </div>
+                  <span style="display:inline-flex;align-items:center;gap:7px;font-family:'Space Grotesk',sans-serif;font-size:11.5px;font-weight:600;padding:5px 12px;border-radius:99px;background:{{ gemStatusBg }};color:{{ gemStatusColor }};border:1px solid {{ gemStatusBorder }};flex:none">
+                    <span style="width:7px;height:7px;border-radius:50%;background:{{ gemDotBg }}"></span>{{ gemStatusLabel }}
+                  </span>
+                </div>
+                <div style="display:grid;grid-template-columns:1fr 220px;gap:14px;margin-top:18px;align-items:end">
+                  <div>
+                    <label style="display:block;font-family:'Space Grotesk',sans-serif;font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:#8a7c67;margin-bottom:7px">API key</label>
+                    <div style="position:relative">
+                      <input class="ns-in" value="{{ gem.key }}" onInput="{{ onGemKey }}" type="{{ gemKeyType }}" placeholder="AIzaSy…" style="width:100%;padding:12px 58px 12px 14px;border:1px solid rgba(140,96,40,.28);border-radius:11px;background:#fdfaf3;font-size:14px;font-family:'Space Grotesk',sans-serif;letter-spacing:.02em;transition:.2s" />
+                      <span onClick="{{ toggleGemKey }}" style="position:absolute;right:12px;top:50%;transform:translateY(-50%);font-family:'Space Grotesk',sans-serif;font-size:12px;font-weight:600;color:#9a5a12;cursor:pointer">{{ gemShowLabel }}</span>
+                    </div>
+                  </div>
+                  <div>
+                    <label style="display:block;font-family:'Space Grotesk',sans-serif;font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:#8a7c67;margin-bottom:7px">Mô hình</label>
+                    <select value="{{ gem.model }}" onChange="{{ onGemModel }}" style="width:100%;padding:12px 14px;border:1px solid rgba(140,96,40,.28);border-radius:11px;background:#fdfaf3;font-size:14px;cursor:pointer">
+                      <sc-for list="{{ gemModels }}" as="m" hint-placeholder-count="3"><option value="{{ m }}">{{ m }}</option></sc-for>
+                    </select>
+                  </div>
+                </div>
+                <div style="display:flex;align-items:center;gap:10px;margin-top:16px">
+                  <button onClick="{{ testConnection }}" style="padding:11px 20px;border:none;border-radius:11px;background:linear-gradient(150deg,#c07c1e,#9a5a12);color:#fff;font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:13.5px;cursor:pointer;box-shadow:0 5px 14px rgba(154,90,18,.26);display:inline-flex;align-items:center;gap:8px">
+                    <sc-if value="{{ gemTesting }}" hint-placeholder-val="{{ false }}"><span style="width:13px;height:13px;border:2px solid rgba(255,255,255,.4);border-top-color:#fff;border-radius:50%;display:inline-block;animation:ns-spin .8s linear infinite"></span></sc-if>{{ gemTestLabel }}
+                  </button>
+                  <sc-if value="{{ gemConnected }}" hint-placeholder-val="{{ false }}">
+                    <button onClick="{{ disconnectGem }}" style="padding:11px 18px;border:1px solid rgba(140,96,40,.3);border-radius:11px;background:transparent;color:#574a3a;font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:13.5px;cursor:pointer">Ngắt kết nối</button>
+                  </sc-if>
+                  <span style="font-size:12px;color:#8a7c67;margin-left:4px">Key lưu cục bộ trên trình duyệt · lấy tại Google AI Studio</span>
+                </div>
+              </div>
+
+              <div style="font-family:'Space Grotesk',sans-serif;font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:#8a7c67;font-weight:600;margin-bottom:12px">Người dùng & phân quyền</div>
+              <div style="background:#fffdf8;border:1px solid rgba(140,96,40,.18);border-radius:16px;overflow:hidden">
+                <div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr 40px;gap:14px;padding:13px 20px;border-bottom:1px solid rgba(140,96,40,.18);font-family:'Space Grotesk',sans-serif;font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:#8a7c67;font-weight:600">
+                  <div>Người dùng</div><div>Vai trò</div><div>Phân tích</div><div>Trạng thái</div><div></div>
+                </div>
+                <sc-for list="{{ adminUsers }}" as="u" hint-placeholder-count="5">
+                  <div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr 40px;gap:14px;padding:14px 20px;border-bottom:1px solid rgba(70,54,32,.1);align-items:center">
+                    <div style="display:flex;align-items:center;gap:11px;min-width:0">
+                      <div style="width:34px;height:34px;border-radius:50%;flex:none;background:{{ u.avBg }};color:#fff;display:grid;place-items:center;font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:13px">{{ u.initial }}</div>
+                      <div style="min-width:0"><div style="font-size:13.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ u.name }}</div><div style="font-size:11.5px;color:#8a7c67;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ u.email }}</div></div>
+                    </div>
+                    <div style="font-size:13px;color:#574a3a">{{ u.role }}</div>
+                    <div style="font-size:13px;color:#574a3a">{{ u.count }}</div>
+                    <div><span style="font-family:'Space Grotesk',sans-serif;font-size:11px;font-weight:600;padding:3px 10px;border-radius:99px;background:{{ u.stBg }};color:{{ u.stColor }};border:1px solid {{ u.stBorder }}">{{ u.status }}</span></div>
+                    <div onClick="{{ u.onManage }}" title="Phân quyền" style="text-align:center;cursor:pointer;color:#9a5a12;font-size:15px">⚙</div>
+                  </div>
+                </sc-for>
+              </div>
+            </div>
+          </sc-if>
+
+        </div>
+      </main>
+    </div>
+  </sc-if>
+
+  <!-- ============ PERMISSION MODAL ============ -->
+  <sc-if value="{{ permOpen }}" hint-placeholder-val="{{ false }}">
+    <div onClick="{{ permModal.onClose }}" style="position:fixed;inset:0;z-index:60;background:rgba(36,26,16,.5);backdrop-filter:blur(3px);display:flex;align-items:center;justify-content:center;padding:24px">
+      <div onClick="{{ stop }}" class="ns-pop" style="width:100%;max-width:500px;background:#fffdf8;border-radius:20px;overflow:hidden;box-shadow:0 30px 80px rgba(36,26,16,.4)">
+        <div style="padding:24px 28px;border-bottom:1px solid rgba(140,96,40,.14);display:flex;align-items:center;gap:14px">
+          <div style="width:46px;height:46px;border-radius:50%;flex:none;background:{{ permModal.avBg }};color:#fff;display:grid;place-items:center;font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:17px">{{ permModal.initial }}</div>
+          <div style="min-width:0;flex:1">
+            <div style="font-family:'Fraunces',serif;font-size:20px;font-weight:600;letter-spacing:-.01em">{{ permModal.name }}</div>
+            <div style="font-size:12.5px;color:#8a7c67;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ permModal.email }}</div>
+          </div>
+          <span onClick="{{ permModal.onClose }}" style="cursor:pointer;color:#8a7c67;font-size:20px;padding:4px">✕</span>
+        </div>
+        <div style="padding:22px 28px">
+          <div style="font-family:'Space Grotesk',sans-serif;font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:#8a7c67;font-weight:600;margin-bottom:10px">Vai trò</div>
+          <div style="display:flex;gap:7px;flex-wrap:wrap;margin-bottom:24px">
+            <sc-for list="{{ permModal.roleTabs }}" as="r" hint-placeholder-count="4">
+              <div onClick="{{ r.onClick }}" style="padding:8px 15px;border-radius:10px;font-family:'Space Grotesk',sans-serif;font-size:13px;font-weight:600;cursor:pointer;background:{{ r.bg }};color:{{ r.color }};border:1px solid {{ r.border }};transition:.16s">{{ r.label }}</div>
+            </sc-for>
+          </div>
+
+          <div style="font-family:'Space Grotesk',sans-serif;font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:#8a7c67;font-weight:600;margin-bottom:10px">Quyền hạn</div>
+          <div style="display:flex;flex-direction:column;gap:9px;margin-bottom:22px">
+            <sc-for list="{{ permModal.permList }}" as="p" hint-placeholder-count="4">
+              <div onClick="{{ p.onToggle }}" style="display:flex;align-items:center;gap:13px;padding:12px 15px;border-radius:12px;border:1px solid rgba(140,96,40,.16);background:{{ p.rowBg }};cursor:pointer;transition:.16s">
+                <div style="flex:1;min-width:0">
+                  <div style="font-size:14px;font-weight:600;color:#2a2016">{{ p.label }}</div>
+                  <div style="font-size:12px;color:#8a7c67;line-height:1.4">{{ p.desc }}</div>
+                </div>
+                <div style="position:relative;width:38px;height:22px;border-radius:99px;flex:none;background:{{ p.knobBg }};transition:.18s">
+                  <div style="position:absolute;top:2px;left:{{ p.knobX }};width:18px;height:18px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.25);transition:.18s"></div>
+                </div>
+              </div>
+            </sc-for>
+          </div>
+
+          <div onClick="{{ permModal.onToggleActive }}" style="display:flex;align-items:center;gap:13px;padding:12px 15px;border-radius:12px;border:1px solid rgba(140,96,40,.16);background:#fdfaf3;cursor:pointer;margin-bottom:22px">
+            <div style="flex:1"><div style="font-size:14px;font-weight:600">Trạng thái tài khoản</div><div style="font-size:12px;color:#8a7c67">Tạm khoá để chặn đăng nhập</div></div>
+            <div style="position:relative;width:38px;height:22px;border-radius:99px;flex:none;background:{{ permModal.activeKnobBg }};transition:.18s">
+              <div style="position:absolute;top:2px;left:{{ permModal.activeKnobX }};width:18px;height:18px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.25);transition:.18s"></div>
+            </div>
+          </div>
+
+          <div style="display:flex;gap:10px">
+            <button onClick="{{ permModal.onSave }}" style="flex:1;padding:13px;border:none;border-radius:11px;background:linear-gradient(150deg,#c07c1e,#9a5a12);color:#fff;font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:14px;cursor:pointer;box-shadow:0 6px 16px rgba(154,90,18,.28)">Lưu phân quyền</button>
+            <button onClick="{{ permModal.onClose }}" style="padding:13px 18px;border:1px solid rgba(140,96,40,.3);border-radius:11px;background:transparent;color:#574a3a;font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:14px;cursor:pointer">Huỷ</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+
+  <!-- ============ EXPORT MODAL ============ -->
+  <sc-if value="{{ exportOpen }}" hint-placeholder-val="{{ false }}">
+    <div onClick="{{ closeExport }}" style="position:fixed;inset:0;z-index:60;background:rgba(36,26,16,.5);backdrop-filter:blur(3px);display:flex;align-items:center;justify-content:center;padding:24px">
+      <div onClick="{{ stop }}" class="ns-pop" style="width:100%;max-width:460px;background:#fffdf8;border-radius:20px;overflow:hidden;box-shadow:0 30px 80px rgba(36,26,16,.4)">
+        <div style="padding:26px 28px 20px">
+          <div style="font-family:'Space Grotesk',sans-serif;text-transform:uppercase;letter-spacing:.2em;font-size:10.5px;color:#b06a16;font-weight:600;margin-bottom:10px">Xuất phiếu mổ xẻ</div>
+          <div style="font-family:'Fraunces',serif;font-size:24px;font-weight:600;margin-bottom:6px;letter-spacing:-.01em">Tải file HTML độc lập</div>
+          <p style="color:#8a7c67;font-size:13.5px;margin:0 0 18px;line-height:1.55">File .html tự chứa toàn bộ phiếu mổ xẻ — mở được offline, gửi cho team hay đính kèm tài liệu nội bộ.</p>
+          <div style="background:#f7f0e2;border:1px solid rgba(140,96,40,.2);border-radius:12px;padding:14px 16px;display:flex;align-items:center;gap:13px;margin-bottom:20px">
+            <div style="width:42px;height:42px;border-radius:10px;background:linear-gradient(150deg,#e0a64e,#b06a16);display:grid;place-items:center;font-size:20px;flex:none">📄</div>
+            <div style="min-width:0"><div style="font-family:'Space Grotesk',sans-serif;font-size:13.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ exportFilename }}</div><div style="font-size:11.5px;color:#8a7c67">HTML · ~{{ exportSize }} · UTF-8</div></div>
+          </div>
+          <div style="display:flex;gap:10px">
+            <button onClick="{{ doDownload }}" style="flex:1;padding:13px;border:none;border-radius:11px;background:linear-gradient(150deg,#c07c1e,#9a5a12);color:#fff;font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:14px;cursor:pointer;box-shadow:0 6px 16px rgba(154,90,18,.28)">⬇ Tải file .html</button>
+            <button onClick="{{ copyHtml }}" style="padding:13px 18px;border:1px solid rgba(140,96,40,.3);border-radius:11px;background:transparent;color:#574a3a;font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:14px;cursor:pointer">⧉ Sao chép</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+
+  <!-- ============ TOAST ============ -->
+  <sc-if value="{{ toastShow }}" hint-placeholder-val="{{ false }}">
+    <div class="ns-pop" style="position:fixed;left:50%;bottom:30px;transform:translateX(-50%);z-index:80;background:#241a10;color:#f6efe0;padding:13px 22px;border-radius:13px;font-size:13.5px;font-weight:500;box-shadow:0 14px 40px rgba(36,26,16,.4);display:flex;align-items:center;gap:10px">
+      <span style="color:#e8bd72">✓</span>{{ toastText }}
+    </div>
+  </sc-if>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:&quot;100%&quot;,&quot;height&quot;:&quot;100%&quot;}}">
+class Component extends DCLogic {
+  constructor(props){
+    super(props);
+    this.stages = ['Trích khung hình & phân cảnh','Nhận diện sản phẩm & gương mặt','Bóc tách lời thoại song ngữ','Chấm theo khung Năm Lực','Tổng hợp phiếu mổ xẻ'];
+    this.platforms = ['TikTok / Douyin','TikTok','Douyin','Reels (Instagram)','YouTube Shorts'];
+    this.genres = ['Reviewer độc thoại (Vlog + Test)','Trải nghiệm sản phẩm','Before / After','Storytelling','Unboxing','Khác'];
+    const seedForms = [
+      {title:'Thử thách dội nước & lau bông tẩy trang', platform:'TikTok / Douyin', product:'Phấn phủ nén chống nắng CIMEE', genre:'Reviewer độc thoại (Vlog + Test)', notes:''},
+      {title:'Test kiềm dầu phấn nén nam sau 90 phút bóng đá', platform:'TikTok', product:'Phấn kiềm dầu nam Nerman', genre:'Trải nghiệm sản phẩm', notes:''},
+      {title:'Một ngày 12 tiếng — lớp nền có trụ nổi?', platform:'Reels (Instagram)', product:'Cushion che khuyết điểm', genre:'Storytelling', notes:''}
+    ];
+    const dates = ['Hôm nay','3 ngày trước','Tuần trước'];
+    const history = seedForms.map((f,i)=>{
+      const a = this.decorate(this.buildRaw(f), f);
+      return this.makeEntry(a, f, dates[i]);
+    });
+    this.state = {
+      screen:'auth', authMode:'login',
+      user:null,
+      auth:{email:'',pass:'',name:''},
+      uploadVariant:'A', wizStep:1,
+      form:{title:'',platform:'TikTok / Douyin',product:'',genre:'Reviewer độc thoại (Vlog + Test)',notes:'',file:''},
+      progress:0, stageIdx:0,
+      analysis:null,
+      history,
+      adminUsers:this.seedUsers(),
+      permIndex:null, permDraft:null,
+      integration:{key:'', model:'gemini-2.0-flash', connected:false, testing:false, showKey:false},
+      exportOpen:false, dragOver:false,
+      toast:'', toastKey:0
+    };
+  }
+
+  // ---------- helpers ----------
+  showToast(msg){
+    const k = this.state.toastKey+1;
+    this.setState({toast:msg, toastKey:k});
+    clearTimeout(this._tt);
+    this._tt = setTimeout(()=>{ if(this.state.toastKey===k) this.setState({toast:''}); }, 2800);
+  }
+  go(screen){ this.setState({screen}); const m=document.querySelector('main'); if(m) m.scrollTop=0; }
+  componentDidMount(){
+    try{
+      const raw=localStorage.getItem('nonelab_gemini');
+      if(raw){ const g=JSON.parse(raw); this.setState(s=>({integration:{...s.integration, key:g.key||'', model:g.model||'gemini-2.0-flash', connected:!!g.connected}})); }
+    }catch(e){}
+  }
+  saveIntegration(patch){
+    this.setState(s=>{
+      const integration={...s.integration, ...patch};
+      try{ localStorage.setItem('nonelab_gemini', JSON.stringify({key:integration.key, model:integration.model, connected:integration.connected})); }catch(e){}
+      return {integration};
+    });
+  }
+  testConnection(){
+    const g=this.state.integration;
+    const key=(g.key||'').trim();
+    if(key.length<20){ this.showToast('API key chưa hợp lệ (quá ngắn)'); return; }
+    this.setState(s=>({integration:{...s.integration, testing:true}}));
+    clearTimeout(this._gt);
+    this._gt=setTimeout(()=>{
+      const ok = /^AIza[0-9A-Za-z_-]{10,}$/.test(key) || key.length>=30;
+      this.saveIntegration({testing:false, connected:ok});
+      this.showToast(ok?'Đã kết nối Gemini API thành công':'Key không đúng định dạng Gemini (AIza…)');
+    }, 1100);
+  }
+  slug(s){ return (s||'phieu-mo-xe').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/đ/g,'d').replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'').slice(0,48)||'phieu-mo-xe'; }
+  scoreOf(a){ const map={ok:1,mid:.5,low:0}; const s=a.checklist.reduce((t,r)=>t+(map[r.level]||0),0); return Math.round(s/a.checklist.length*100); }
+  makeEntry(a, f, date){
+    const thumbs=['linear-gradient(150deg,#3a2a16,#7a4a10)','linear-gradient(150deg,#2a5a44,#3c7a5e)','linear-gradient(150deg,#5a3a16,#b06a16)'];
+    return { id:'e'+Math.random().toString(36).slice(2,8), title:f.title||'Phiếu mổ xẻ video', platform:f.platform, product:f.product, date:date||'Hôm nay', score:this.scoreOf(a), analysis:a, thumb:thumbs[Math.floor(Math.random()*thumbs.length)] };
+  }
+  presetPerms(role){
+    const P={ 'Quản trị':{analyze:true,export:true,history:true,manage:true},
+      'Biên tập':{analyze:true,export:true,history:true,manage:false},
+      'Cộng tác':{analyze:true,export:true,history:false,manage:false},
+      'Khách':{analyze:false,export:false,history:false,manage:false} };
+    return {...(P[role]||P['Khách'])};
+  }
+  seedUsers(){
+    const av=['linear-gradient(150deg,#3c7a5e,#2a5a44)','linear-gradient(150deg,#b06a16,#7a4a10)','linear-gradient(150deg,#9e3a3a,#6a2424)','linear-gradient(150deg,#3a2a16,#5a4326)','linear-gradient(150deg,#2f6b8a,#1e4a60)'];
+    return [
+      {name:'Brand Manager',email:'ban@nonelab.asia',role:'Quản trị',count:42,active:true},
+      {name:'Linh Trần',email:'linh@nonelab.asia',role:'Biên tập',count:28,active:true},
+      {name:'Minh Phạm',email:'minh@nonelab.asia',role:'Biên tập',count:17,active:true},
+      {name:'Hà Nguyễn',email:'ha@nonelab.asia',role:'Khách',count:5,active:false},
+      {name:'Tuấn Đỗ',email:'tuan@agency.vn',role:'Cộng tác',count:9,active:true}
+    ].map((u,i)=>({...u, avBg:av[i%av.length], perms:this.presetPerms(u.role)}));
+  }
+
+  // ---------- sample analysis ----------
+  buildRaw(f){
+    const prod = f.product || 'Phấn phủ nén chống nắng CIMEE';
+    const M = (cam, action, setting, sound, wardrobe, cast)=>({size:cam[0],angle:cam[1],move:cam[2],action,setting,sound,wardrobe,cast});
+    return {
+      subtitle: prod+' — '+(f.title||'Thử thách dội nước & lau bông tẩy trang'),
+      meta:{platform:f.platform, duration:'46 giây · dọc 9:16', genre:f.genre, product:prod, face:'Nữ creator trẻ trung', cta:'Quất liền một em · Trải nghiệm thực tế'},
+      verdict:[
+        {label:'Mở đầu bùng nổ', big:'Cực mạnh', note:'Dội nước xối xả vào mặt ngay giây 1, ném cushion giật gân giây 3.'},
+        {label:'Điểm bán có hình', big:'Xuất sắc', note:'Thử thách nước và lau bông tẩy trang chứng minh độ bám 100% trực quan.'},
+        {label:'Động cơ ra đơn', big:'Trải nghiệm', note:'Cam kết "nguyện cả đời seeding" cực kỳ uy tín và chân thực.'},
+        {label:'Đối chuẩn', big:'① & ⑤', note:'Sản phẩm cạnh tranh trực tiếp + khung dội nước chéo ngành.'}
+      ],
+      acts:[
+        {range:'0:00–0:08', title:'Hook dội nước gây sốc', summary:'Mở bằng cú dội cốc nước trực tiếp lên mặt để giữ chân người xem, tiếp tục tạo chú ý bằng cushion bay bất ngờ.', beats:[
+          {ts:'0:01', vi:'Creator dội cốc nước đỏ trực tiếp lên mặt mộc', note:'Hook dội nước thu hút tò mò cực lớn về khả năng chống trôi ngay giây đầu.', ...M(['Cận rộng (MCU)','Ngang tầm mắt','Tripod tĩnh'],'Dội cốc nước lên mặt, nhắm mắt đón nước','Góc phòng trang điểm, ánh sáng mịn','Tiếng dội nước thật ào ào (foley)','Áo thun xám sọc, mặt mộc','1 nữ creator da căng khỏe')},
+          {ts:'0:03', vi:'Cushion bay ngang mặt, Creator hét "Á!"', note:'Pattern interrupt tạo kịch tính, kết thúc màn hook dồn dập.', ...M(['Cận (CU)','Ngang tầm mắt','Cắt cảnh nhanh'],'Hét bất ngờ, ôm má tỏ vẻ hoảng hốt','Phòng ngủ, điều hòa phía sau','Tiếng hét "Á!" + tiếng gió','Áo thun xám, tóc xốc xếch','Nữ creator biểu cảm sinh động')}
+        ]},
+        {range:'0:08–0:21', title:'Giới thiệu & trực quan hạt phấn', summary:'Giới thiệu sản phẩm, trực quan hoá khả năng dặm phấn mịn màng không mốc nền như cài filter.', beats:[
+          {ts:'0:10', vi:'Giơ hộp phấn nén sát camera, chỉ vào nhãn', note:'Cận cảnh vỏ hộp nhám mờ tối giản, mở nắp khoe khay phấn mịn.', ...M(['Cận (CU) sản phẩm','Ngang / hơi cúi','Tĩnh, xoá phông nhẹ'],'Cầm hộp phấn giơ sát camera','Góc bàn trang điểm','VO hào hứng giới thiệu','Áo thun xám, móng đỏ','Nữ creator cầm sản phẩm')},
+          {ts:'0:16', vi:'Da mặt mịn như được cài filter', note:'Nghiêng mặt sát camera khoe làn da mịn, lỗ chân lông biến mất.', ...M(['Cực cận (ECU) má','Hơi cao chếch xuống','Tĩnh, bắt nét sâu'],'Mỉm cười, xoay má đón sáng','Background phòng mờ dịu','VO cảm thán hiệu ứng mịn','Tóc buông xõa','Nữ creator mặt phủ phấn mịn')}
+        ]},
+        {range:'0:21–0:33', title:'Thử thách dội nước & lau bông', summary:'Chứng minh khả năng bám nền chống nước, kiềm dầu cực hạn bằng dội nước ào ạt và lau bông tẩy trang không lem.', beats:[
+          {ts:'0:24', vi:'Đứng dưới vòi sen phun nước xối xả', note:'Chứng minh độ bám bền bằng cảnh tắm dưới vòi sen cực kỳ chân thực.', ...M(['Trung cảnh (MS)','Ngang tầm mắt','Tĩnh, máy chống nước'],'Đứng dưới tia nước phun trực diện','Phòng tắm gạch trắng','Tiếng xối nước ào ạt','Tóc ướt, không trôi eyeliner','Nữ creator dưới vòi sen')},
+          {ts:'0:32', vi:'Giơ bông tẩy trang trắng tinh sạch sẽ', note:'Đưa bông trắng sạch sát camera chứng minh lớp phấn không trôi rụng.', ...M(['Cực cận (ECU) bông','Ngang tầm mắt','Tĩnh, auto-focus'],'Nâng bông tẩy trang giơ sát ống kính','Góc phòng trang điểm','VO khẳng định độ bám màu','Khuyên tai nhỏ lấp lánh','Bàn tay model giơ bông')}
+        ]},
+        {range:'0:33–0:46', title:'Review da mịn & CTA chốt deal', summary:'Khoe layout make-up bóng khoẻ, bóc seal hộp phấn tráng gương và kêu gọi mua hàng quyết liệt.', beats:[
+          {ts:'0:45', vi:'Bóc lớp màng nilon trên nắp tráng gương', note:'Hành động bóc seal cực "satisfying" tạo động lực sở hữu sản phẩm mới.', ...M(['Cận (CU) sản phẩm','Ngang / hơi cúi','Tĩnh, lấy nét cực nét'],'Bóc nhẹ màng bọc nắp gương','Bàn trang điểm đèn LED','SFX "xoẹt" giòn + lời CTA','Móng đỏ trên nền gương bạc','Đôi tay người mẫu bóc seal')}
+        ]}
+      ],
+      checklist:[
+        {crit:'① 3s đầu giữ người', level:'ok', note:'Dội cốc nước lên mặt ngay giây đầu, cushion bay giật mình tạo tò mò lớn.'},
+        {crit:'② Pain point cụ thể', level:'ok', note:'Giải quyết nỗi lo mốc nền, trôi nền khi nắng nóng, đổ mồ hôi hay dính nước.'},
+        {crit:'③ Kết quả nhìn thấy', level:'ok', note:'Chứng minh trực tiếp bằng bông tẩy trang lau mạnh vẫn trắng sạch hoàn toàn.'},
+        {crit:'④ Có so sánh', level:'mid', note:'Không so sánh rõ trước/sau cùng khung, chỉ so sánh ngầm qua hiệu ứng mịn da.'},
+        {crit:'⑤ Quá trình sử dụng', level:'ok', note:'Từ dặm phấn → đi chơi → dội nước vòi sen → dội cốc → lau bông kiểm chứng.'},
+        {crit:'⑥ Cảnh chuyển đổi mạnh', level:'ok', note:'Cảnh bông tẩy trang sạch tinh sau lau mặt ướt cực kỳ đắt giá.'},
+        {crit:'⑦ CTA rõ ràng', level:'ok', note:'Bóc seal gương bóng bẩy kèm câu "Quất liền một em, đảm bảo không thất vọng".'}
+      ],
+      formulaVisual:'[Mở đầu] Hành động sốc với nước/đạo cụ bay → [Nội dung] Dặm thử + cận cảnh da căng mịn → [Test cực hạn] Tắm/dội nước lần 2 + táp má → [Chứng minh] Lau bông tẩy trang và giơ bông sạch tinh → [Chốt] Khoe layout makeup + bóc seal gương.',
+      formulaScript:'Đặt câu hỏi mâu thuẫn ("Phấn phủ mà chống nắng?") → Giới thiệu điểm bán chống nước/mỏng nhẹ → Kể chuyện bám bền thực tế ("đi chơi 7 tiếng nền không xi nhê") → Cam kết uy tín ("nguyện cả đời seeding") → CTA quyết liệt ("quất liền một em").',
+      verdictText:'Video đạt điểm tối đa về Trực quan hoá Điểm bán (waterproof / kiềm dầu) bằng cách đưa cơ thể vào chịu thử thách khắc nghiệt. Cách kể chuyện tự nhiên và câu khẳng định "nguyện cả đời seeding" giúp kéo gần khoảng cách, nâng cao độ tin cậy.',
+      quotes:[
+        '"Để có lớp nền bền đẹp như vậy tôi đã dùng phấn phủ của nhà [Thương hiệu]."',
+        '"Đã mỏng nhẹ tự nhiên mà lại còn chống nắng… chỉ có phấn nén nhà [Thương hiệu]."',
+        '"Tôi đi chơi cỡ 7 tiếng mới về mà lớp nền này không hề xi nhê một tí nào."',
+        '"Có táp như thế nào đi chăng nữa thì lớp nền này nó không hề xi nhê."',
+        '"Video này tôi không hề seeding, nhưng nếu có thì nguyện cả đời seeding em nó."',
+        '"Bà nào đang phân vân không biết nên mua không thì quất liền một em đi."'
+      ],
+      visuals:[
+        'Cảnh dội cốc nước đỏ lên mặt tạo sốc thu hút.',
+        'Cú ném cushion giật mình tạo ngắt quãng chú ý.',
+        'Thao tác dặm phấn mịn màng lên da mặt.',
+        'Cảnh tắm vòi sen nước phun xối xả lên mặt.',
+        'Lau bông tẩy trang và giơ miếng bông sạch tinh sát camera.',
+        'Bóc màng nilon bảo vệ nắp gương bóng loáng của hộp phấn.'
+      ]
+    };
+  }
+
+  decorate(a, f){
+    const labels={ok:'Đạt', mid:'Một phần', low:'Yếu'};
+    a.subtitle = a.subtitle || ((f.product||'Sản phẩm')+' — '+(f.title||'Phiếu mổ xẻ'));
+    a.meta = Object.assign({platform:f.platform||'TikTok / Douyin', duration:'≈45 giây · dọc 9:16', genre:f.genre||'Reviewer độc thoại', product:f.product||'Sản phẩm', face:'Creator', cta:'Kêu gọi mua ngay'}, a.meta||{});
+    if(f.platform) a.meta.platform = f.platform;
+    if(f.product) a.meta.product = f.product;
+    if(f.genre) a.meta.genre = f.genre;
+    a.verdict = (a.verdict||[]).slice(0,4);
+    a.acts = (a.acts||[]).map((act,i)=>{
+      act.no = String(i+1).padStart(2,'0');
+      if(!act.beats || !act.beats.length){
+        act.beats = [{ts:(act.range||'0:00').split(/[–-]/)[0].trim(), vi:act.title||'', note:act.summary||''}];
+      }
+      act.beats = act.beats.map(b=>{
+        b.size=b.size||'Cận (CU)'; b.angle=b.angle||'Ngang tầm mắt'; b.move=b.move||'Tĩnh';
+        b.matrix=[
+          {k:'Hành động',en:'ACTION',v:b.action||'—'},
+          {k:'Bối cảnh',en:'SETTING',v:b.setting||'—'},
+          {k:'Âm thanh',en:'SOUND',v:b.sound||'—'},
+          {k:'Trang phục',en:'WARDROBE',v:b.wardrobe||'—'},
+          {k:'Diễn viên',en:'CAST',v:b.cast||'—'}
+        ];
+        return b;
+      });
+      return act;
+    });
+    a.checklist = (a.checklist||[]).map(r=>{
+      const lv = (r.level||'ok').toLowerCase();
+      return {...r, level:lv, isOk:lv==='ok', isMid:lv==='mid', isLow:lv==='low', levelLabel:labels[lv]||'Đạt'};
+    });
+    a.quotes = a.quotes||[]; a.visuals = a.visuals||[];
+    a.formulaVisual = a.formulaVisual||''; a.formulaScript=a.formulaScript||''; a.verdictText=a.verdictText||'';
+    return a;
+  }
+
+  // ---------- Claude ----------
+  extractJSON(text){
+    if(!text) return null;
+    let t = text.trim().replace(/^```(json)?/i,'').replace(/```$/,'').trim();
+    const i=t.indexOf('{'), j=t.lastIndexOf('}');
+    if(i<0||j<0) return null;
+    try{ return JSON.parse(t.slice(i,j+1)); }catch(e){ return null; }
+  }
+  async callClaude(f){
+    if(!(window.claude && window.claude.complete)) throw new Error('no-claude');
+    const prompt = 'Bạn là chuyên gia "mổ xẻ" video ngắn TikTok/Douyin theo khung Năm Lực của Nonelab. Không xem được video, hãy suy luận hợp lý từ thông tin sau và lập PHIẾU MỔ XẺ chi tiết, tiếng Việt tự nhiên đời thường.\n'
+      +'Tiêu đề: '+(f.title||'(không có)')+'\nNền tảng: '+f.platform+'\nSản phẩm: '+(f.product||'(không có)')+'\nThể loại: '+f.genre+'\nMô tả nội dung: '+(f.notes||'(không có)')+'\n\n'
+      +'Trả về DUY NHẤT một JSON hợp lệ, không kèm chữ nào khác, theo schema (súc tích):\n'
+      +'{"subtitle":"1 câu","verdict":[{"label":"","big":"2-3 từ","note":""}](4 mục),'
+      +'"acts":[{"range":"0:00–0:08","title":"","summary":"","beats":[{"ts":"0:02","vi":"hành động trong cảnh","note":"vì sao hiệu quả","size":"cỡ cảnh","angle":"góc","move":"chuyển động","action":"","setting":"","sound":"","wardrobe":"","cast":""}]}](3-4 act, 1-2 beat/act),'
+      +'"checklist":[{"crit":"① ...","level":"ok|mid|low","note":""}](đúng 7 mục),'
+      +'"formulaVisual":"chuỗi bước bằng mũi tên →","formulaScript":"chuỗi bước lời thoại →",'
+      +'"verdictText":"2-3 câu tổng kết","quotes":["5 câu thoại mẫu"],"visuals":["5 cảnh quay chủ đạo"]}';
+    const text = await window.claude.complete({messages:[{role:'user',content:prompt}]});
+    const json = this.extractJSON(text);
+    if(!json || !json.acts || !json.checklist) throw new Error('bad-json');
+    return this.decorate(json, f);
+  }
+
+  async startAnalyze(){
+    const f = this.state.form;
+    if(!f.title && !f.product && !f.notes){ this.showToast('Hãy nhập tiêu đề, sản phẩm hoặc mô tả video'); return; }
+    this.go('analyzing');
+    this.setState({progress:6, stageIdx:0});
+    const startedAt = Date.now();
+    clearInterval(this._iv);
+    this._iv = setInterval(()=>{
+      this.setState(s=>{
+        let p = s.progress;
+        if(p < 92) p = Math.min(92, p + Math.random()*7 + 2.5);
+        const stageIdx = Math.min(this.stages.length-1, Math.floor(p / (100/this.stages.length)));
+        return {progress:p, stageIdx};
+      });
+    }, 340);
+    let analysis=null, usedAI=true;
+    try{ analysis = await this.callClaude(f); }
+    catch(e){ usedAI=false; analysis = this.decorate(this.buildRaw(f), f); }
+    const elapsed = Date.now()-startedAt;
+    if(elapsed < 3400) await new Promise(r=>setTimeout(r, 3400-elapsed));
+    clearInterval(this._iv);
+    this.setState({progress:100, stageIdx:this.stages.length-1});
+    await new Promise(r=>setTimeout(r, 520));
+    const entry = this.makeEntry(analysis, f, 'Vừa xong');
+    this.setState(s=>({screen:'report', analysis, history:[entry, ...s.history]}));
+    const m=document.querySelector('main'); if(m) m.scrollTop=0;
+    this.showToast(usedAI ? 'Phân tích hoàn tất bằng AI' : 'Đã dùng dữ liệu mẫu (AI chưa phản hồi)');
+  }
+
+  // ---------- export ----------
+  buildReportHTML(a){
+    const esc=s=>String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    const meta=a.meta;
+    const metaRow=[['Nền tảng',meta.platform],['Thời lượng',meta.duration],['Thể loại',meta.genre],['Sản phẩm',meta.product],['Gương mặt',meta.face],['CTA',meta.cta]]
+      .map(m=>`<div><dt>${esc(m[0])}</dt><dd>${esc(m[1])}</dd></div>`).join('');
+    const verdict=a.verdict.map(v=>`<div class="vcard"><div class="vlabel">${esc(v.label)}</div><div class="vbig">${esc(v.big)}</div><p>${esc(v.note)}</p></div>`).join('');
+    const acts=a.acts.map(act=>{
+      const beats=act.beats.map(b=>{
+        const mx=(b.matrix||[]).map(mr=>`<div class="mrow"><div class="mlbl"><b>${esc(mr.k)}</b><span>${esc(mr.en)}</span></div><div class="mval">${esc(mr.v)}</div></div>`).join('');
+        return `<div class="beat"><div class="frame"><span class="ico">🎬</span><span class="ts">${esc(b.ts)}</span></div><div class="bb"><p class="vi">${esc(b.vi)}</p><p class="note">${esc(b.note)}</p><div class="matrix"><div class="cam"><div class="mlbl"><b>Góc máy</b><span>CAMERA</span></div><div class="camp"><span><i>Cỡ cảnh</i>${esc(b.size)}</span><span><i>Góc</i>${esc(b.angle)}</span><span><i>Chuyển động</i>${esc(b.move)}</span></div></div><div class="mgrid">${mx}</div></div></div></div>`;
+      }).join('');
+      return `<section class="act"><div class="act-head"><div class="act-no">${esc(act.no)}</div><div><div class="act-range">${esc(act.range)}</div><h3>${esc(act.title)}</h3><p class="sum">${esc(act.summary)}</p></div></div><div class="beats">${beats}</div></section>`;
+    }).join('');
+    const chips={ok:'ok',mid:'mid',low:'low'};
+    const checklist=a.checklist.map(r=>`<tr><td class="cc">${esc(r.crit)}</td><td><span class="chip ${chips[r.level]||'ok'}">${esc(r.levelLabel)}</span></td><td class="cn">${esc(r.note)}</td></tr>`).join('');
+    const quotes=a.quotes.map(q=>`<li>${esc(q)}</li>`).join('');
+    const visuals=a.visuals.map(v=>`<li>${esc(v)}</li>`).join('');
+    return `<!DOCTYPE html><html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Phiếu mổ xẻ video · ${esc(meta.product)}</title>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,900&family=Space+Grotesk:wght@400;500;600;700&family=Be+Vietnam+Pro:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>:root{--ui:'Space Grotesk',sans-serif;--disp:'Fraunces',serif;--body:'Be Vietnam Pro',sans-serif}
+*{box-sizing:border-box}body{margin:0;font-family:var(--body);color:#2a2016;line-height:1.62;background:radial-gradient(1100px 560px at 88% -8%,rgba(176,106,22,.10),transparent 60%),#f6f1e7;font-size:16px}
+.wrap{max-width:1000px;margin:0 auto;padding:0 22px}
+.hero{background:linear-gradient(160deg,#241a10,#3a2a16);color:#f6efe0;padding:56px 0 30px}
+.eb{font-family:var(--ui);text-transform:uppercase;letter-spacing:.3em;font-size:11px;color:#e0a64e;font-weight:600}
+h1{font-family:var(--disp);font-weight:900;font-size:clamp(38px,8vw,80px);line-height:.96;letter-spacing:-.02em;margin:18px 0 8px}
+h1 em{font-style:italic;font-weight:400;color:#e8bd72}
+.sub{font-family:var(--disp);font-style:italic;font-size:clamp(17px,3vw,24px);color:#cdbfa6;margin:0 0 26px}
+dl.meta{display:flex;flex-wrap:wrap;gap:0;border:1px solid rgba(224,166,78,.25);border-radius:14px;overflow:hidden;background:rgba(255,255,255,.04)}
+dl.meta div{flex:1 1 150px;padding:15px 18px;border-right:1px solid rgba(224,166,78,.12)}
+dl.meta dt{font-family:var(--ui);font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:#b3a489;margin-bottom:5px}
+dl.meta dd{margin:0;font-weight:600;font-size:14px}
+.sec{padding:54px 0;border-bottom:1px solid rgba(70,54,32,.12)}
+.sh{display:flex;align-items:baseline;gap:14px;margin-bottom:26px}
+.sno{font-family:var(--ui);font-weight:700;font-size:12px;color:#7a4a10;border:1px solid rgba(140,96,40,.3);border-radius:99px;padding:4px 12px}
+h2{font-family:var(--disp);font-weight:600;font-size:clamp(22px,4vw,34px);margin:0;letter-spacing:-.015em}
+.verdict{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:14px}
+.vcard{background:linear-gradient(160deg,#f7f0e2,#fffdf8);border:1px solid rgba(140,96,40,.22);border-radius:16px;padding:20px}
+.vlabel{font-family:var(--ui);font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:#8a7c67;margin-bottom:9px}
+.vbig{font-family:var(--disp);font-size:28px;font-weight:600;color:#9a5a12;line-height:1}
+.vcard p{margin:10px 0 0;font-size:13px;color:#574a3a}
+.act{margin-bottom:40px}
+.act-head{display:flex;gap:16px;align-items:flex-start;margin-bottom:18px}
+.act-no{font-family:var(--disp);font-weight:900;font-size:19px;color:#fff;background:#b06a16;width:40px;height:40px;border-radius:50%;display:grid;place-items:center;flex:none;box-shadow:0 0 0 5px #f6f1e7,0 0 0 6px rgba(140,96,40,.25)}
+.act-range{font-family:var(--ui);font-size:11px;letter-spacing:.12em;color:#b06a16;text-transform:uppercase;font-weight:600}
+.act-head h3{font-family:var(--disp);font-size:21px;font-weight:600;margin:2px 0 5px}
+.sum{margin:0;color:#574a3a;font-size:14px;max-width:66ch}
+.beats{display:flex;flex-direction:column;gap:12px;margin-left:56px}
+.beat{display:flex;gap:15px;background:#fffdf8;border:1px solid rgba(70,54,32,.13);border-radius:14px;padding:14px}
+.frame{position:relative;flex:none;width:88px;height:152px;border-radius:10px;overflow:hidden;border:1px solid rgba(140,96,40,.22);background:linear-gradient(150deg,#e7d4b0,#c9a86f 55%,#a07c44);display:grid;place-items:center}
+.frame .ico{font-size:26px;opacity:.55}.frame .ts{position:absolute;left:0;bottom:0;font-family:var(--ui);font-size:9px;font-weight:600;background:#b06a16;color:#fff;padding:1px 6px;border-top-right-radius:6px}
+.bb{min-width:0;flex:1}.vi{font-size:13.5px;color:#9a5a12;margin:0 0 6px;font-weight:600;line-height:1.45}.note{font-size:11.5px;color:#8a7c67;margin:0 0 10px;line-height:1.5}
+.matrix{border-top:1px solid rgba(140,96,40,.18);padding-top:9px}
+.cam{display:flex;gap:13px;background:rgba(176,106,22,.06);border-left:3px solid #b06a16;border-radius:0 9px 9px 0;padding:8px 11px;margin-bottom:8px}
+.cam .mlbl{flex:none;width:70px}.camp{display:grid;grid-template-columns:repeat(3,1fr);gap:6px 14px;flex:1}
+.camp span{font-size:11.5px;line-height:1.35}.camp i{font-style:normal;font-family:var(--ui);font-size:8px;letter-spacing:.12em;text-transform:uppercase;color:#b06a16;display:block;margin-bottom:2px}
+.mgrid{display:grid;grid-template-columns:1fr 1fr;gap:0 22px}
+.mrow{display:flex;gap:10px;align-items:baseline;padding:4px 0;border-bottom:1px solid rgba(70,54,32,.1)}
+.mlbl b{display:block;font-size:11.5px;font-weight:600}.mlbl span{display:block;font-family:var(--ui);font-size:8px;letter-spacing:.13em;color:#8a7c67}
+.mval{font-size:11.5px;color:#574a3a;line-height:1.4}
+table{width:100%;border-collapse:collapse;font-size:14px}
+th{text-align:left;font-family:var(--ui);font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;color:#8a7c67;font-weight:600;padding:0 14px 12px;border-bottom:1px solid rgba(140,96,40,.3)}
+td{padding:14px;border-bottom:1px solid rgba(70,54,32,.1);vertical-align:top}.cc{font-weight:600;width:24%}.cn{color:#574a3a;font-size:13px}
+.chip{display:inline-block;font-family:var(--ui);font-size:11px;font-weight:600;padding:4px 11px;border-radius:99px;white-space:nowrap}
+.chip.ok{background:rgba(60,122,94,.13);color:#2f6b4f;border:1px solid rgba(60,122,94,.4)}
+.chip.mid{background:rgba(176,106,22,.14);color:#8a5614;border:1px solid rgba(176,106,22,.4)}
+.chip.low{background:rgba(158,58,58,.12);color:#8f3232;border:1px solid rgba(158,58,58,.4)}
+.formula{background:#f7f0e2;border:1px solid rgba(140,96,40,.22);border-left:3px solid #b06a16;border-radius:0 14px 14px 0;padding:18px 22px;margin-bottom:14px}
+.fl{font-family:var(--ui);font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;color:#b06a16;margin-bottom:8px}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:28px}
+.kh{font-family:var(--ui);font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:#b06a16;font-weight:600;margin:0 0 8px}
+ul.k{list-style:none;padding:0;margin:0}ul.k li{position:relative;padding:10px 0 10px 24px;border-bottom:1px solid rgba(70,54,32,.1);font-size:13.5px;color:#574a3a;line-height:1.5}
+ul.k li:before{content:"";position:absolute;left:4px;top:17px;width:7px;height:7px;border-radius:50%;background:#b06a16}
+footer{padding:40px 0 70px;color:#8a7c67;font-size:12.5px;font-family:var(--ui);letter-spacing:.04em}
+@media(max-width:680px){.two{grid-template-columns:1fr}.beats{margin-left:0}.mgrid{grid-template-columns:1fr}.camp{grid-template-columns:1fr}table,tbody,tr,td{display:block;width:100%}thead{display:none}.cc{width:auto}td{border:none;padding:3px 0}tr{border-bottom:1px solid rgba(70,54,32,.1);padding:14px 0}}
+</style></head><body>
+<header class="hero"><div class="wrap"><span class="eb">Nonelab · Mổ xẻ video · Khung Năm Lực</span><h1>Phiếu <em>mổ xẻ</em> video</h1><p class="sub">${esc(a.subtitle)}</p><dl class="meta">${metaRow}</dl></div></header>
+<main class="wrap">
+<section class="sec"><div class="sh"><span class="sno">Chốt nhanh</span><h2>Vì sao nó chạy</h2></div><div class="verdict">${verdict}</div></section>
+<section class="sec"><div class="sh"><span class="sno">Storyboard</span><h2>Mổ theo phân cảnh</h2></div>${acts}</section>
+<section class="sec"><div class="sh"><span class="sno">Checklist</span><h2>7 điểm hiệu quả</h2></div><table><thead><tr><th>Tiêu chí</th><th>Mức độ</th><th>Ghi chú</th></tr></thead><tbody>${checklist}</tbody></table></section>
+<section class="sec"><div class="sh"><span class="sno">Công thức</span><h2>Tái dùng</h2></div><div class="formula"><div class="fl">Cấu trúc hình ảnh</div><div>${esc(a.formulaVisual)}</div></div><div class="formula"><div class="fl">Cấu trúc lời thoại</div><div>${esc(a.formulaScript)}</div></div><p style="color:#574a3a;max-width:66ch">${esc(a.verdictText)}</p></section>
+<section class="sec" style="border:none"><div class="two"><div><div class="kh">Kho lời thoại · 文案库</div><ul class="k">${quotes}</ul></div><div><div class="kh">Kho hình ảnh · 画面库</div><ul class="k">${visuals}</ul></div></div></section>
+</main>
+<footer class="wrap">Nonelab · Hệ thống video bùng nổ — Phiếu mổ xẻ theo khung Năm Lực. Xuất từ Nonelab Studio.</footer>
+</body></html>`;
+  }
+  doDownload(){
+    const a=this.state.analysis; if(!a) return;
+    const html=this.buildReportHTML(a);
+    const blob=new Blob([html],{type:'text/html;charset=utf-8'});
+    const url=URL.createObjectURL(blob);
+    const link=document.createElement('a');
+    link.href=url; link.download='phieu-mo-xe-'+this.slug(a.meta.product||a.subtitle)+'.html';
+    document.body.appendChild(link); link.click(); link.remove();
+    setTimeout(()=>URL.revokeObjectURL(url),1500);
+    this.setState({exportOpen:false});
+    this.showToast('Đã tải file HTML');
+  }
+  async copyHtml(){
+    const a=this.state.analysis; if(!a) return;
+    try{ await navigator.clipboard.writeText(this.buildReportHTML(a)); this.showToast('Đã sao chép mã HTML'); }
+    catch(e){ this.showToast('Không sao chép được — hãy dùng nút Tải'); }
+  }
+
+  // ---------- render ----------
+  renderVals(){
+    const st=this.state, f=st.form, u=st.user;
+    const screen=st.screen;
+    const isAuth = screen==='auth';
+    const isAnalyzing = screen==='analyzing';
+    const isApp = !isAuth && !isAnalyzing;
+    const set=(patch)=>this.setState(s=>({form:{...s.form,...patch}}));
+    const setAuth=(patch)=>this.setState(s=>({auth:{...s.auth,...patch}}));
+
+    const navDef=[
+      {key:'dashboard',icon:'◇',label:'Bảng điều khiển'},
+      {key:'history',icon:'≡',label:'Lịch sử'},
+      {key:'admin',icon:'⚙',label:'Quản trị'}
+    ];
+    const navItems=navDef.map(n=>{
+      const active=(screen===n.key)||(n.key==='upload'&&(screen==='upload'))||(n.key==='dashboard'&&screen==='report'?false:false);
+      const on=screen===n.key;
+      return {...n, onClick:()=>this.go(n.key), bg:on?'rgba(176,106,22,.12)':'transparent', color:on?'#9a5a12':'#574a3a', weight:on?600:500};
+    });
+
+    const titles={dashboard:['Bảng điều khiển','Tổng quan hoạt động mổ xẻ video'],upload:['Phân tích video mới','Tải video & nhập thông tin để AI mổ xẻ'],report:['Phiếu mổ xẻ','Kết quả phân tích theo khung Năm Lực'],history:['Lịch sử phân tích','Tất cả phiếu mổ xẻ đã tạo'],admin:['Quản trị người dùng','Quản lý tài khoản & phân quyền']};
+    const [screenTitle,screenSub]=titles[screen]||['',''];
+
+    const a=st.analysis;
+    const metaList = a ? [['Nền tảng',a.meta.platform],['Thời lượng',a.meta.duration],['Thể loại',a.meta.genre],['Sản phẩm',a.meta.product],['Gương mặt',a.meta.face],['CTA',a.meta.cta]].map(m=>({k:m[0],v:m[1]})) : [];
+
+    // stages
+    const stageList=this.stages.map((label,i)=>{
+      const done=i<st.stageIdx, active=i===st.stageIdx;
+      return {label, mark: done?'✓':String(i+1),
+        bg: active?'rgba(176,106,22,.10)':(done?'rgba(60,122,94,.07)':'#fffdf8'),
+        dotBg: done?'#3c7a5e':(active?'#b06a16':'rgba(140,96,40,.14)'),
+        dotColor: (done||active)?'#fff':'#8a7c67',
+        txtColor: active?'#2a2016':(done?'#3a6b54':'#8a7c67'),
+        weight: active?600:500};
+    });
+
+    // history
+    const decorateEntry=(h)=>({...h, onOpen:()=>{ this.setState({analysis:h.analysis, screen:'report'}); const m=document.querySelector('main'); if(m) m.scrollTop=0; }});
+    const history=st.history.map(decorateEntry);
+    const recent=history.slice(0,3);
+
+    const totalScore = st.history.length? Math.round(st.history.reduce((t,h)=>t+h.score,0)/st.history.length):0;
+    const stats=[
+      {label:'Video đã mổ xẻ',value:String(st.history.length),sub:'tổng số phiếu'},
+      {label:'Phiếu đã xuất',value:String(Math.max(1,st.history.length-1)),sub:'file .html'},
+      {label:'Nền tảng phủ',value:'4',sub:'TikTok · Douyin · Reels…'}
+    ];
+
+    // variants
+    const variantTabs=[['A','A · Kéo thả lớn'],['B','B · Hai cột'],['C','C · Từng bước']].map(([k,label])=>{
+      const on=st.uploadVariant===k;
+      return {label, onClick:()=>this.setState({uploadVariant:k, wizStep:1}), color:on?'#9a5a12':'#8a7c67', bg:on?'#fffdf8':'transparent', shadow:on?'0 2px 6px rgba(70,48,20,.1)':'none'};
+    });
+
+    // wizard
+    const wizardSteps=[['1','Tải video'],['2','Thông tin'],['3','Mô tả']].map(([num,label],i)=>{
+      const n=i+1, cur=st.wizStep===n, done=st.wizStep>n;
+      return {num:done?'✓':num, label, dotBg:done?'#3c7a5e':(cur?'#b06a16':'#fff'), dotColor:(done||cur)?'#fff':'#8a7c67', dotBorder:done?'#3c7a5e':(cur?'#b06a16':'rgba(140,96,40,.3)'), txtColor:cur?'#2a2016':'#8a7c67', weight:cur?600:500};
+    });
+
+    // admin
+    const adminUsers=st.adminUsers.map((usr,i)=>({...usr, initial:(usr.name[0]||'?').toUpperCase(), status:usr.active?'Hoạt động':'Tạm khoá',
+      stBg:usr.active?'rgba(60,122,94,.13)':'rgba(140,96,40,.1)', stColor:usr.active?'#2f6b4f':'#8a7c67', stBorder:usr.active?'rgba(60,122,94,.4)':'rgba(140,96,40,.3)',
+      onManage:()=>this.setState({permIndex:i, permDraft:{...usr, perms:{...usr.perms}}}) }));
+    const activeCount=st.adminUsers.filter(x=>x.active).length;
+    const adminStats=[{label:'Tổng người dùng',value:String(st.adminUsers.length)},{label:'Đang hoạt động',value:String(activeCount)},{label:'Phân tích / tháng',value:String(st.adminUsers.reduce((t,x)=>t+x.count,0))}];
+
+    // permission modal
+    const roleList=['Quản trị','Biên tập','Cộng tác','Khách'];
+    const permDefs=[['analyze','Tạo phân tích video','Tải video lên và chạy mổ xẻ bằng AI'],['export','Xuất file HTML','Tải / sao chép phiếu mổ xẻ ra .html'],['history','Lịch sử toàn hệ thống','Xem phiếu mổ xẻ của mọi thành viên'],['manage','Quản trị người dùng','Phân quyền, khoá / mở tài khoản']];
+    const pd=st.permDraft;
+    const permModal = pd ? {
+      name:pd.name, email:pd.email, initial:(pd.name[0]||'?').toUpperCase(), avBg:pd.avBg,
+      roleTabs:roleList.map(r=>{ const on=pd.role===r; return {label:r, sel:on,
+        bg:on?'linear-gradient(150deg,#c07c1e,#9a5a12)':'#fff', color:on?'#fff':'#574a3a', border:on?'transparent':'rgba(140,96,40,.28)',
+        onClick:()=>this.setState(s=>({permDraft:{...s.permDraft, role:r, perms:this.presetPerms(r)}})) }; }),
+      permList:permDefs.map(([k,label,desc])=>{ const on=!!pd.perms[k]; return {key:k, label, desc, on,
+        knobBg:on?'#3c7a5e':'rgba(140,96,40,.22)', knobX:on?'18px':'2px', rowBg:on?'rgba(60,122,94,.06)':'#fdfaf3',
+        onToggle:()=>this.setState(s=>({permDraft:{...s.permDraft, perms:{...s.permDraft.perms, [k]:!s.permDraft.perms[k]}}})) }; }),
+      activeOn:pd.active, activeKnobBg:pd.active?'#3c7a5e':'rgba(140,96,40,.22)', activeKnobX:pd.active?'18px':'2px',
+      onToggleActive:()=>this.setState(s=>({permDraft:{...s.permDraft, active:!s.permDraft.active}})),
+      onClose:()=>this.setState({permIndex:null, permDraft:null}),
+      onSave:()=>{ const i=st.permIndex; this.setState(s=>({adminUsers:s.adminUsers.map((x,j)=>j===i?{...s.permDraft}:x), permIndex:null, permDraft:null})); this.showToast('Đã lưu phân quyền '+pd.name); }
+    } : null;
+
+    const dragOn=st.dragOver;
+    const dropTitle = f.file ? f.file : 'Kéo thả video .mp4 vào đây';
+    const dropSub = f.file ? 'Đã chọn — bấm để đổi file khác' : 'hoặc bấm để chọn từ máy · tối đa 200MB';
+
+    return {
+      isAuth, isAnalyzing, isApp,
+      isLogin: st.authMode==='login', isSignup: st.authMode==='signup',
+      authTitle: st.authMode==='login'?'Đăng nhập':'Tạo tài khoản',
+      authSub: st.authMode==='login'?'Tiếp tục mổ xẻ những thước phim viral.':'Bắt đầu phân tích video chỉ trong vài phút.',
+      authCta: st.authMode==='login'?'Đăng nhập →':'Tạo tài khoản →',
+      authSwitchText: st.authMode==='login'?'Chưa có tài khoản?':'Đã có tài khoản?',
+      authSwitchLink: st.authMode==='login'?'Đăng ký':'Đăng nhập',
+      auth: st.auth,
+      onAuthName:(e)=>setAuth({name:e.target.value}),
+      onAuthEmail:(e)=>setAuth({email:e.target.value}),
+      onAuthPass:(e)=>setAuth({pass:e.target.value}),
+      toggleAuth:()=>this.setState(s=>({authMode:s.authMode==='login'?'signup':'login'})),
+      submitAuth:()=>{
+        const au=st.auth;
+        if(!au.email || au.email.indexOf('@')<0){ this.showToast('Nhập email hợp lệ để tiếp tục'); return; }
+        const name = au.name || au.email.split('@')[0].replace(/^./,c=>c.toUpperCase());
+        this.setState({user:{name, email:au.email, role:'admin'}, screen:'dashboard'});
+        this.showToast('Chào mừng tới Nonelab Studio');
+      },
+      logout:()=>this.setState({user:null, screen:'auth', auth:{email:'',pass:'',name:''}}),
+
+      // screen flags
+      isDashboard: screen==='dashboard', isUpload: screen==='upload', isReport: screen==='report', isHistory: screen==='history', isAdmin: screen==='admin',
+      screenTitle, screenSub,
+
+      // sidebar
+      navItems, goUpload:()=>this.setState({screen:'upload'}), goHistory:()=>this.go('history'),
+      userName: u?u.name:'Khách', userInitial: u?(u.name[0]||'?').toUpperCase():'?', userRoleLabel: u&&u.role==='admin'?'Quản trị viên':'Thành viên',
+
+      // dashboard
+      stats, recent, history,
+
+      // analyzing
+      progressPct: Math.round(st.progress)+'%',
+      stageLabel: this.stages[st.stageIdx]+'…',
+      analyzeTitle: f.title || f.product || 'Video của bạn',
+      stageList,
+
+      // upload
+      platforms:this.platforms, genres:this.genres,
+      variantTabs,
+      isVariantA: st.uploadVariant==='A', isVariantB: st.uploadVariant==='B', isVariantC: st.uploadVariant==='C',
+      form: f,
+      onTitle:(e)=>set({title:e.target.value}),
+      onProduct:(e)=>set({product:e.target.value}),
+      onPlatform:(e)=>set({platform:e.target.value}),
+      onGenre:(e)=>set({genre:e.target.value}),
+      onNotes:(e)=>set({notes:e.target.value}),
+      triggerFile:()=>{
+        const inp=document.createElement('input'); inp.type='file'; inp.accept='video/mp4,video/*';
+        inp.onchange=()=>{ if(inp.files&&inp.files[0]) set({file:inp.files[0].name}); };
+        inp.click();
+      },
+      onDragOver:(e)=>{ e.preventDefault(); if(!st.dragOver) this.setState({dragOver:true}); },
+      onDrop:(e)=>{ e.preventDefault(); this.setState({dragOver:false}); const fl=e.dataTransfer&&e.dataTransfer.files&&e.dataTransfer.files[0]; if(fl) set({file:fl.name}); },
+      dropTitle, dropSub,
+      dropBorder: dragOn?'#b06a16':'rgba(140,96,40,.4)',
+      dropBg: dragOn?'rgba(176,106,22,.08)':'#fdfaf3',
+      startAnalyze:()=>this.startAnalyze(),
+
+      // wizard
+      wizardSteps, wiz1: st.wizStep===1, wiz2: st.wizStep===2, wiz3: st.wizStep===3,
+      wizNextLabel: st.wizStep<3?'Tiếp tục →':'⚡ Bắt đầu mổ xẻ',
+      wizPrevColor: st.wizStep>1?'#574a3a':'#c9bca5',
+      wizPrev:()=>{ if(st.wizStep>1) this.setState({wizStep:st.wizStep-1}); },
+      wizNext:()=>{ if(st.wizStep<3) this.setState({wizStep:st.wizStep+1}); else this.startAnalyze(); },
+
+      // report
+      a, metaList,
+
+      // admin
+      adminUsers, adminStats, permModal, permOpen: !!permModal,
+      gem: st.integration,
+      gemModels: ['gemini-2.0-flash','gemini-1.5-pro','gemini-1.5-flash'],
+      gemConnected: st.integration.connected,
+      gemStatusLabel: st.integration.connected?'Đã kết nối':'Chưa kết nối',
+      gemStatusBg: st.integration.connected?'rgba(60,122,94,.13)':'rgba(140,96,40,.1)',
+      gemStatusColor: st.integration.connected?'#2f6b4f':'#8a7c67',
+      gemStatusBorder: st.integration.connected?'rgba(60,122,94,.4)':'rgba(140,96,40,.3)',
+      gemDotBg: st.integration.connected?'#3c7a5e':'#b8a884',
+      gemKeyType: st.integration.showKey?'text':'password',
+      gemTestLabel: st.integration.testing?'Đang kiểm tra…':(st.integration.connected?'Kiểm tra lại':'Kết nối'),
+      gemTesting: st.integration.testing,
+      onGemKey:(e)=>this.setState(s=>({integration:{...s.integration, key:e.target.value, connected:false}})),
+      onGemModel:(e)=>this.saveIntegration({model:e.target.value}),
+      toggleGemKey:()=>this.setState(s=>({integration:{...s.integration, showKey:!s.integration.showKey}})),
+      gemShowLabel: st.integration.showKey?'Ẩn':'Hiện',
+      testConnection:()=>this.testConnection(),
+      disconnectGem:()=>{ this.saveIntegration({key:'', connected:false}); this.showToast('Đã ngắt kết nối Gemini'); },
+
+      // export
+      exportOpen: st.exportOpen,
+      exportFilename: a?('phieu-mo-xe-'+this.slug(a.meta.product||a.subtitle)+'.html'):'phieu-mo-xe.html',
+      exportSize: a?(Math.round(this.buildReportHTML(a).length/1024)+' KB'):'—',
+      openExport:()=>this.setState({exportOpen:true}),
+      closeExport:()=>this.setState({exportOpen:false}),
+      stop:(e)=>{ e.stopPropagation(); },
+      doDownload:()=>this.doDownload(),
+      copyHtml:()=>this.copyHtml(),
+
+      // toast
+      toastShow: !!st.toast, toastText: st.toast
+    };
+  }
+}
+</script>
+</body>
+</html>
