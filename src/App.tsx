@@ -54,6 +54,7 @@ export default function App() {
   const [exportOpen, setExportOpen] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const [toast, setToast] = useState("");
+  const [analyzeError, setAnalyzeError] = useState<{ title: string; detail: string }| null>(null);
 
   const mainRef = useRef<HTMLElement | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -151,18 +152,14 @@ export default function App() {
       showToast("Hãy tải video .mp4 lên, dán link, hoặc nhập tiêu đề / sản phẩm / mô tả");
       return;
     }
+    setAnalyzeError(null);
     setScreen("analyzing");
     setProgress(6);
     setStageIdx(0);
     setAnalyzeNote(selectedFile || youtubeUrl ? "Gemini đang xem video…" : "Suy luận từ mô tả…");
-    const started = Date.now();
     if (ivRef.current) clearInterval(ivRef.current);
     ivRef.current = setInterval(progressTick, 340);
 
-    let result: Analysis;
-    let usedAI = true;
-    let watched = false;
-    let failMsg = "";
     try {
       const r = await analyzeVideo({
         form: { title: f.title, platform: f.platform, product: f.product, genre: f.genre, notes: f.notes },
@@ -171,39 +168,37 @@ export default function App() {
         apiKey: integration.key || undefined,
         model: integration.model,
       });
+
+      if (ivRef.current) clearInterval(ivRef.current);
+
       if (r.ok && r.analysis) {
-        result = decorate(r.analysis, f);
-        watched = !!r.watchedVideo;
+        const result = decorate(r.analysis, f);
+        setProgress(100);
+        setStageIdx(STAGES.length - 1);
+        await sleep(520);
+        const entry = makeEntry(result, f, "Vừa xong");
+        setAnalysis(result);
+        setHistory((h) => [entry, ...h]);
+        setScreen("report");
+        showToast(r.watchedVideo ? "Phân tích hoàn tất — Gemini đã xem video" : "Phân tích hoàn tất bằng Gemini (từ mô tả)");
       } else {
-        usedAI = false;
-        failMsg = r.message || "";
-        result = decorate(buildRaw(f), f);
+        // API trả về lỗi có thật — hiển thị thẳng, không dùng data mẫu
+        const errTitle = r.error === "no-key"
+          ? "Chưa kết nối Gemini API"
+          : r.error === "gemini-failed"
+          ? "Gemini trả về lỗi"
+          : "Phân tích thất bại";
+        setAnalyzeError({ title: errTitle, detail: r.message || "Không rõ lỗi." });
+        setScreen("error");
       }
-    } catch {
-      usedAI = false;
-      result = decorate(buildRaw(f), f);
+    } catch (err: any) {
+      if (ivRef.current) clearInterval(ivRef.current);
+      setAnalyzeError({
+        title: "Không kết nối được server",
+        detail: err?.message || "Kiểm tra lại kết nối mạng hoặc backend đã chạy chưa.",
+      });
+      setScreen("error");
     }
-
-    const elapsed = Date.now() - started;
-    if (elapsed < 3400) await sleep(3400 - elapsed);
-    if (ivRef.current) clearInterval(ivRef.current);
-    setProgress(100);
-    setStageIdx(STAGES.length - 1);
-    await sleep(520);
-
-    const entry = makeEntry(result, f, "Vừa xong");
-    setAnalysis(result);
-    setHistory((h) => [entry, ...h]);
-    setScreen("report");
-    showToast(
-      usedAI
-        ? watched
-          ? "Phân tích hoàn tất — Gemini đã xem video"
-          : "Phân tích hoàn tất bằng Gemini (từ mô tả)"
-        : failMsg
-        ? "Dùng dữ liệu mẫu — " + failMsg
-        : "Đã dùng dữ liệu mẫu (AI chưa phản hồi)"
-    );
   }
 
   function doDownload() {
@@ -364,6 +359,39 @@ export default function App() {
           </div>
         </div>
         {toast && <Toast text={toast} />}
+      </div>
+    );
+  }
+
+  // ================= ERROR SCREEN =================
+  if (screen === "error" && analyzeError) {
+    return (
+      <div style={c("min-height:100vh;background:radial-gradient(1100px 560px at 88% -8%,rgba(176,106,22,.10),transparent 60%),#f6f1e7;color:#2a2016;display:flex;align-items:center;justify-content:center;padding:40px")}>
+        <div className="ns-pop" style={c("width:100%;max-width:520px;background:#fffdf8;border:1px solid rgba(200,60,40,.22);border-radius:22px;padding:40px 36px;text-align:center;box-shadow:0 16px 50px rgba(36,26,16,.1)")}
+        >
+          <div style={c("width:60px;height:60px;margin:0 auto 20px;border-radius:50%;background:linear-gradient(150deg,#f87171,#c53030);display:grid;place-items:center;font-size:26px;box-shadow:0 6px 18px rgba(197,48,48,.3)")}>
+            ✕
+          </div>
+          <div style={c("font-family:'Space Grotesk',sans-serif;text-transform:uppercase;letter-spacing:.22em;font-size:11px;color:#c53030;font-weight:700;margin-bottom:12px")}>Phân tích thất bại</div>
+          <h2 style={c("font-family:'Fraunces',serif;font-size:26px;font-weight:700;margin:0 0 14px;letter-spacing:-.01em;color:#2a2016")}>{analyzeError.title}</h2>
+          <div style={c("background:rgba(200,60,40,.07);border:1px solid rgba(200,60,40,.18);border-radius:12px;padding:16px 18px;text-align:left;font-size:14px;color:#7a2020;line-height:1.65;margin-bottom:28px;white-space:pre-wrap;word-break:break-word")}>
+            {analyzeError.detail}
+          </div>
+          <div style={c("display:flex;gap:12px;justify-content:center")}>
+            <button
+              onClick={() => { setAnalyzeError(null); setScreen("upload"); }}
+              style={c("padding:13px 24px;border:none;border-radius:12px;background:linear-gradient(150deg,#c07c1e,#9a5a12);color:#fff;font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:14.5px;cursor:pointer;box-shadow:0 6px 18px rgba(154,90,18,.28)")}
+            >
+              ← Thử lại
+            </button>
+            <button
+              onClick={() => { setAnalyzeError(null); setScreen("admin"); }}
+              style={c("padding:13px 24px;border:1px solid rgba(140,96,40,.3);border-radius:12px;background:#fffdf8;color:#574a3a;font-family:'Space Grotesk',sans-serif;font-weight:500;font-size:14.5px;cursor:pointer")}
+            >
+              ⚙ Kiểm tra API key
+            </button>
+          </div>
+        </div>
       </div>
     );
   }
