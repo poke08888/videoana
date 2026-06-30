@@ -115,3 +115,28 @@ export function requireAdmin(req: Request, res: Response, next: NextFunction) {
     }
   });
 }
+
+/**
+ * Yêu cầu vai trò Biên tập trở lên (Biên tập hoặc Quản trị) — kiểm tra vai trò
+ * THỰC trong DB. Dùng cho 2 tính năng Phân tích chỉ số & Campaign từ khóa.
+ */
+export function requireEditor(req: Request, res: Response, next: NextFunction) {
+  requireAuth(req, res, async () => {
+    try {
+      const row = await getQuery<{ role: string; active: number }>(
+        "SELECT role, active FROM users WHERE email = ?",
+        [req.user!.email]
+      );
+      if (!row || !row.active) {
+        return res.status(403).json({ ok: false, message: "Tài khoản không hợp lệ hoặc đã bị khóa." });
+      }
+      if (row.role !== "Quản trị" && row.role !== "Biên tập") {
+        return res.status(403).json({ ok: false, message: "Tính năng này chỉ dành cho Biên tập và Quản trị." });
+      }
+      next();
+    } catch (err) {
+      console.error("[nonelab] Lỗi kiểm tra quyền biên tập:", err);
+      res.status(500).json({ ok: false, message: "Lỗi hệ thống khi kiểm tra quyền." });
+    }
+  });
+}

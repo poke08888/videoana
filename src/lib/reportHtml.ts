@@ -3,9 +3,52 @@ import type { Analysis } from "../types";
 const esc = (s: any): string =>
   String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
+const nfVi = (n: any): string => Number(n || 0).toLocaleString("vi-VN");
+
+/** Khối "Chỉ số tương tác thực tế" — chỉ hiện khi có dữ liệu từ TikTok. */
+function statsSection(a: Analysis): string {
+  const s = a.stats;
+  if (!s) return "";
+  const cards = [
+    ["Lượt xem", nfVi(s.views)],
+    ["Lượt thích", nfVi(s.likes)],
+    ["Bình luận", nfVi(s.comments)],
+    ["Chia sẻ", nfVi(s.shares)],
+    ["Lưu", nfVi(s.saves)],
+  ]
+    .map((m) => `<div class="vcard"><div class="vlabel">${esc(m[0])}</div><div class="vbig">${esc(m[1])}</div></div>`)
+    .join("");
+  return `<section class="sec"><div class="sh"><span class="sno">Tương tác</span><h2>Chỉ số tương tác thực tế · ${esc(s.source)}</h2></div><div class="verdict">${cards}</div></section>`;
+}
+
+const TIER_CHIP: Record<string, string> = { "tốt": "ok", "khá": "mid", "thấp": "low" };
+
+/** Khối "Hiệu quả quảng cáo" — chỉ hiện khi video có chỉ số ads (từ import Excel). */
+function adsSection(a: Analysis): string {
+  const s = a.ads;
+  if (!s) return "";
+  const card = (label: string, val: string, tier?: string) =>
+    `<div class="vcard"><div class="vlabel">${esc(label)}</div><div class="vbig">${esc(val)}</div>` +
+    (tier ? `<p><span class="chip ${TIER_CHIP[tier] || "mid"}">${esc(tier)}</span></p>` : "") +
+    `</div>`;
+  const cards = [
+    card("Điểm hiệu quả", `${s.efficiencyScore}/100`, s.label),
+    card("ROAS", `${s.roas}×`, s.roasTier),
+    card("CVR (chốt đơn)", `${s.cvr}%`, s.cvrTier),
+    card("CTR (click)", `${s.ctr}%`, s.ctrTier),
+    card("Đơn (SKU)", nfVi(s.orders)),
+    card("Doanh thu", nfVi(s.revenue)),
+  ].join("");
+  return `<section class="sec"><div class="sh"><span class="sno">Chỉ số ads</span><h2>Hiệu quả quảng cáo · xếp loại ${esc(s.label)}</h2></div><div class="verdict">${cards}</div></section>`;
+}
+
 /** Tạo file HTML độc lập của phiếu phân tích — port 1:1 từ design. */
 export function buildReportHTML(a: Analysis): string {
   const meta = a.meta;
+  const src = a.sourceUrl || (a.ads && a.ads.link) || "";
+  const srcBlock = src
+    ? `<p class="srcl"><a href="${esc(src)}" target="_blank" rel="noopener">▶ Xem video gốc</a><span>${esc(src)}</span></p>`
+    : "";
   const metaRow = [
     ["Nền tảng", meta.platform],
     ["Thời lượng", meta.duration],
@@ -53,7 +96,8 @@ export function buildReportHTML(a: Analysis): string {
 .eb{font-family:var(--ui);text-transform:uppercase;letter-spacing:.3em;font-size:11px;color:#e0a64e;font-weight:600}
 h1{font-family:var(--disp);font-weight:900;font-size:clamp(38px,8vw,80px);line-height:.96;letter-spacing:-.02em;margin:18px 0 8px}
 h1 em{font-style:italic;font-weight:400;color:#e8bd72}
-.sub{font-family:var(--disp);font-style:italic;font-size:clamp(17px,3vw,24px);color:#cdbfa6;margin:0 0 26px}
+.sub{font-family:var(--disp);font-style:italic;font-size:clamp(17px,3vw,24px);color:#cdbfa6;margin:0 0 16px}
+.srcl{font-family:var(--ui);font-size:13px;margin:0 0 24px}.srcl a{color:#e8bd72;text-decoration:none;font-weight:600;border-bottom:1px solid rgba(232,189,114,.4)}.srcl span{color:#b3a489;word-break:break-all;margin-left:8px}
 dl.meta{display:flex;flex-wrap:wrap;gap:0;border:1px solid rgba(224,166,78,.25);border-radius:14px;overflow:hidden;background:rgba(255,255,255,.04)}
 dl.meta div{flex:1 1 150px;padding:15px 18px;border-right:1px solid rgba(224,166,78,.12)}
 dl.meta dt{font-family:var(--ui);font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:#b3a489;margin-bottom:5px}
@@ -102,9 +146,11 @@ ul.k li:before{content:"";position:absolute;left:4px;top:17px;width:7px;height:7
 footer{padding:40px 0 70px;color:#8a7c67;font-size:12.5px;font-family:var(--ui);letter-spacing:.04em}
 @media(max-width:680px){.two{grid-template-columns:1fr}.beats{margin-left:0}.mgrid{grid-template-columns:1fr}.camp{grid-template-columns:1fr}table,tbody,tr,td{display:block;width:100%}thead{display:none}.cc{width:auto}td{border:none;padding:3px 0}tr{border-bottom:1px solid rgba(70,54,32,.1);padding:14px 0}}
 </style></head><body>
-<header class="hero"><div class="wrap"><span class="eb">Nonelab · Phân tích video · Khung Năm Lực</span><h1>Phiếu <em>phân tích</em> video</h1><p class="sub">${esc(a.subtitle)}</p><dl class="meta">${metaRow}</dl></div></header>
+<header class="hero"><div class="wrap"><span class="eb">Nonelab · Phân tích video · Khung Năm Lực</span><h1>Phiếu <em>phân tích</em> video</h1><p class="sub">${esc(a.subtitle)}</p>${srcBlock}<dl class="meta">${metaRow}</dl></div></header>
 <main class="wrap">
 <section class="sec"><div class="sh"><span class="sno">Chốt nhanh</span><h2>Vì sao nó chạy</h2></div><div class="verdict">${verdict}</div></section>
+${adsSection(a)}
+${statsSection(a)}
 <section class="sec"><div class="sh"><span class="sno">Storyboard</span><h2>Phân tích theo phân cảnh</h2></div>${acts}</section>
 <section class="sec"><div class="sh"><span class="sno">Checklist</span><h2>7 điểm hiệu quả</h2></div><table><thead><tr><th>Tiêu chí</th><th>Mức độ</th><th>Ghi chú</th></tr></thead><tbody>${checklist}</tbody></table></section>
 <section class="sec"><div class="sh"><span class="sno">Công thức</span><h2>Tái dùng</h2></div><div class="formula"><div class="fl">Cấu trúc hình ảnh</div><div>${esc(a.formulaVisual)}</div></div><div class="formula"><div class="fl">Cấu trúc lời thoại</div><div>${esc(a.formulaScript)}</div></div><p style="color:#574a3a;max-width:66ch">${esc(a.verdictText)}</p></section>

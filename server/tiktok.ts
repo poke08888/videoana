@@ -13,6 +13,37 @@ import path from "node:path";
 
 const TOKAPI_HOST = "tokapi-mobile-version.p.rapidapi.com";
 
+/** Chỉ số tương tác thật từ TikTok (đồng bộ với EngagementStats ở src/types.ts). */
+export interface EngagementStats {
+  source: string;
+  awemeId?: string;
+  views: number;
+  likes: number;
+  comments: number;
+  shares: number;
+  saves: number;
+}
+
+const toNum = (v: any): number => {
+  const n = Number(v);
+  return Number.isFinite(n) && n > 0 ? n : 0;
+};
+
+/** Lấy chỉ số tương tác từ object statistics của TokAPI (không chấm điểm). */
+export function computeEngagement(statistics: any, awemeId?: string): EngagementStats {
+  const s = statistics || {};
+  return {
+    source: "TikTok",
+    awemeId,
+    views: toNum(s.play_count),
+    likes: toNum(s.digg_count),
+    comments: toNum(s.comment_count),
+    // Gộp mọi dạng chia sẻ/đăng lại mà TokAPI trả về.
+    shares: toNum(s.share_count) + toNum(s.repost_count) + toNum(s.forward_count),
+    saves: toNum(s.collect_count),
+  };
+}
+
 /** Lấy RapidAPI key: ưu tiên key gửi kèm, fallback biến môi trường. */
 export function resolveTokapiKey(reqKey?: string): string | null {
   const k = (reqKey || "").trim();
@@ -43,7 +74,7 @@ async function tokapiGet(pathname: string, params: Record<string, string>, key: 
 export async function fetchTikTokInfo(
   tiktokUrl: string,
   key: string
-): Promise<{ playUrl: string; awemeId: string; desc: string }> {
+): Promise<{ playUrl: string; awemeId: string; desc: string; stats: EngagementStats }> {
   const data = await tokapiGet("/v1/post", { video_url: tiktokUrl, region: "GB" }, key);
   const detail = data?.aweme_detail || data?.aweme_details?.[0];
   if (!detail) {
@@ -58,7 +89,9 @@ export async function fetchTikTokInfo(
   if (!playUrl) {
     throw new Error("Không tìm thấy link tải video trong dữ liệu Tokapi.");
   }
-  return { playUrl, awemeId: String(detail.aweme_id || ""), desc: String(detail.desc || "") };
+  const awemeId = String(detail.aweme_id || "");
+  const stats = computeEngagement(detail.statistics, awemeId || undefined);
+  return { playUrl, awemeId, desc: String(detail.desc || ""), stats };
 }
 
 /** Tải MP4 từ CDN TikTok về đường dẫn đích. */
@@ -86,8 +119,8 @@ export async function downloadTikTok(
   tiktokUrl: string,
   key: string,
   uploadDir: string
-): Promise<{ path: string; desc: string; awemeId: string }> {
-  const { playUrl, awemeId, desc } = await fetchTikTokInfo(tiktokUrl, key);
+): Promise<{ path: string; desc: string; awemeId: string; stats: EngagementStats }> {
+  const { playUrl, awemeId, desc, stats } = await fetchTikTokInfo(tiktokUrl, key);
   const safeId = awemeId || `${Date.now()}`;
   const dest = path.join(uploadDir, `tiktok_${safeId}.mp4`);
   await downloadToFile(playUrl, dest);
@@ -96,5 +129,5 @@ export async function downloadTikTok(
     await fs.promises.unlink(dest).catch(() => {});
     throw new Error("Video TikTok tải về rỗng hoặc không hợp lệ.");
   }
-  return { path: dest, desc, awemeId: safeId };
+  return { path: dest, desc, awemeId: safeId, stats };
 }

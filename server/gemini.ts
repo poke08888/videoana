@@ -34,6 +34,30 @@ export async function testConnection(apiKey: string, model?: string): Promise<{ 
 
 const state = (f: any): string => String(f?.state?.name ?? f?.state ?? "").toUpperCase();
 
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/** Lỗi tạm thời của Gemini (quá tải/giới hạn nhịp) — nên thử lại. */
+function isTransient(err: any): boolean {
+  const m = String(err?.message || err || "");
+  return /\b503\b|\b429\b|UNAVAILABLE|RESOURCE_EXHAUSTED|high demand|overloaded|temporarily|try again/i.test(m);
+}
+
+/** Thử lại với backoff tăng dần khi gặp lỗi tạm thời (quan trọng cho hàng đợi lớn). */
+async function withRetry<T>(fn: () => Promise<T>, tries = 4): Promise<T> {
+  const backoff = [2000, 5000, 12000, 20000];
+  let last: any;
+  for (let i = 0; i < tries; i++) {
+    try {
+      return await fn();
+    } catch (e) {
+      last = e;
+      if (!isTransient(e) || i === tries - 1) throw e;
+      await sleep(backoff[i] ?? 20000);
+    }
+  }
+  throw last;
+}
+
 async function uploadAndWait(ai: GoogleGenAI, filePath: string, mimeType: string) {
   let file = await ai.files.upload({ file: filePath, config: { mimeType } });
   const started = Date.now();
@@ -58,6 +82,7 @@ export interface AnalyzeArgs {
   videoPath?: string; // file MP4 đã upload lên server
   mimeType?: string;
   youtubeUrl?: string; // hoặc link công khai
+  productKnowledge?: string; // kho kiến thức riêng cho sản phẩm (bơm vào prompt)
   onProgress?: (msg: string) => void;
 }
 
@@ -65,7 +90,7 @@ export async function analyzeVideo(args: AnalyzeArgs): Promise<any> {
   const ai = client(args.apiKey);
   const model = args.model || DEFAULT_MODEL;
   const hasVideo = !!(args.videoPath || args.youtubeUrl);
-  const prompt = buildAnalysisPrompt(args.form, hasVideo);
+  const prompt = buildAnalysisPrompt(args.form, hasVideo, args.productKnowledge);
 
   let parts: any[];
   if (args.youtubeUrl) {
@@ -81,11 +106,13 @@ export async function analyzeVideo(args: AnalyzeArgs): Promise<any> {
     parts = [prompt];
   }
 
-  const resp = await ai.models.generateContent({
-    model,
-    contents: createUserContent(parts),
-    config: { responseMimeType: "application/json", temperature: 0.7 },
-  });
+  const resp = await withRetry(() =>
+    ai.models.generateContent({
+      model,
+      contents: createUserContent(parts),
+      config: { responseMimeType: "application/json", temperature: 0.7 },
+    })
+  );
 
   const text = (resp.text ?? "").trim();
   const json = extractJSON(text);

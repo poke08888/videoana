@@ -4,7 +4,7 @@ import { css as c } from "./lib/csx";
 import { decorate, makeEntry, presetPerms, scoreOf, seedUsers, slug } from "./lib/analysis";
 import { buildReportHTML } from "./lib/reportHtml";
 import { buildRaw, seedDates, seedForms } from "./data/sampleAnalysis";
-import { analyzeVideo, analyzeVideoBatch, testGemini, authHeaders } from "./lib/api";
+import { analyzeVideo, analyzeVideoBatch, testGemini, authHeaders, importAds, listCohorts, getCohort, finalizeCohort, getKnowledge, saveKnowledge, getHistoryItem, searchCampaign, createCampaign } from "./lib/api";
 import { embedFrames } from "./lib/frames";
 import type { AdminUser, Analysis, FormState, HistoryEntry, Level, Perms, Screen, User } from "./types";
 
@@ -404,12 +404,16 @@ export default function App() {
   const navDef: { key: Screen; label: string; sub: string }[] = [
     { key: "dashboard", label: "Bảng điều khiển", sub: "Tổng quan hoạt động phân tích video" },
     { key: "upload", label: "Phân tích video mới", sub: "Tải video & nhập thông tin để AI phân tích" },
+    { key: "ads", label: "Phân tích chỉ số", sub: "Import Excel chỉ số ads & rút kết luận content" },
+    { key: "campaign", label: "Campaign từ khóa", sub: "Tìm video TikTok theo từ khóa + tương tác → điểm chung video viral" },
     { key: "history", label: "Lịch sử phân tích", sub: "Tất cả phiếu phân tích đã tạo" },
     { key: "admin", label: "Quản trị", sub: "Quản lý tài khoản & Cài đặt API key" },
   ];
   const titles: Record<string, [string, string]> = {
     dashboard: ["Bảng điều khiển", "Tổng quan hoạt động phân tích video"],
     upload: ["Phân tích video mới", "Tải video & nhập thông tin để AI phân tích"],
+    ads: ["Phân tích chỉ số", "Import Excel chỉ số ads → kết luận content nào có chỉ số tốt"],
+    campaign: ["Campaign từ khóa", "Tìm video TikTok theo từ khóa + tương tác → điểm chung video viral"],
     report: ["Phiếu phân tích", "Kết quả phân tích theo khung Năm Lực"],
     history: ["Lịch sử phân tích", "Tất cả phiếu phân tích đã tạo"],
     admin: ["Quản trị người dùng", "Quản lý tài khoản & phân quyền"],
@@ -751,10 +755,14 @@ export default function App() {
             {navDef.map((it) => {
               if (it.key === "history" && !user?.perms?.history) return null;
               if (it.key === "admin" && !user?.perms?.manage) return null;
+              // Phân tích chỉ số & Campaign từ khóa: chỉ Biên tập và Quản trị.
+              if ((it.key === "ads" || it.key === "campaign") && !(user?.role === "Quản trị" || user?.role === "Biên tập")) return null;
               const on = screen === it.key;
               const icons: Record<string, string> = {
                 dashboard: "◇",
                 upload: "＋",
+                ads: "📈",
+                campaign: "🔍",
                 report: "📊",
                 history: "≡",
                 admin: "⚙"
@@ -835,6 +843,8 @@ export default function App() {
                 isMobile={isMobile}
               />
             )}
+            {screen === "ads" && <AdsView isMobile={isMobile} integration={integration} showToast={showToast} onOpenReport={openReport} />}
+            {screen === "campaign" && <CampaignView isMobile={isMobile} integration={integration} showToast={showToast} onOpenReport={openReport} />}
             {screen === "report" && a && <ReportView a={a} metaList={metaList} videoFile={selectedFiles[0] || null} isMobile={isMobile} />}
             {screen === "admin" && (
               <AdminView
@@ -953,6 +963,476 @@ function Toast({ text }: { text: string }) {
     <div className="ns-pop" style={c("position:fixed;left:50%;bottom:30px;transform:translateX(-50%);z-index:80;background:#241a10;color:#f6efe0;padding:13px 22px;border-radius:13px;font-size:13.5px;font-weight:500;box-shadow:0 14px 40px rgba(36,26,16,.4);display:flex;align-items:center;gap:10px")}>
       <span style={c("color:#e8bd72")}>✓</span>
       {text}
+    </div>
+  );
+}
+
+function CampaignView({ isMobile, integration, showToast, onOpenReport }: { isMobile: boolean; integration: { key: string; model: string }; showToast: (m: string) => void; onOpenReport: (h: HistoryEntry) => void }) {
+  const [cohorts, setCohorts] = useState<any[]>([]);
+  const [sel, setSel] = useState<any | null>(null);
+  const [keyword, setKeyword] = useState("");
+  const [minLikes, setMinLikes] = useState("5000");
+  const [target, setTarget] = useState("50");
+  const [busy, setBusy] = useState(false);
+  const [knowledge, setKnowledge] = useState<{ slug: string; product: string; content: string } | null>(null);
+  const [savingK, setSavingK] = useState(false);
+  // Bước duyệt: danh sách video tìm được + tập đã chọn (awemeId) + lọc nhanh theo caption.
+  const [preview, setPreview] = useState<{ videos: any[]; keywords: string[]; scanned: number; exhausted: boolean; perKeyword: Record<string, number> } | null>(null);
+  const [picked, setPicked] = useState<Record<string, boolean>>({});
+  const [pvFilter, setPvFilter] = useState("");
+  const [creating, setCreating] = useState(false);
+
+  const reload = async () => { const cs = await listCohorts(); setCohorts((Array.isArray(cs) ? cs : []).filter((c: any) => c.kind === "campaign")); };
+  useEffect(() => { reload(); }, []);
+  const loadKnowledge = async (p: string) => { const k = await getKnowledge(slug(p)); setKnowledge(k?.ok ? { slug: k.slug, product: k.product, content: k.content } : { slug: slug(p), product: p, content: "" }); };
+  const openCohort = async (id: string) => { const d = await getCohort(id); if (d?.ok) { setSel(d); loadKnowledge(d.cohort.product); } };
+
+  useEffect(() => {
+    if (!sel) return;
+    if (sel.videos.every((v: any) => v.status === "completed" || v.status === "failed")) return;
+    const t = setInterval(async () => { const d = await getCohort(sel.cohort.id); if (d?.ok) { setSel(d); if (d.cohort.insight) loadKnowledge(d.cohort.product); } }, 6000);
+    return () => clearInterval(t);
+  }, [sel?.cohort.id, sel?.videos]);
+
+  const doSearch = async () => {
+    if (!keyword.trim()) return showToast("Nhập từ khóa cần tìm");
+    if (!integration.key) return showToast("Chưa kết nối Gemini API (vào Quản trị nhập key)");
+    setBusy(true); setPreview(null); setSel(null);
+    const r = await searchCampaign({ keyword: keyword.trim(), minLikes: Number(minLikes) || 0, target: Number(target) || 50 });
+    setBusy(false);
+    if (!r?.ok) return showToast(r?.message || "Tìm kiếm thất bại");
+    // Mặc định chọn tất cả; người dùng bỏ tick video sai category.
+    const pick: Record<string, boolean> = {};
+    for (const v of r.videos) pick[v.awemeId] = true;
+    setPicked(pick); setPvFilter("");
+    setPreview({ videos: r.videos, keywords: r.keywords, scanned: r.scanned, exhausted: r.exhausted, perKeyword: r.perKeyword || {} });
+    showToast(`Tìm thấy ${r.count} video (quét ${r.scanned})${r.exhausted ? " — đã quét hết nguồn" : ""}. Duyệt rồi bấm phân tích.`);
+  };
+  const pickedCount = preview ? preview.videos.filter((v) => picked[v.awemeId]).length : 0;
+  const pvVisible = preview ? preview.videos.filter((v) => !pvFilter.trim() || (v.desc || "").toLowerCase().includes(pvFilter.trim().toLowerCase())) : [];
+  const setAll = (on: boolean, onlyVisible = false) => {
+    if (!preview) return;
+    const next = { ...picked };
+    for (const v of (onlyVisible ? pvVisible : preview.videos)) next[v.awemeId] = on;
+    setPicked(next);
+  };
+  const doAnalyze = async () => {
+    if (!preview) return;
+    const chosen = preview.videos.filter((v) => picked[v.awemeId]);
+    if (!chosen.length) return showToast("Chưa chọn video nào");
+    setCreating(true);
+    const r = await createCampaign({ keywords: preview.keywords, videos: chosen, minLikes: Number(minLikes) || 0, apiKey: integration.key, model: integration.model });
+    setCreating(false);
+    if (!r?.ok) return showToast(r?.message || "Tạo campaign thất bại");
+    showToast(`Đã đưa ${r.count} video vào mổ xẻ nền…`);
+    setPreview(null);
+    await reload(); openCohort(r.cohortId);
+  };
+  const saveK = async () => { if (!knowledge) return; setSavingK(true); const r = await saveKnowledge(knowledge.slug, knowledge.product, knowledge.content); setSavingK(false); showToast(r?.ok ? "Đã lưu kho kiến thức" : "Lưu thất bại"); };
+
+  const tcol = (t: string) => (t === "tốt" ? ["rgba(60,122,94,.13)", "#2f6b4f"] : t === "thấp" ? ["rgba(158,58,58,.12)", "#8f3232"] : ["rgba(176,106,22,.14)", "#8a5614"]);
+  const chip = (t: string) => { const [bg, fg] = tcol(t); return <span style={c(`font-family:'Space Grotesk',sans-serif;font-size:10.5px;font-weight:600;padding:2px 8px;border-radius:99px;background:${bg};color:${fg}`)}>{t}</span>; };
+  const nf = (n: number) => Number(n || 0).toLocaleString("vi-VN");
+  const stIcon = (s: string) => (s === "completed" ? "✓" : s === "processing" ? "⚙" : s === "failed" ? "✕" : "⏳");
+  const openVideo = async (id: string, hasContent: boolean) => { if (!hasContent) return showToast("Video này chưa mổ xẻ xong"); const r = await getHistoryItem(id); if (r?.analysis?.checklist) onOpenReport({ id: r.id, title: r.title, platform: r.platform, product: r.product, date: r.date, score: r.score, analysis: r.analysis, thumb: r.thumb } as HistoryEntry); };
+
+  const meta = sel?.cohort?.summary;
+  const sum = meta?.summary;
+  const insight = sel?.cohort?.insight;
+  const card = (label: string, val: string) => (
+    <div style={c("background:linear-gradient(160deg,#f7f0e2,#fffdf8);border:1px solid rgba(140,96,40,.22);border-radius:14px;padding:14px")}>
+      <div style={c("font-family:'Space Grotesk',sans-serif;font-size:9.5px;letter-spacing:.16em;text-transform:uppercase;color:#8a7c67;margin-bottom:6px")}>{label}</div>
+      <div style={c("font-family:'Fraunces',serif;font-size:21px;font-weight:600;color:#9a5a12;line-height:1")}>{val}</div>
+    </div>
+  );
+
+  return (
+    <div className="ns-fade" style={c("max-width:1100px;margin:0 auto")}>
+      <div style={c(`background:#fffdf8;border:1px solid rgba(140,96,40,.2);border-radius:18px;padding:${isMobile ? "18px" : "22px 24px"};margin-bottom:22px`)}>
+        <div style={c("font-family:'Fraunces',serif;font-size:18px;font-weight:600;color:#2a2016;margin-bottom:4px")}>Tìm video TikTok theo từ khóa</div>
+        <div style={c("color:#8a7c67;font-size:13px;margin-bottom:16px")}>Tìm trực tiếp trên TikTok (không phải trong hệ thống), lọc theo lượt thích tối thiểu, rồi tự mổ xẻ nội dung để tìm điểm chung của nhóm tương tác cao.</div>
+        <div style={c(`display:grid;grid-template-columns:${isMobile ? "1fr" : "2fr 1fr 1fr auto"};gap:12px;align-items:end`)}>
+          <div>
+            <label style={c("font-family:'Space Grotesk',sans-serif;font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:#8a7c67;display:block;margin-bottom:6px")}>Từ khóa (cách nhau dấu phẩy để gộp)</label>
+            <input value={keyword} onChange={(e: any) => setKeyword(e.target.value)} placeholder="vd: phấn phủ, phấn phủ kiềm dầu, phấn nén" style={c("width:100%;padding:11px 13px;border:1px solid rgba(140,96,40,.28);border-radius:11px;background:#fdfaf3;font-size:14px")} />
+          </div>
+          <div>
+            <label style={c("font-family:'Space Grotesk',sans-serif;font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:#8a7c67;display:block;margin-bottom:6px")}>Like tối thiểu</label>
+            <input value={minLikes} onChange={(e: any) => setMinLikes(e.target.value.replace(/[^0-9]/g, ""))} inputMode="numeric" style={c("width:100%;padding:11px 13px;border:1px solid rgba(140,96,40,.28);border-radius:11px;background:#fdfaf3;font-size:14px")} />
+          </div>
+          <div>
+            <label style={c("font-family:'Space Grotesk',sans-serif;font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:#8a7c67;display:block;margin-bottom:6px")}>Số video (≤300)</label>
+            <input value={target} onChange={(e: any) => setTarget(e.target.value.replace(/[^0-9]/g, ""))} inputMode="numeric" style={c("width:100%;padding:11px 13px;border:1px solid rgba(140,96,40,.28);border-radius:11px;background:#fdfaf3;font-size:14px")} />
+          </div>
+          <button onClick={doSearch} disabled={busy} style={c(`padding:12px 22px;border:none;border-radius:11px;background:linear-gradient(150deg,#c07c1e,#9a5a12);color:#fff;font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:14px;cursor:${busy ? "default" : "pointer"};opacity:${busy ? .6 : 1};white-space:nowrap`)}>{busy ? "Đang tìm…" : "🔍 Tìm video"}</button>
+        </div>
+        <div style={c("color:#8a7c67;font-size:11.5px;margin-top:10px")}>Lưu ý: mỗi từ khóa lộ ra một kho ~600 video; nhập nhiều từ khóa (cách nhau dấu phẩy) sẽ gộp dedup để vét được nhiều hơn. Tìm xong bạn DUYỆT danh sách (loại video sai chủ đề) rồi mới bấm phân tích — chưa tốn Gemini ở bước tìm.</div>
+      </div>
+
+      {preview && (
+        <div style={c(`background:#fffdf8;border:1px solid rgba(176,106,22,.34);border-radius:18px;padding:${isMobile ? "16px" : "20px 22px"};margin-bottom:22px`)}>
+          <div style={c(`display:flex;${isMobile ? "flex-direction:column;gap:10px" : "align-items:center;justify-content:space-between"};margin-bottom:12px`)}>
+            <div>
+              <div style={c("font-family:'Fraunces',serif;font-size:17px;font-weight:600;color:#2a2016")}>Duyệt video trước khi phân tích</div>
+              <div style={c("color:#8a7c67;font-size:12.5px;margin-top:3px")}>
+                Tìm thấy <b>{preview.videos.length}</b> · đang chọn <b style={c("color:#9a5a12")}>{pickedCount}</b>
+                {preview.keywords.length > 1 ? <> · từ khóa: {preview.keywords.map((k) => `${k}${preview.perKeyword?.[k] != null ? ` (+${preview.perKeyword[k]})` : ""}`).join(", ")}</> : null}
+                {preview.exhausted ? " · đã quét hết nguồn" : ""}
+              </div>
+              <div style={c("color:#a8946f;font-size:11.5px;margin-top:3px")}>Bỏ tick những video lạc chủ đề (vd tìm “khử mùi” nhưng ra “khử mùi tủ lạnh”). Bấm tiêu đề để mở video trên TikTok đối chứng.</div>
+            </div>
+            <button onClick={doAnalyze} disabled={creating || !pickedCount} style={c(`padding:11px 20px;border:none;border-radius:11px;background:linear-gradient(150deg,#3c7a5e,#2a5a44);color:#fff;font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:14px;cursor:${creating || !pickedCount ? "default" : "pointer"};opacity:${creating || !pickedCount ? .55 : 1};white-space:nowrap`)}>{creating ? "Đang tạo…" : `✓ Phân tích ${pickedCount} video`}</button>
+          </div>
+          <div style={c("display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px")}>
+            <input value={pvFilter} onChange={(e: any) => setPvFilter(e.target.value)} placeholder="Lọc nhanh theo caption…" style={c("flex:1;min-width:180px;padding:8px 12px;border:1px solid rgba(140,96,40,.28);border-radius:9px;background:#fdfaf3;font-size:13px")} />
+            <button onClick={() => setAll(true)} style={c("padding:7px 12px;border:1px solid rgba(140,96,40,.3);border-radius:9px;background:#fff;font-size:12px;cursor:pointer")}>Chọn tất cả</button>
+            <button onClick={() => setAll(false)} style={c("padding:7px 12px;border:1px solid rgba(140,96,40,.3);border-radius:9px;background:#fff;font-size:12px;cursor:pointer")}>Bỏ tất cả</button>
+            {pvFilter.trim() ? <><button onClick={() => setAll(true, true)} style={c("padding:7px 12px;border:1px solid rgba(60,122,94,.4);border-radius:9px;background:#fff;color:#2f6b4f;font-size:12px;cursor:pointer")}>Chọn kết quả lọc</button><button onClick={() => setAll(false, true)} style={c("padding:7px 12px;border:1px solid rgba(158,58,58,.4);border-radius:9px;background:#fff;color:#8f3232;font-size:12px;cursor:pointer")}>Bỏ kết quả lọc</button></> : null}
+          </div>
+          <div style={c("max-height:460px;overflow:auto;border:1px solid rgba(140,96,40,.16);border-radius:12px")}>
+            {pvVisible.map((v) => {
+              const on = !!picked[v.awemeId];
+              return (
+                <div key={v.awemeId} onClick={() => setPicked({ ...picked, [v.awemeId]: !on })} style={c(`display:flex;gap:10px;align-items:center;padding:9px 12px;border-bottom:1px solid rgba(140,96,40,.1);cursor:pointer;background:${on ? "rgba(60,122,94,.06)" : "transparent"}`)}>
+                  <input type="checkbox" checked={on} readOnly style={c("width:16px;height:16px;accent-color:#3c7a5e;flex-shrink:0")} />
+                  <div style={c("flex:1;min-width:0")}>
+                    <div style={c("font-size:13px;color:#2a2016;white-space:nowrap;overflow:hidden;text-overflow:ellipsis")}>{v.desc || "(không có caption)"}</div>
+                    <div style={c("font-size:11px;color:#8a7c67;margin-top:1px")}>@{v.author || v.nickname || "?"} · ❤ {nf(v.stats?.likes)} · ▶ {nf(v.stats?.views)} · 💬 {nf(v.stats?.comments)}</div>
+                  </div>
+                  <a href={v.link} target="_blank" rel="noreferrer" onClick={(e: any) => e.stopPropagation()} style={c("flex-shrink:0;font-size:11.5px;color:#9a5a12;text-decoration:none;border:1px solid rgba(140,96,40,.3);border-radius:8px;padding:4px 9px")}>Mở ↗</a>
+                </div>
+              );
+            })}
+            {!pvVisible.length ? <div style={c("padding:20px;text-align:center;color:#8a7c67;font-size:13px")}>Không có video khớp bộ lọc.</div> : null}
+          </div>
+        </div>
+      )}
+
+      {cohorts.length > 0 && (
+        <div style={c("display:flex;gap:8px;flex-wrap:wrap;margin-bottom:20px")}>
+          {cohorts.map((co) => {
+            const on = sel?.cohort.id === co.id;
+            return (
+              <div key={co.id} onClick={() => openCohort(co.id)} style={c(`cursor:pointer;border:1px solid ${on ? "rgba(176,106,22,.5)" : "rgba(140,96,40,.22)"};background:${on ? "rgba(176,106,22,.1)" : "#fffdf8"};border-radius:12px;padding:10px 14px`)}>
+                <div style={c("font-weight:600;font-size:13.5px;color:#2a2016")}>🔍 {co.product}</div>
+                <div style={c("font-size:11.5px;color:#8a7c67;margin-top:2px")}>{co.done}/{co.total} đã mổ xẻ{co.hasInsight ? " · ✓ có kết luận" : ""}</div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {sel && (
+        <>
+          <SectionHead tag="Tổng quan" title={`Từ khóa: "${sel.cohort.product}"`} />
+          <div style={c(`display:grid;grid-template-columns:${isMobile ? "1fr 1fr" : "repeat(auto-fit,minmax(140px,1fr))"};gap:12px;margin-bottom:28px`)}>
+            {card("Số video", nf(sel.cohort.count))}
+            {sum && card("Tương tác", `${sum.tot}·${sum.kha}·${sum.thap}`)}
+            {sum && card("Median like", nf(sum.medianLikes))}
+            {sum && card("Median ER", `${sum.medianRate}%`)}
+            {meta && card("Đã quét", nf(meta.scanned))}
+          </div>
+
+          <SectionHead tag="Kết luận" title="Điểm chung của video tương tác cao" />
+          {!insight ? (
+            <div style={c("background:#fffdf8;border:1px dashed rgba(140,96,40,.3);border-radius:14px;padding:18px;margin-bottom:14px;color:#8a7c67;font-size:13.5px")}>
+              Đang mổ xẻ nội dung… kết luận sẽ hiện khi đủ dữ liệu.{" "}
+              <span onClick={async () => { const r = await finalizeCohort(sel.cohort.id); showToast(r?.done ? "Đã dựng kết luận" : "Chưa đủ video mổ xẻ xong"); openCohort(sel.cohort.id); }} style={c("color:#9a5a12;font-weight:600;cursor:pointer;text-decoration:underline")}>Thử dựng ngay</span>
+            </div>
+          ) : (
+            <div style={c("display:flex;flex-direction:column;gap:12px;margin-bottom:28px")}>
+              {insight.metrics.map((mi: any) => (
+                <div key={mi.metric} style={c("background:#fffdf8;border:1px solid rgba(140,96,40,.2);border-left:3px solid #b06a16;border-radius:0 14px 14px 0;padding:16px 18px")}>
+                  <div style={c("font-family:'Space Grotesk',sans-serif;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:#b06a16;font-weight:600;margin-bottom:6px")}>Tương tác cao · {mi.goodN} cao vs {mi.badN} thấp</div>
+                  <div style={c("font-size:14px;color:#2a2016;line-height:1.55;margin-bottom:8px")}>{mi.conclusion}</div>
+                  {mi.drivers.map((d: any, i: number) => {
+                    const ex = (d.examples || [])[0];
+                    return (
+                      <div key={i} style={c(`${i ? "margin-top:12px;padding-top:12px;border-top:1px solid rgba(70,54,32,.08);" : ""}`)}>
+                        <div style={c("font-size:13.5px;color:#2a2016")}>• <b>{d.trait}</b> <span style={c("color:#8a7c67")}>— {d.goodRate}% video cao (vs {d.badRate}% thấp)</span></div>
+                        {ex && (
+                          <div style={c("margin:6px 0 0 14px;font-size:12.5px;color:#574a3a;line-height:1.65")}>
+                            {ex.hook && <div>↳ <b>Hook nói:</b> “{ex.hook}”</div>}
+                            {!!(ex.lines && ex.lines.length) && <div>↳ <b>Lời thoại đắt:</b> {ex.lines.map((l: string) => `“${l}”`).join(" · ")}</div>}
+                            {!!(ex.shots && ex.shots.length) && (
+                              <div>↳ <b>Quay cảnh:</b>
+                                <div style={c("margin:2px 0 0 14px")}>
+                                  {ex.shots.map((s: any, j: number) => (<div key={j}><span style={c("color:#9a5a12;font-weight:600")}>[{s.ts}]</span> {s.vi}{s.cam ? <span style={c("color:#8a7c67")}> — {s.cam}</span> : null}</div>))}
+                                </div>
+                              </div>
+                            )}
+                            {ex.title && <div style={c("color:#8a7c67;font-size:11.5px;margin-top:3px")}>Mẫu từ: {ex.link ? <a href={ex.link} target="_blank" rel="noopener" style={c("color:#9a5a12")}>{ex.title}</a> : ex.title}</div>}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {knowledge && (
+            <>
+              <SectionHead tag="Kho kiến thức" title={`Bổ sung cho: ${knowledge.product}`} />
+              <div style={c("margin-bottom:28px")}>
+                <textarea value={knowledge.content} onChange={(e: any) => setKnowledge({ ...knowledge, content: e.target.value })} placeholder="Kho kiến thức tự sinh sau khi mổ xẻ xong — có thể chỉnh sửa." style={c("width:100%;min-height:160px;padding:14px;border:1px solid rgba(140,96,40,.28);border-radius:12px;background:#fdfaf3;font-family:'Be Vietnam Pro',sans-serif;font-size:13px;line-height:1.6;resize:vertical")} />
+                <div style={c("margin-top:8px")}><button onClick={saveK} disabled={savingK} style={c("padding:9px 18px;border:none;border-radius:10px;background:linear-gradient(150deg,#c07c1e,#9a5a12);color:#fff;font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:13px;cursor:pointer")}>{savingK ? "Đang lưu…" : "Lưu kho kiến thức"}</button></div>
+              </div>
+            </>
+          )}
+
+          <SectionHead tag="Bảng xếp hạng" title={`${sel.videos.length} video theo tương tác`} />
+          <div style={c("border:1px solid rgba(140,96,40,.18);border-radius:14px;overflow:hidden;background:#fffdf8")}>
+            <div style={c("display:flex;align-items:center;gap:10px;padding:9px 14px;background:rgba(176,106,22,.07);border-bottom:1px solid rgba(140,96,40,.18);font-family:'Space Grotesk',sans-serif;font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:#8a7c67;font-weight:600")}>
+              <span style={c("width:26px")}>#</span>
+              <span style={c("flex:1;min-width:0")}>Tiêu đề video</span>
+              <span style={c("width:42px;text-align:right")} title="Điểm tương tác">Điểm</span>
+              {!isMobile && <span style={c("width:72px;text-align:right")}>Like</span>}
+              {!isMobile && <span style={c("width:48px;text-align:right")}>ER</span>}
+              <span style={c("width:54px")}>Tương tác</span>
+              <span style={c("width:18px;text-align:center")}>TT</span>
+            </div>
+            {sel.videos.map((v: any, i: number) => (
+              <div key={v.id} onClick={() => openVideo(v.id, v.hasContent)} style={c(`display:flex;align-items:center;gap:10px;padding:10px 14px;border-top:${i ? "1px solid rgba(70,54,32,.08)" : "none"};cursor:${v.hasContent ? "pointer" : "default"};font-size:13px`)}>
+                <span style={c("width:26px;color:#8a7c67;font-family:'Space Grotesk',sans-serif;font-weight:600")}>{i + 1}</span>
+                <span style={c("flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#2a2016")}>{v.title}</span>
+                {v.eng && <span style={c("font-family:'Fraunces',serif;font-weight:600;color:#9a5a12;width:42px;text-align:right")}>{v.eng.score}</span>}
+                {v.eng && !isMobile && <span style={c("width:72px;text-align:right;color:#574a3a")}>{nf(v.eng.likes)}</span>}
+                {v.eng && !isMobile && <span style={c("width:48px;text-align:right;color:#574a3a")}>{v.eng.engagementRate}%</span>}
+                {v.eng && <span style={c("width:54px")}>{chip(v.eng.tier)}</span>}
+                <span title={v.status} style={c("width:18px;text-align:center;color:#8a7c67")}>{stIcon(v.status)}</span>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+
+      {!cohorts.length && !sel && (
+        <div style={c("text-align:center;color:#8a7c67;font-size:14px;padding:30px 0")}>Chưa có campaign nào. Nhập từ khóa ở trên để bắt đầu.</div>
+      )}
+    </div>
+  );
+}
+
+function AdsView({ isMobile, integration, showToast, onOpenReport }: { isMobile: boolean; integration: { key: string; model: string }; showToast: (m: string) => void; onOpenReport: (h: HistoryEntry) => void }) {
+  const [cohorts, setCohorts] = useState<any[]>([]);
+  const [sel, setSel] = useState<any | null>(null);
+  const [product, setProduct] = useState("");
+  const [file, setFile] = useState<File | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [knowledge, setKnowledge] = useState<{ slug: string; product: string; content: string } | null>(null);
+  const [savingK, setSavingK] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const reloadCohorts = async () => { const cs = await listCohorts(); setCohorts(Array.isArray(cs) ? cs : []); };
+  useEffect(() => { reloadCohorts(); }, []);
+
+  const loadKnowledge = async (productName: string) => {
+    const k = await getKnowledge(slug(productName));
+    setKnowledge(k?.ok ? { slug: k.slug, product: k.product, content: k.content } : { slug: slug(productName), product: productName, content: "" });
+  };
+  const openCohort = async (id: string) => {
+    const d = await getCohort(id);
+    if (d?.ok) { setSel(d); loadKnowledge(d.cohort.product); }
+  };
+
+  // Tự làm mới cụm đang chọn khi còn video đang chạy (cập nhật tiến độ + kết luận).
+  useEffect(() => {
+    if (!sel) return;
+    const allDone = sel.videos.every((v: any) => v.status === "completed" || v.status === "failed");
+    if (allDone) return;
+    const t = setInterval(async () => {
+      const d = await getCohort(sel.cohort.id);
+      if (d?.ok) { setSel(d); if (d.cohort.insight) loadKnowledge(d.cohort.product); }
+    }, 6000);
+    return () => clearInterval(t);
+  }, [sel?.cohort.id, sel?.videos]);
+
+  const doImport = async () => {
+    if (!product.trim()) return showToast("Nhập tên sản phẩm cho cụm này");
+    if (!file) return showToast("Chọn file Excel chỉ số (.xlsx)");
+    if (!integration.key) return showToast("Chưa kết nối Gemini API (vào Quản trị nhập key)");
+    setBusy(true);
+    const r = await importAds({ file, product: product.trim(), apiKey: integration.key, model: integration.model });
+    setBusy(false);
+    if (!r?.ok) return showToast(r?.message || "Import thất bại");
+    showToast(`Đã nạp ${r.count} video vào cụm "${r.product}" — đang mổ xẻ nền…`);
+    setProduct(""); setFile(null); if (fileRef.current) fileRef.current.value = "";
+    await reloadCohorts();
+    openCohort(r.cohortId);
+  };
+
+  const saveK = async () => {
+    if (!knowledge) return;
+    setSavingK(true);
+    const r = await saveKnowledge(knowledge.slug, knowledge.product, knowledge.content);
+    setSavingK(false);
+    showToast(r?.ok ? "Đã lưu kho kiến thức" : "Lưu thất bại");
+  };
+
+  const tcol = (t: string) => (t === "tốt" ? ["rgba(60,122,94,.13)", "#2f6b4f"] : t === "thấp" ? ["rgba(158,58,58,.12)", "#8f3232"] : t === "ít data" ? ["rgba(120,110,95,.14)", "#7a6f5c"] : ["rgba(176,106,22,.14)", "#8a5614"]);
+  // ROAS từ traffic quá thấp không đáng tin → nhãn "ít data" thay vì xếp hạng.
+  const roasTierOf = (a: any) => (a.traffic >= 1000 && a.roas > 0 ? a.roasTier : "ít data");
+  const chip = (t: string) => { const [bg, fg] = tcol(t); return <span style={c(`font-family:'Space Grotesk',sans-serif;font-size:10.5px;font-weight:600;padding:2px 8px;border-radius:99px;background:${bg};color:${fg}`)}>{t}</span>; };
+  const nf = (n: number) => Number(n || 0).toLocaleString("vi-VN");
+  const stIcon = (s: string) => (s === "completed" ? "✓" : s === "processing" ? "⚙" : s === "failed" ? "✕" : "⏳");
+
+  const openVideo = async (id: string, hasContent: boolean) => {
+    if (!hasContent) return showToast("Video này chưa mổ xẻ xong");
+    const r = await getHistoryItem(id);
+    if (r?.analysis?.checklist) onOpenReport({ id: r.id, title: r.title, platform: r.platform, product: r.product, date: r.date, score: r.score, analysis: r.analysis, thumb: r.thumb } as HistoryEntry);
+    else showToast("Không mở được phiếu");
+  };
+
+  const sum = sel?.cohort?.summary?.summary;
+  const insight = sel?.cohort?.insight;
+  const card = (label: string, val: string, tier?: string) => (
+    <div style={c("background:linear-gradient(160deg,#f7f0e2,#fffdf8);border:1px solid rgba(140,96,40,.22);border-radius:14px;padding:14px")}>
+      <div style={c("font-family:'Space Grotesk',sans-serif;font-size:9.5px;letter-spacing:.16em;text-transform:uppercase;color:#8a7c67;margin-bottom:6px")}>{label}</div>
+      <div style={c("font-family:'Fraunces',serif;font-size:21px;font-weight:600;color:#9a5a12;line-height:1")}>{val}</div>
+      {tier && <div style={c("margin-top:6px")}>{chip(tier)}</div>}
+    </div>
+  );
+
+  return (
+    <div className="ns-fade" style={c("max-width:1100px;margin:0 auto")}>
+      {/* Import */}
+      <div style={c(`background:#fffdf8;border:1px solid rgba(140,96,40,.2);border-radius:18px;padding:${isMobile ? "18px" : "22px 24px"};margin-bottom:22px`)}>
+        <div style={c("font-family:'Fraunces',serif;font-size:18px;font-weight:600;color:#2a2016;margin-bottom:4px")}>Nạp file chỉ số ads (.xlsx)</div>
+        <div style={c("color:#8a7c67;font-size:13px;margin-bottom:16px")}>Cột cần có: Video ID, Orders, Revenue, Traffic, Clicks, CTR, CVR, CPM, CPC. Hệ thống sẽ tự mổ xẻ nội dung từng video và rút kết luận content nào cho chỉ số tốt.</div>
+        <div style={c(`display:grid;grid-template-columns:${isMobile ? "1fr" : "1fr 1fr auto"};gap:12px;align-items:end`)}>
+          <div>
+            <label style={c("font-family:'Space Grotesk',sans-serif;font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:#8a7c67;display:block;margin-bottom:6px")}>Tên sản phẩm</label>
+            <input value={product} onChange={(e: any) => setProduct(e.target.value)} placeholder="vd: sữa tắm Lion Bartender" style={c("width:100%;padding:11px 13px;border:1px solid rgba(140,96,40,.28);border-radius:11px;background:#fdfaf3;font-size:14px")} />
+          </div>
+          <div>
+            <label style={c("font-family:'Space Grotesk',sans-serif;font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:#8a7c67;display:block;margin-bottom:6px")}>File Excel</label>
+            <input ref={fileRef} type="file" accept=".xlsx" onChange={(e: any) => setFile(e.target.files?.[0] || null)} style={c("width:100%;font-size:13px")} />
+          </div>
+          <button onClick={doImport} disabled={busy} style={c(`padding:12px 22px;border:none;border-radius:11px;background:linear-gradient(150deg,#c07c1e,#9a5a12);color:#fff;font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:14px;cursor:${busy ? "default" : "pointer"};opacity:${busy ? .6 : 1};white-space:nowrap`)}>{busy ? "Đang nạp…" : "⚡ Nạp & phân tích"}</button>
+        </div>
+      </div>
+
+      {/* Danh sách cụm */}
+      {cohorts.length > 0 && (
+        <div style={c("display:flex;gap:8px;flex-wrap:wrap;margin-bottom:20px")}>
+          {cohorts.map((co) => {
+            const on = sel?.cohort.id === co.id;
+            return (
+              <div key={co.id} onClick={() => openCohort(co.id)} style={c(`cursor:pointer;border:1px solid ${on ? "rgba(176,106,22,.5)" : "rgba(140,96,40,.22)"};background:${on ? "rgba(176,106,22,.1)" : "#fffdf8"};border-radius:12px;padding:10px 14px`)}>
+                <div style={c("font-weight:600;font-size:13.5px;color:#2a2016")}>{co.product}</div>
+                <div style={c("font-size:11.5px;color:#8a7c67;margin-top:2px")}>{co.done}/{co.total} đã mổ xẻ{co.hasInsight ? " · ✓ có kết luận" : ""}</div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {sel && (
+        <>
+          {/* Tổng quan cụm */}
+          <SectionHead tag="Tổng quan" title={`Cụm: ${sel.cohort.product}`} />
+          <div style={c(`display:grid;grid-template-columns:${isMobile ? "1fr 1fr" : "repeat(auto-fit,minmax(140px,1fr))"};gap:12px;margin-bottom:28px`)}>
+            {card("Số video", nf(sel.cohort.count))}
+            {sum && card("Xếp loại", `${sum.tot}·${sum.kha}·${sum.thap}`, undefined)}
+            {sum && card("Median ROAS", `${sum.medianRoas}×`)}
+            {sum && card("Median CVR", `${sum.medianCvr}%`)}
+            {sum && card("Median CTR", `${sum.medianCtr}%`)}
+          </div>
+
+          {/* Kết luận content↔chỉ số */}
+          <SectionHead tag="Kết luận" title="Content như thế nào thì chỉ số tốt" />
+          {!insight ? (
+            <div style={c("background:#fffdf8;border:1px dashed rgba(140,96,40,.3);border-radius:14px;padding:18px;margin-bottom:14px;color:#8a7c67;font-size:13.5px")}>
+              Đang mổ xẻ nội dung các video… kết luận sẽ hiện khi đủ dữ liệu.{" "}
+              <span onClick={async () => { const r = await finalizeCohort(sel.cohort.id); showToast(r?.done ? "Đã dựng kết luận" : "Chưa đủ video mổ xẻ xong"); openCohort(sel.cohort.id); }} style={c("color:#9a5a12;font-weight:600;cursor:pointer;text-decoration:underline")}>Thử dựng ngay</span>
+            </div>
+          ) : (
+            <div style={c("display:flex;flex-direction:column;gap:12px;margin-bottom:28px")}>
+              {insight.metrics.map((mi: any) => {
+                const name = mi.metric === "cvr" ? "CVR · chốt đơn" : mi.metric === "roas" ? "ROAS · hiệu quả chi phí" : "CTR · thu hút click";
+                return (
+                  <div key={mi.metric} style={c("background:#fffdf8;border:1px solid rgba(140,96,40,.2);border-left:3px solid #b06a16;border-radius:0 14px 14px 0;padding:16px 18px")}>
+                    <div style={c("font-family:'Space Grotesk',sans-serif;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:#b06a16;font-weight:600;margin-bottom:6px")}>{name} · {mi.goodN} tốt vs {mi.badN} thấp</div>
+                    <div style={c("font-size:14px;color:#2a2016;line-height:1.55;margin-bottom:8px")}>{mi.conclusion}</div>
+                    {mi.drivers.map((d: any, i: number) => {
+                      const ex = (d.examples || [])[0];
+                      return (
+                        <div key={i} style={c(`${i ? "margin-top:12px;padding-top:12px;border-top:1px solid rgba(70,54,32,.08);" : ""}`)}>
+                          <div style={c("font-size:13.5px;color:#2a2016")}>• <b>{d.trait}</b> <span style={c("color:#8a7c67")}>— {d.goodRate}% video tốt (vs {d.badRate}% kém)</span></div>
+                          {ex && (
+                            <div style={c("margin:6px 0 0 14px;font-size:12.5px;color:#574a3a;line-height:1.65")}>
+                              {ex.hook && <div>↳ <b>Hook nói:</b> “{ex.hook}”</div>}
+                              {!!(ex.lines && ex.lines.length) && <div>↳ <b>Lời thoại đắt:</b> {ex.lines.map((l: string) => `“${l}”`).join(" · ")}</div>}
+                              {!!(ex.shots && ex.shots.length) && (
+                                <div>↳ <b>Quay cảnh:</b>
+                                  <div style={c("margin:2px 0 0 14px")}>
+                                    {ex.shots.map((s: any, j: number) => (
+                                      <div key={j}><span style={c("color:#9a5a12;font-weight:600")}>[{s.ts}]</span> {s.vi}{s.cam ? <span style={c("color:#8a7c67")}> — {s.cam}</span> : null}</div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                              {ex.title && <div style={c("color:#8a7c67;font-size:11.5px;margin-top:3px")}>Mẫu từ: {ex.link ? <a href={ex.link} target="_blank" rel="noopener" style={c("color:#9a5a12")}>{ex.title}</a> : ex.title}</div>}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Kho kiến thức */}
+          {knowledge && (
+            <>
+              <SectionHead tag="Kho kiến thức" title={`Bổ sung cho: ${knowledge.product}`} />
+              <div style={c("margin-bottom:28px")}>
+                <textarea value={knowledge.content} onChange={(e: any) => setKnowledge({ ...knowledge, content: e.target.value })} placeholder="Kho kiến thức tự sinh sau khi mổ xẻ xong — bạn có thể chỉnh sửa. Nội dung này được bơm vào prompt cho các phân tích sau của sản phẩm." style={c("width:100%;min-height:180px;padding:14px;border:1px solid rgba(140,96,40,.28);border-radius:12px;background:#fdfaf3;font-family:'Be Vietnam Pro',sans-serif;font-size:13px;line-height:1.6;resize:vertical")} />
+                <div style={c("margin-top:8px;display:flex;gap:10px;align-items:center")}>
+                  <button onClick={saveK} disabled={savingK} style={c("padding:9px 18px;border:none;border-radius:10px;background:linear-gradient(150deg,#c07c1e,#9a5a12);color:#fff;font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:13px;cursor:pointer")}>{savingK ? "Đang lưu…" : "Lưu kho kiến thức"}</button>
+                  <span style={c("font-size:12px;color:#8a7c67")}>Tự bơm vào prompt Gemini cho phân tích sau của sản phẩm này.</span>
+                </div>
+              </div>
+            </>
+          )}
+
+          {/* Bảng video xếp hạng */}
+          <SectionHead tag="Bảng xếp hạng" title={`${sel.videos.length} video theo điểm hiệu quả`} />
+          <div style={c("font-size:12px;color:#8a7c67;margin:-12px 0 12px;line-height:1.5")}>
+            <b>Điểm</b> = điểm hiệu quả tổng hợp 0–100 (percentile ROAS·Doanh thu·CVR·CTR trong cụm) · <b>Hạng ROAS</b> = xếp loại riêng ROAS · <b>Tổng thể</b> = xếp loại chung. Bấm 1 dòng để mở phiếu mổ xẻ.
+          </div>
+          <div style={c("border:1px solid rgba(140,96,40,.18);border-radius:14px;overflow:hidden;background:#fffdf8")}>
+            <div style={c("display:flex;align-items:center;gap:10px;padding:9px 14px;background:rgba(176,106,22,.07);border-bottom:1px solid rgba(140,96,40,.18);font-family:'Space Grotesk',sans-serif;font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:#8a7c67;font-weight:600")}>
+              <span style={c("width:26px")}>#</span>
+              <span style={c("flex:1;min-width:0")}>Tiêu đề video</span>
+              <span style={c("width:42px;text-align:right")} title="Điểm hiệu quả tổng hợp">Điểm</span>
+              {!isMobile && <span style={c("width:62px;text-align:right")}>ROAS</span>}
+              <span style={c("width:64px")}>Hạng ROAS</span>
+              {!isMobile && <span style={c("width:44px")}>Tổng thể</span>}
+              <span style={c("width:18px;text-align:center")} title="Trạng thái">TT</span>
+            </div>
+            {sel.videos.map((v: any, i: number) => (
+              <div key={v.id} onClick={() => openVideo(v.id, v.hasContent)} style={c(`display:flex;align-items:center;gap:10px;padding:10px 14px;border-top:${i ? "1px solid rgba(70,54,32,.08)" : "none"};cursor:${v.hasContent ? "pointer" : "default"};font-size:13px`)}>
+                <span style={c("width:26px;color:#8a7c67;font-family:'Space Grotesk',sans-serif;font-weight:600")}>{i + 1}</span>
+                <span style={c("flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#2a2016")}>{v.title}</span>
+                {v.ads && <span style={c("font-family:'Fraunces',serif;font-weight:600;color:#9a5a12;width:42px;text-align:right")}>{v.ads.efficiencyScore}</span>}
+                {v.ads && !isMobile && <span style={c("width:62px;text-align:right;color:#574a3a")}>ROAS {v.ads.roas}×</span>}
+                {v.ads && <span style={c("width:64px")}>{chip(roasTierOf(v.ads))}</span>}
+                {v.ads && !isMobile && <span style={c("width:44px")} title="Xếp loại tổng thể">{chip(v.ads.label)}</span>}
+                <span title={v.status} style={c("width:18px;text-align:center;color:#8a7c67")}>{stIcon(v.status)}</span>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+
+      {!cohorts.length && !sel && (
+        <div style={c("text-align:center;color:#8a7c67;font-size:14px;padding:40px 0")}>Chưa có cụm nào. Nạp file Excel chỉ số ở trên để bắt đầu.</div>
+      )}
     </div>
   );
 }
@@ -1131,6 +1611,9 @@ function ReportView({ a, metaList, videoFile, isMobile }: { a: Analysis; metaLis
           <div style={c("font-family:'Space Grotesk',sans-serif;text-transform:uppercase;letter-spacing:.3em;font-size:10.5px;color:#e0a64e;font-weight:600;margin-bottom:16px")}>Nonelab · Phân tích video · Khung Năm Lực</div>
           <h1 style={c("font-family:'Fraunces',serif;font-weight:900;font-size:clamp(26px,5vw,52px);line-height:1.0;letter-spacing:-.02em;margin:0 0 10px;color:#f6efe0")}>Phiếu <span style={c("font-style:italic;font-weight:400;color:#e8bd72")}>phân tích</span> video</h1>
           <p style={c("font-family:'Fraunces',serif;font-style:italic;font-size:clamp(13px,2.4vw,20px);color:#cdbfa6;margin:0;max-width:60ch")}>{a.subtitle}</p>
+          {(a.sourceUrl || a.ads?.link) && (
+            <a href={a.sourceUrl || a.ads?.link} target="_blank" rel="noopener" style={c("display:inline-block;margin-top:12px;font-family:'Space Grotesk',sans-serif;font-size:13px;font-weight:600;color:#e8bd72;text-decoration:none;border-bottom:1px solid rgba(232,189,114,.4)")}>▶ Xem video gốc để đối chứng</a>
+          )}
         </div>
         <dl style={c("display:flex;flex-wrap:wrap;margin:0")}>
           {metaList.map((m, i) => (
@@ -1141,6 +1624,20 @@ function ReportView({ a, metaList, videoFile, isMobile }: { a: Analysis; metaLis
           ))}
         </dl>
       </div>
+
+      {a.stats && (
+        <>
+          <SectionHead tag="Tương tác" title={`Chỉ số tương tác thực tế · ${a.stats.source}`} />
+          <div className="ns-rise" style={c(`display:grid;grid-template-columns:${isMobile ? "1fr 1fr" : "repeat(auto-fit,minmax(150px,1fr))"};gap:12px;margin-bottom:32px`)}>
+            {([["Lượt xem", a.stats.views], ["Lượt thích", a.stats.likes], ["Bình luận", a.stats.comments], ["Chia sẻ", a.stats.shares], ["Lưu", a.stats.saves]] as [string, number][]).map(([label, val], i) => (
+              <div key={i} style={c("background:linear-gradient(160deg,#f7f0e2,#fffdf8);border:1px solid rgba(140,96,40,.22);border-radius:16px;padding:16px")}>
+                <div style={c("font-family:'Space Grotesk',sans-serif;font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:#8a7c67;margin-bottom:8px")}>{label}</div>
+                <div style={c("font-family:'Fraunces',serif;font-size:22px;font-weight:600;color:#9a5a12;line-height:1")}>{Number(val || 0).toLocaleString("vi-VN")}</div>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
 
       <SectionHead tag="Chốt nhanh" title="Vì sao nó chạy" />
       <div className="ns-rise" style={c(`display:grid;grid-template-columns:${isMobile ? "1fr 1fr" : "repeat(auto-fit,minmax(180px,1fr))"};gap:12px;margin-bottom:32px`)}>

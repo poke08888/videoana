@@ -43,8 +43,42 @@ export interface Hook {
   note?: string;
 }
 
+/** Chỉ số tương tác thật lấy từ nền tảng (TikTok qua TokAPI). */
+export interface EngagementStats {
+  source: string; // "TikTok"
+  awemeId?: string;
+  views: number;
+  likes: number;
+  comments: number;
+  shares: number;
+  saves: number;
+}
+
+/** Chỉ số ads (TikTok Shop) + đánh giá hiệu quả so với cụm — đính kèm phiếu. */
+export interface AdsReport {
+  efficiencyScore: number; // 0–100 percentile trong cụm
+  label: string; // tốt / khá / thấp
+  orders: number;
+  revenue: number;
+  traffic: number;
+  clicks: number;
+  ctr: number;
+  cvr: number;
+  cost: number;
+  cpm: number;
+  cpc: number;
+  roas: number;
+  ctrTier: string;
+  cvrTier: string;
+  roasTier: string;
+  link?: string;
+}
+
 export interface Analysis {
   subtitle: string;
+  sourceUrl?: string; // link video gốc (TikTok/YouTube) để đối chứng nội dung
+  stats?: EngagementStats;
+  ads?: AdsReport;
   meta: {
     platform: string;
     duration: string;
@@ -76,7 +110,7 @@ export interface FormState {
   file: string; // tên file hiển thị
 }
 
-export type Screen = "dashboard" | "upload" | "report" | "history" | "admin" | "analyzing" | "error" | "auth";
+export type Screen = "dashboard" | "upload" | "report" | "history" | "admin" | "analyzing" | "error" | "auth" | "ads" | "campaign";
 
 export interface HistoryEntry {
   id: string;

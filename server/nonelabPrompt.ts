@@ -128,7 +128,7 @@ NGUYÊN TẮC VÀNG: tăng "điểm cộng", đừng tạo "điểm trừ" — c
 riêng (sản phẩm tốt hơn, người thu hút hơn, hình đẹp hơn, câu chuyện thật hơn) mới thắng.
 `.trim();
 
-export function buildAnalysisPrompt(form: AnalyzeForm, hasVideo: boolean): string {
+export function buildAnalysisPrompt(form: AnalyzeForm, hasVideo: boolean, productKnowledge?: string): string {
   const ctx = [
     form.title && `Tiêu đề: ${form.title}`,
     form.platform && `Nền tảng: ${form.platform}`,
@@ -143,7 +143,13 @@ export function buildAnalysisPrompt(form: AnalyzeForm, hasVideo: boolean): strin
     ? "Bạn ĐƯỢC xem video đính kèm — hãy QUAN SÁT trực tiếp khung hình, lời thoại, nhịp dựng. Trích timestamp & lời thoại nguyên văn khi cần."
     : "Không có video — hãy suy luận hợp lý từ thông tin mô tả bên dưới (mô tả càng chi tiết kết quả càng sát).";
 
-  return `${NONELAB_FRAMEWORK}
+  const knowledgeBlock = (productKnowledge || "").trim()
+    ? `\n\nKHO KIẾN THỨC RIÊNG CHO SẢN PHẨM NÀY (chắt lọc từ dữ liệu chỉ số ads thực tế của
+chính sản phẩm — content nào cho CTR/CVR/ROAS tốt). Hãy DÙNG nó khi chấm & gợi ý:
+${(productKnowledge || "").trim()}`
+    : "";
+
+  return `${NONELAB_FRAMEWORK}${knowledgeBlock}
 
 ${source}
 

@@ -134,7 +134,35 @@ export async function connectDB() {
 
   // 2b. Migration cho DB đã tồn tại từ phiên bản cũ — thêm cột nếu thiếu.
   await addColumnIfMissing("history", "queue_meta TEXT");
+  await addColumnIfMissing("history", "cohort_id TEXT"); // gom video theo cụm import
+  await addColumnIfMissing("history", "owner TEXT"); // email người tạo — chỉ chủ sở hữu (và admin) xem được
   await addColumnIfMissing("users", "must_change_password INTEGER DEFAULT 0");
+  await addColumnIfMissing("ads_cohorts", "kind TEXT DEFAULT 'ads'"); // 'ads' | 'campaign'
+  await addColumnIfMissing("ads_cohorts", "owner TEXT"); // email người tạo cụm
+
+  // 2c. Bảng cụm phân tích chỉ số ads (mỗi lần import 1 file Excel = 1 cohort).
+  await runQuery(`
+    CREATE TABLE IF NOT EXISTS ads_cohorts (
+      id TEXT PRIMARY KEY,
+      product TEXT NOT NULL,
+      product_slug TEXT NOT NULL,
+      created TEXT NOT NULL,
+      count INTEGER DEFAULT 0,
+      summary TEXT,          -- JSON: benchmarks + phân loại + kết luận phía chỉ số
+      insight TEXT,          -- JSON: kết luận content↔chỉ số (điền sau khi mổ xẻ xong)
+      kind TEXT DEFAULT 'ads' -- 'ads' (import Excel) | 'campaign' (search keyword)
+    )
+  `);
+
+  // 2d. Kho kiến thức theo sản phẩm — chắt lọc từ các cụm, bơm vào prompt sau này.
+  await runQuery(`
+    CREATE TABLE IF NOT EXISTS product_knowledge (
+      slug TEXT PRIMARY KEY,
+      product TEXT NOT NULL,
+      content TEXT NOT NULL,  -- markdown/JSON kiến thức bổ sung cho sản phẩm
+      updated TEXT NOT NULL
+    )
+  `);
 
   // 3. Tự động Seed 5 người dùng mặc định nếu bảng users trống
   try {

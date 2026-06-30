@@ -6,6 +6,7 @@ import { analyzeVideo } from "./gemini.js";
 import { decorate, scoreOf } from "../src/lib/analysis.js";
 import { embedFramesServer } from "./frames.js";
 import { downloadTikTok, resolveTokapiKey } from "./tiktok.js";
+import { getProductKnowledge, finalizeCohortIfDone } from "./cohort.js";
 
 const UPLOAD_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), "uploads");
 
@@ -90,6 +91,7 @@ async function processItem(item: any) {
 
   let videoPath: string | undefined = meta.videoPath;
   let tiktokTemp: string | null = null;
+  let tiktokStats: any = null; // chỉ số tương tác TikTok (nếu phân tích từ link)
 
   try {
     // Link TikTok: tự tải video về server qua RapidAPI (tokapi) trước khi phân tích.
@@ -100,12 +102,16 @@ async function processItem(item: any) {
       const dl = await downloadTikTok(meta.tiktokUrl, tkKey, UPLOAD_DIR);
       videoPath = dl.path;
       tiktokTemp = dl.path;
+      tiktokStats = dl.stats;
       if (dl.desc) {
         const t = dl.desc.slice(0, 120);
         meta.form = { ...meta.form, title: meta.form?.title || t };
         await runQuery("UPDATE history SET title = ? WHERE id = ?", [t, item.id]);
       }
     }
+
+    // Kho kiến thức riêng cho sản phẩm (nếu đã có) → bơm vào prompt Gemini.
+    const productKnowledge = (await getProductKnowledge(meta.form?.product || "").catch(() => null)) || undefined;
 
     console.log(`[nonelab] Đang gọi Gemini API phân tích cho: ${item.title}`);
     const analysisRaw = await analyzeVideo({
@@ -114,11 +120,28 @@ async function processItem(item: any) {
       form: meta.form,
       videoPath,
       mimeType: meta.mimeType,
-      youtubeUrl: meta.tiktokUrl ? undefined : meta.youtubeUrl
+      youtubeUrl: meta.tiktokUrl ? undefined : meta.youtubeUrl,
+      productKnowledge
     });
 
     // Chuẩn hóa kết quả phân tích theo khung Năm Lực của Nonelab
     const decoratedAnalysis = decorate(analysisRaw, meta.form);
+
+    // Gắn chỉ số tương tác thật (like/share/comment/lưu + điểm tương tác) vào phiếu.
+    if (tiktokStats) {
+      (decoratedAnalysis as any).stats = tiktokStats;
+    }
+    // Gắn chỉ số ads + đánh giá hiệu quả (nếu video đến từ import Excel chỉ số).
+    if (meta.ads) {
+      (decoratedAnalysis as any).ads = meta.ads;
+    }
+    // Gắn xếp loại tương tác (nếu video đến từ campaign tìm theo từ khóa).
+    if (meta.eng) {
+      (decoratedAnalysis as any).eng = meta.eng;
+    }
+    // Lưu link video gốc vào phiếu để đối chứng nội dung (link còn trong queue_meta).
+    const srcUrl = meta.tiktokUrl || meta.youtubeUrl || "";
+    if (srcUrl) (decoratedAnalysis as any).sourceUrl = srcUrl;
 
     // Trích frame thật từ video (phía server bằng ffmpeg) khi có file cục bộ —
     // để phiếu từ hàng đợi nền cũng có khung hình thật như luồng đơn lẻ.
@@ -161,6 +184,16 @@ async function processItem(item: any) {
         } catch (err) {
           console.error("[nonelab] Lỗi xóa file tạm:", err);
         }
+      }
+    }
+    // Nếu thuộc một cụm import chỉ số: thử chốt cụm (dựng kết luận + kho kiến thức)
+    // khi đây là video cuối cùng hoàn tất.
+    if (meta.cohortId) {
+      try {
+        const done = await finalizeCohortIfDone(meta.cohortId, new Date().toISOString());
+        if (done) console.log(`[nonelab] Đã chốt cụm ${meta.cohortId}: dựng kết luận + cập nhật kho kiến thức.`);
+      } catch (err) {
+        console.error("[nonelab] Lỗi chốt cụm:", err);
       }
     }
   }
