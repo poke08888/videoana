@@ -1011,7 +1011,8 @@ function CampaignView({ isMobile, integration, showToast, onOpenReport }: { isMo
 
   const doSearch = async () => {
     if (!keyword.trim()) return showToast("Nhập từ khóa cần tìm");
-    if (!integration.key) return showToast("Chưa kết nối Gemini API (vào Quản trị nhập key)");
+    // Bước tìm không dùng Gemini (chỉ TokAPI); bước phân tích server tự dùng key
+    // trong .env nếu client không có — nên KHÔNG chặn theo key cục bộ ở đây.
     setBusy(true); setPreview(null); setSel(null);
     const r = await searchCampaign({ keyword: keyword.trim(), minLikes: Number(minLikes) || 0, target: Number(target) || 50 });
     setBusy(false);
@@ -1267,7 +1268,8 @@ function AdsView({ isMobile, integration, showToast, onOpenReport }: { isMobile:
   const doImport = async () => {
     if (!product.trim()) return showToast("Nhập tên sản phẩm cho cụm này");
     if (!file) return showToast("Chọn file Excel chỉ số (.xlsx)");
-    if (!integration.key) return showToast("Chưa kết nối Gemini API (vào Quản trị nhập key)");
+    // Không chặn theo key Gemini cục bộ: server tự dùng key trong .env nếu client
+    // không có (tài khoản không phải admin không vào màn Quản trị để nhập key).
     setBusy(true);
     const r = await importAds({ file, product: product.trim(), apiKey: integration.key, model: integration.model });
     setBusy(false);
