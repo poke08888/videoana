@@ -137,8 +137,6 @@ export async function connectDB() {
   await addColumnIfMissing("history", "cohort_id TEXT"); // gom video theo cụm import
   await addColumnIfMissing("history", "owner TEXT"); // email người tạo — chỉ chủ sở hữu (và admin) xem được
   await addColumnIfMissing("users", "must_change_password INTEGER DEFAULT 0");
-  await addColumnIfMissing("ads_cohorts", "kind TEXT DEFAULT 'ads'"); // 'ads' | 'campaign'
-  await addColumnIfMissing("ads_cohorts", "owner TEXT"); // email người tạo cụm
 
   // 2c. Bảng cụm phân tích chỉ số ads (mỗi lần import 1 file Excel = 1 cohort).
   await runQuery(`
@@ -153,6 +151,10 @@ export async function connectDB() {
       kind TEXT DEFAULT 'ads' -- 'ads' (import Excel) | 'campaign' (search keyword)
     )
   `);
+  // Migration ads_cohorts — PHẢI chạy SAU CREATE TABLE (nếu bảng chưa tồn tại,
+  // ALTER trước CREATE sẽ thất bại và cột owner không được thêm).
+  await addColumnIfMissing("ads_cohorts", "kind TEXT DEFAULT 'ads'"); // 'ads' | 'campaign'
+  await addColumnIfMissing("ads_cohorts", "owner TEXT"); // email người tạo cụm
 
   // 2d. Kho kiến thức theo sản phẩm — chắt lọc từ các cụm, bơm vào prompt sau này.
   await runQuery(`
