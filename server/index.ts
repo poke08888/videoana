@@ -872,9 +872,34 @@ if (process.env.NODE_ENV === "production") {
 
 const PORT = Number(process.env.PORT || 8787);
 
+// Sau khi backend khởi động lại (deploy/sự cố), TỰ CHẠY LẠI các job tìm video
+// còn dở (status='searching') để search không mất — dùng tokapi key từ .env.
+async function resumeSearchJobs() {
+  try {
+    const jobs = await allQuery<any>("SELECT id, keywords, min_likes, min_views, target FROM search_jobs WHERE status='searching'");
+    if (!jobs.length) return;
+    const tokapiKey = resolveTokapiKey(undefined);
+    for (const j of jobs) {
+      let keywords: string[] = [];
+      try { keywords = JSON.parse(j.keywords || "[]"); } catch {}
+      if (!keywords.length || !tokapiKey) {
+        await runQuery("UPDATE search_jobs SET status='failed', message='Không tự chạy lại được sau khi máy chủ khởi động — vui lòng tìm lại.', updated=? WHERE id=?", [new Date().toISOString(), j.id]).catch(() => {});
+        continue;
+      }
+      // Reset tiến trình rồi chạy lại từ đầu (không await — chạy nền).
+      await runQuery("UPDATE search_jobs SET found=0, scanned=0, pages=0, updated=? WHERE id=?", [new Date().toISOString(), j.id]).catch(() => {});
+      console.log(`[nonelab] Tự chạy lại job tìm video sau khởi động: ${j.id} (${keywords.join(", ")})`);
+      runSearchJob(j.id, keywords, tokapiKey, j.min_likes || 0, j.min_views || 0, j.target || 50);
+    }
+  } catch (err) {
+    console.error("[nonelab] Lỗi tự chạy lại job tìm video:", err);
+  }
+}
+
 async function startServer() {
   await connectDB();
   startQueueProcessor(); // Khởi động hàng đợi chạy nền
+  resumeSearchJobs();    // Chạy lại job tìm video còn dở (sống sót qua restart/deploy)
   app.listen(PORT, () => {
     console.log(`[nonelab] backend chạy ở http://localhost:${PORT}  (model mặc định: ${DEFAULT_MODEL})`);
     if (!(process.env.GEMINI_API_KEY || "").trim()) {

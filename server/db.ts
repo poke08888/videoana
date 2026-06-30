@@ -195,11 +195,8 @@ export async function connectDB() {
       updated TEXT
     )
   `);
-  // Job đang 'searching' khi backend tắt → không thể tiếp tục giữa chừng; đánh
-  // dấu failed để client biết và tìm lại.
-  try {
-    await runQuery("UPDATE search_jobs SET status='failed', message='Máy chủ khởi động lại — vui lòng tìm lại.' WHERE status='searching'");
-  } catch {}
+  // Job 'searching' khi backend tắt sẽ được TỰ CHẠY LẠI lúc khởi động (xem
+  // resumeSearchJobs trong index.ts) — không đánh dấu failed ở đây.
 
   // 3. Tự động Seed 5 người dùng mặc định nếu bảng users trống
   try {
