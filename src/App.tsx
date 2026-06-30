@@ -1069,6 +1069,7 @@ function CampaignView({ isMobile, integration, showToast, onOpenReport, isAdmin 
       const j = await getCampaignJob(jobId);
       if (stop) return;
       if (!j?.ok) { showToast("Mất kết nối job tìm kiếm."); finish(); return; }
+      if (j.target) setJobTarget(j.target); // mẫu số đúng target thật của job (kể cả khi khôi phục)
       if (j.status === "searching") { setBusy(true); setProgress({ found: j.found || 0, scanned: j.scanned || 0, page: j.pages || 0 }); return; }
       if (j.status === "failed") { showToast(j.message || "Tìm kiếm thất bại"); finish(); return; }
       if (j.status === "ready") {
