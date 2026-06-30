@@ -837,7 +837,7 @@ export default function App() {
 
           <div style={c(`padding:${isMobile ? "16px 16px 90px" : "30px 34px 60px"}`)}>
             {screen === "dashboard" && <Dashboard stats={labels.dashboard} recent={history.slice(0, 3)} onOpen={openReport} onAll={() => go("history")} isMobile={isMobile} />}
-            {screen === "history" && <HistoryView history={history} onOpen={openReport} onReanalyze={reanalyzeEntry} showToast={showToast} />}
+            {screen === "history" && <HistoryView history={history} onOpen={openReport} onReanalyze={reanalyzeEntry} showToast={showToast} isAdmin={user?.role === "Quản trị"} />}
             {screen === "upload" && (
               <UploadView
                 form={form}
@@ -858,8 +858,8 @@ export default function App() {
                 isMobile={isMobile}
               />
             )}
-            {screen === "ads" && <AdsView isMobile={isMobile} integration={integration} showToast={showToast} onOpenReport={openReport} />}
-            {screen === "campaign" && <CampaignView isMobile={isMobile} integration={integration} showToast={showToast} onOpenReport={openReport} />}
+            {screen === "ads" && <AdsView isMobile={isMobile} integration={integration} showToast={showToast} onOpenReport={openReport} isAdmin={user?.role === "Quản trị"} />}
+            {screen === "campaign" && <CampaignView isMobile={isMobile} integration={integration} showToast={showToast} onOpenReport={openReport} isAdmin={user?.role === "Quản trị"} />}
             {screen === "report" && a && <ReportView a={a} metaList={metaList} videoFile={selectedFiles[0] || null} isMobile={isMobile} />}
             {screen === "admin" && (
               <AdminView
@@ -982,7 +982,7 @@ function Toast({ text }: { text: string }) {
   );
 }
 
-function CampaignView({ isMobile, integration, showToast, onOpenReport }: { isMobile: boolean; integration: { key: string; model: string }; showToast: (m: string) => void; onOpenReport: (h: HistoryEntry) => void }) {
+function CampaignView({ isMobile, integration, showToast, onOpenReport, isAdmin }: { isMobile: boolean; integration: { key: string; model: string }; showToast: (m: string) => void; onOpenReport: (h: HistoryEntry) => void; isAdmin?: boolean }) {
   const [cohorts, setCohorts] = useState<any[]>([]);
   const [sel, setSel] = useState<any | null>(null);
   const [keyword, setKeyword] = useState("");
@@ -996,6 +996,7 @@ function CampaignView({ isMobile, integration, showToast, onOpenReport }: { isMo
   const [picked, setPicked] = useState<Record<string, boolean>>({});
   const [pvFilter, setPvFilter] = useState("");
   const [creating, setCreating] = useState(false);
+  const [progress, setProgress] = useState<{ found: number; scanned: number; page: number } | null>(null);
 
   const reload = async () => { const cs = await listCohorts(); setCohorts((Array.isArray(cs) ? cs : []).filter((c: any) => c.kind === "campaign")); };
   useEffect(() => { reload(); }, []);
@@ -1013,9 +1014,12 @@ function CampaignView({ isMobile, integration, showToast, onOpenReport }: { isMo
     if (!keyword.trim()) return showToast("Nhập từ khóa cần tìm");
     // Bước tìm không dùng Gemini (chỉ TokAPI); bước phân tích server tự dùng key
     // trong .env nếu client không có — nên KHÔNG chặn theo key cục bộ ở đây.
-    setBusy(true); setPreview(null); setSel(null);
-    const r = await searchCampaign({ keyword: keyword.trim(), minLikes: Number(minLikes) || 0, target: Number(target) || 50 });
-    setBusy(false);
+    setBusy(true); setPreview(null); setSel(null); setProgress(null);
+    const r = await searchCampaign(
+      { keyword: keyword.trim(), minLikes: Number(minLikes) || 0, target: Number(target) || 50 },
+      (p) => setProgress(p)
+    );
+    setBusy(false); setProgress(null);
     if (!r?.ok) return showToast(r?.message || "Tìm kiếm thất bại");
     // Mặc định chọn tất cả; người dùng bỏ tick video sai category.
     const pick: Record<string, boolean> = {};
@@ -1082,6 +1086,12 @@ function CampaignView({ isMobile, integration, showToast, onOpenReport }: { isMo
           </div>
           <button onClick={doSearch} disabled={busy} style={c(`padding:12px 22px;border:none;border-radius:11px;background:linear-gradient(150deg,#c07c1e,#9a5a12);color:#fff;font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:14px;cursor:${busy ? "default" : "pointer"};opacity:${busy ? .6 : 1};white-space:nowrap`)}>{busy ? "Đang tìm…" : "🔍 Tìm video"}</button>
         </div>
+        {busy && (
+          <div style={c("margin-top:10px;display:flex;align-items:center;gap:10px;color:#9a5a12;font-size:12.5px;font-family:'Space Grotesk',sans-serif")}>
+            <span style={c("width:13px;height:13px;border:2px solid rgba(154,90,18,.3);border-top-color:#9a5a12;border-radius:50%;display:inline-block;animation:ns-spin 1s linear infinite")} />
+            {progress ? `Đã tìm được ${progress.found}/${Number(target) || 50} video theo yêu cầu · đã quét ${progress.scanned}` : "Đang kết nối TikTok… (search nhiều từ khóa có thể mất vài phút)"}
+          </div>
+        )}
         <div style={c("color:#8a7c67;font-size:11.5px;margin-top:10px")}>Lưu ý: mỗi từ khóa lộ ra một kho ~600 video; nhập nhiều từ khóa (cách nhau dấu phẩy) sẽ gộp dedup để vét được nhiều hơn. Tìm xong bạn DUYỆT danh sách (loại video sai chủ đề) rồi mới bấm phân tích — chưa tốn Gemini ở bước tìm.</div>
       </div>
 
@@ -1131,7 +1141,7 @@ function CampaignView({ isMobile, integration, showToast, onOpenReport }: { isMo
             return (
               <div key={co.id} onClick={() => openCohort(co.id)} style={c(`cursor:pointer;border:1px solid ${on ? "rgba(176,106,22,.5)" : "rgba(140,96,40,.22)"};background:${on ? "rgba(176,106,22,.1)" : "#fffdf8"};border-radius:12px;padding:10px 14px`)}>
                 <div style={c("font-weight:600;font-size:13.5px;color:#2a2016")}>🔍 {co.product}</div>
-                <div style={c("font-size:11.5px;color:#8a7c67;margin-top:2px")}>{co.done}/{co.total} đã mổ xẻ{co.hasInsight ? " · ✓ có kết luận" : ""}</div>
+                <div style={c("font-size:11.5px;color:#8a7c67;margin-top:2px")}>{co.done}/{co.total} đã mổ xẻ{co.hasInsight ? " · ✓ có kết luận" : ""}{isAdmin && co.owner ? ` · 👤 ${co.owner}` : ""}</div>
               </div>
             );
           })}
@@ -1231,7 +1241,7 @@ function CampaignView({ isMobile, integration, showToast, onOpenReport }: { isMo
   );
 }
 
-function AdsView({ isMobile, integration, showToast, onOpenReport }: { isMobile: boolean; integration: { key: string; model: string }; showToast: (m: string) => void; onOpenReport: (h: HistoryEntry) => void }) {
+function AdsView({ isMobile, integration, showToast, onOpenReport, isAdmin }: { isMobile: boolean; integration: { key: string; model: string }; showToast: (m: string) => void; onOpenReport: (h: HistoryEntry) => void; isAdmin?: boolean }) {
   const [cohorts, setCohorts] = useState<any[]>([]);
   const [sel, setSel] = useState<any | null>(null);
   const [product, setProduct] = useState("");
@@ -1339,7 +1349,7 @@ function AdsView({ isMobile, integration, showToast, onOpenReport }: { isMobile:
             return (
               <div key={co.id} onClick={() => openCohort(co.id)} style={c(`cursor:pointer;border:1px solid ${on ? "rgba(176,106,22,.5)" : "rgba(140,96,40,.22)"};background:${on ? "rgba(176,106,22,.1)" : "#fffdf8"};border-radius:12px;padding:10px 14px`)}>
                 <div style={c("font-weight:600;font-size:13.5px;color:#2a2016")}>{co.product}</div>
-                <div style={c("font-size:11.5px;color:#8a7c67;margin-top:2px")}>{co.done}/{co.total} đã mổ xẻ{co.hasInsight ? " · ✓ có kết luận" : ""}</div>
+                <div style={c("font-size:11.5px;color:#8a7c67;margin-top:2px")}>{co.done}/{co.total} đã mổ xẻ{co.hasInsight ? " · ✓ có kết luận" : ""}{isAdmin && co.owner ? ` · 👤 ${co.owner}` : ""}</div>
               </div>
             );
           })}
@@ -1489,7 +1499,7 @@ function Dashboard({ stats, recent, onOpen, onAll, isMobile }: { stats: { label:
   );
 }
 
-function HistoryView({ history, onOpen, onReanalyze, showToast }: { history: HistoryEntry[]; onOpen: (h: HistoryEntry) => void; onReanalyze: (h: HistoryEntry) => void; showToast: (msg: string) => void }) {
+function HistoryView({ history, onOpen, onReanalyze, showToast, isAdmin }: { history: HistoryEntry[]; onOpen: (h: HistoryEntry) => void; onReanalyze: (h: HistoryEntry) => void; showToast: (msg: string) => void; isAdmin?: boolean }) {
   const handleClick = (h: HistoryEntry) => {
     if (h.status === "pending") {
       showToast("Video đang xếp hàng chờ phân tích...");
@@ -1542,6 +1552,7 @@ function HistoryView({ history, onOpen, onReanalyze, showToast }: { history: His
               <div style={c("font-family:'Fraunces',serif;font-size:16px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis")}>{h.title}</div>
               <div style={c("font-size:12.5px;color:#8a7c67;margin-top:3px")}>
                 {h.platform} · {h.product} · {h.date}
+                {isAdmin && (h as any).owner && <span style={c("margin-left:8px;font-family:'Space Grotesk',sans-serif;font-size:11px;font-weight:600;padding:2px 8px;border-radius:99px;background:rgba(176,106,22,.1);color:#8a5614")}>👤 {(h as any).owner}</span>}
                 {isPending && <span style={c("color:#8a5614;margin-left:8px;font-weight:600")}>[Hàng đợi]</span>}
                 {isProcessing && <span style={c("color:#3c7a5e;margin-left:8px;font-weight:600")}>[Đang phân tích...]</span>}
                 {isFailed && <span style={c("color:#8f3232;margin-left:8px;font-weight:600")}>[Thất bại]</span>}
@@ -1624,13 +1635,37 @@ function ReportView({ a, metaList, videoFile, isMobile }: { a: Analysis; metaLis
   return (
     <div className="ns-fade" style={c("max-width:1000px;margin:0 auto")}>
       <div style={c("border:1px solid rgba(140,96,40,.2);border-radius:20px;overflow:hidden;background:#fffdf8;margin-bottom:26px")}>
-        <div style={c(`padding:${isMobile ? "22px 18px" : "34px 36px"};background:linear-gradient(160deg,#241a10,#3a2a16)`)}>
-          <div style={c("font-family:'Space Grotesk',sans-serif;text-transform:uppercase;letter-spacing:.3em;font-size:10.5px;color:#e0a64e;font-weight:600;margin-bottom:16px")}>Nonelab · Phân tích video · Khung Năm Lực</div>
-          <h1 style={c("font-family:'Fraunces',serif;font-weight:900;font-size:clamp(26px,5vw,52px);line-height:1.0;letter-spacing:-.02em;margin:0 0 10px;color:#f6efe0")}>Phiếu <span style={c("font-style:italic;font-weight:400;color:#e8bd72")}>phân tích</span> video</h1>
-          <p style={c("font-family:'Fraunces',serif;font-style:italic;font-size:clamp(13px,2.4vw,20px);color:#cdbfa6;margin:0;max-width:60ch")}>{a.subtitle}</p>
-          {(a.sourceUrl || a.ads?.link) && (
-            <a href={a.sourceUrl || a.ads?.link} target="_blank" rel="noopener" style={c("display:inline-block;margin-top:12px;font-family:'Space Grotesk',sans-serif;font-size:13px;font-weight:600;color:#e8bd72;text-decoration:none;border-bottom:1px solid rgba(232,189,114,.4)")}>▶ Xem video gốc để đối chứng</a>
-          )}
+        <div style={c(`padding:${isMobile ? "22px 18px" : "34px 36px"};background:linear-gradient(160deg,#241a10,#3a2a16);display:flex;gap:24px;align-items:flex-start;justify-content:space-between;flex-wrap:wrap`)}>
+          <div style={c("flex:1;min-width:240px")}>
+            <div style={c("font-family:'Space Grotesk',sans-serif;text-transform:uppercase;letter-spacing:.3em;font-size:10.5px;color:#e0a64e;font-weight:600;margin-bottom:16px")}>Nonelab · Phân tích video · Khung Năm Lực</div>
+            <h1 style={c("font-family:'Fraunces',serif;font-weight:900;font-size:clamp(26px,5vw,52px);line-height:1.0;letter-spacing:-.02em;margin:0 0 10px;color:#f6efe0")}>Phiếu <span style={c("font-style:italic;font-weight:400;color:#e8bd72")}>phân tích</span> video</h1>
+            <p style={c("font-family:'Fraunces',serif;font-style:italic;font-size:clamp(13px,2.4vw,20px);color:#cdbfa6;margin:0;max-width:60ch")}>{a.subtitle}</p>
+            {(a.sourceUrl || a.ads?.link) && (
+              <a href={a.sourceUrl || a.ads?.link} target="_blank" rel="noopener" style={c("display:inline-block;margin-top:12px;font-family:'Space Grotesk',sans-serif;font-size:13px;font-weight:600;color:#e8bd72;text-decoration:none;border-bottom:1px solid rgba(232,189,114,.4)")}>▶ Xem video gốc để đối chứng</a>
+            )}
+          </div>
+          {(() => {
+            const contentScore = a.checklist?.length ? scoreOf(a) : (typeof a.score === "number" ? a.score : null);
+            const engScore = a.eng?.score;
+            const adsScore = a.ads?.efficiencyScore;
+            if (contentScore == null && engScore == null && adsScore == null) return null;
+            return (
+              <div style={c("flex:none;display:flex;flex-direction:column;align-items:center;gap:10px")}>
+                {contentScore != null && (
+                  <div style={c("width:96px;height:96px;border-radius:50%;background:#e8bd72;display:grid;place-items:center;box-shadow:0 6px 22px rgba(0,0,0,.3)")}>
+                    <div style={c("text-align:center;line-height:1")}>
+                      <div style={c("font-family:'Fraunces',serif;font-weight:900;font-size:34px;color:#241a10")}>{contentScore}</div>
+                      <div style={c("font-family:'Space Grotesk',sans-serif;font-size:8.5px;letter-spacing:.12em;text-transform:uppercase;color:#6a4e1e;margin-top:2px")}>điểm/100</div>
+                    </div>
+                  </div>
+                )}
+                <div style={c("display:flex;gap:6px;flex-wrap:wrap;justify-content:center;max-width:160px")}>
+                  {engScore != null && <span style={c("font-family:'Space Grotesk',sans-serif;font-size:11px;font-weight:600;padding:4px 10px;border-radius:99px;background:rgba(232,189,114,.16);color:#e8bd72;border:1px solid rgba(232,189,114,.35)")}>Tương tác {engScore}{a.eng?.tier ? ` · ${a.eng.tier}` : ""}</span>}
+                  {adsScore != null && <span style={c("font-family:'Space Grotesk',sans-serif;font-size:11px;font-weight:600;padding:4px 10px;border-radius:99px;background:rgba(232,189,114,.16);color:#e8bd72;border:1px solid rgba(232,189,114,.35)")}>Hiệu quả {adsScore}</span>}
+                </div>
+              </div>
+            );
+          })()}
         </div>
         <dl style={c("display:flex;flex-wrap:wrap;margin:0")}>
           {metaList.map((m, i) => (
@@ -1764,6 +1799,26 @@ function ReportView({ a, metaList, videoFile, isMobile }: { a: Analysis; metaLis
       </div>
 
       <SectionHead tag="Checklist" title="7 điểm hiệu quả" />
+      {a.checklist?.length ? (() => {
+        const total = scoreOf(a);
+        const ok = a.checklist.filter((r) => r.level === "ok").length;
+        const mid = a.checklist.filter((r) => r.level === "mid").length;
+        const low = a.checklist.filter((r) => r.level === "low").length;
+        const band = total >= 75 ? ["#2f6b4f", "rgba(60,122,94,.12)", "Tốt"] : total >= 50 ? ["#8a5614", "rgba(176,106,22,.12)", "Khá"] : ["#8f3232", "rgba(158,58,58,.1)", "Cần cải thiện"];
+        return (
+          <div style={c(`display:flex;align-items:center;gap:18px;background:${band[1]};border:1px solid rgba(140,96,40,.2);border-radius:16px;padding:${isMobile ? "14px 16px" : "16px 22px"};margin-bottom:14px;flex-wrap:wrap`)}>
+            <div style={c("display:flex;align-items:baseline;gap:4px")}>
+              <span style={c(`font-family:'Fraunces',serif;font-weight:900;font-size:${isMobile ? "40px" : "48px"};line-height:1;color:${band[0]}`)}>{total}</span>
+              <span style={c("font-family:'Space Grotesk',sans-serif;font-size:15px;color:#8a7c67")}>/100</span>
+            </div>
+            <div style={c("flex:1;min-width:160px")}>
+              <div style={c("font-family:'Space Grotesk',sans-serif;font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:#8a7c67;margin-bottom:4px")}>Điểm nội dung tổng</div>
+              <div style={c(`font-family:'Fraunces',serif;font-size:17px;font-weight:600;color:${band[0]}`)}>{band[2]}</div>
+              <div style={c("font-size:12px;color:#574a3a;margin-top:4px")}>{ok} đạt · {mid} tạm · {low} yếu trên {a.checklist.length} tiêu chí (đạt 1đ · tạm 0,5đ · yếu 0đ)</div>
+            </div>
+          </div>
+        );
+      })() : null}
       <div style={c("background:#fffdf8;border:1px solid rgba(140,96,40,.18);border-radius:16px;overflow:hidden;margin-bottom:32px")}>
         {a.checklist.map((row, i) => (
           <div key={i} style={c(`display:flex;gap:12px;align-items:flex-start;padding:13px 16px;border-bottom:1px solid rgba(70,54,32,.1);${isMobile ? "flex-wrap:wrap" : ""}`)}>

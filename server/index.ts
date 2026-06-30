@@ -59,8 +59,8 @@ app.get("/api/history", requireAuth, async (req, res) => {
     // Ẩn video thuộc cụm import chỉ số (cohort_id) — chúng hiển thị ở màn Phân tích chỉ số.
     // Chỉ trả phiếu của chính người dùng (admin xem tất cả).
     const rows = isAdminReq(req)
-      ? await allQuery("SELECT id, title, platform, product, date, score, analysis, thumb, status FROM history WHERE cohort_id IS NULL ORDER BY rowid DESC")
-      : await allQuery("SELECT id, title, platform, product, date, score, analysis, thumb, status FROM history WHERE cohort_id IS NULL AND owner = ? ORDER BY rowid DESC", [ownerEmail(req)]);
+      ? await allQuery("SELECT id, title, platform, product, date, score, analysis, thumb, status, owner FROM history WHERE cohort_id IS NULL ORDER BY rowid DESC")
+      : await allQuery("SELECT id, title, platform, product, date, score, analysis, thumb, status, owner FROM history WHERE cohort_id IS NULL AND owner = ? ORDER BY rowid DESC", [ownerEmail(req)]);
     const history = rows.map((r) => {
       let parsed = {};
       try {
@@ -329,27 +329,39 @@ app.post("/api/ads/import", requireEditor, upload.single("file"), async (req, re
 // không tốn Gemini). Tìm nhiều từ khóa dễ lẫn category (vd "khử mùi" → "khử mùi tủ
 // lạnh"), nên phải xem trước rồi mới chọn video đưa vào phân tích.
 app.post("/api/campaign/search", requireEditor, async (req, res) => {
-  try {
-    const rawKeyword = String(req.body?.keyword || "").trim();
-    const keywords = parseKeywords(rawKeyword);
-    if (!keywords.length) return res.status(400).json({ ok: false, message: "Vui lòng nhập từ khóa." });
-    const tokapiKey = resolveTokapiKey(req.body?.tokapiKey);
-    if (!tokapiKey) return res.status(400).json({ ok: false, error: "no-tokapi-key", message: "Chưa cấu hình RapidAPI key (TOKAPI_RAPIDAPI_KEY)." });
-    const minLikes = Math.max(0, Number(req.body?.minLikes) || 0);
-    const minViews = Math.max(0, Number(req.body?.minViews) || 0);
-    const target = Math.min(Math.max(1, Number(req.body?.target) || 50), 300);
+  // Validate TRƯỚC khi stream (vẫn trả JSON lỗi bình thường).
+  const rawKeyword = String(req.body?.keyword || "").trim();
+  const keywords = parseKeywords(rawKeyword);
+  if (!keywords.length) return res.status(400).json({ ok: false, message: "Vui lòng nhập từ khóa." });
+  const tokapiKey = resolveTokapiKey(req.body?.tokapiKey);
+  if (!tokapiKey) return res.status(400).json({ ok: false, error: "no-tokapi-key", message: "Chưa cấu hình RapidAPI key (TOKAPI_RAPIDAPI_KEY)." });
+  const minLikes = Math.max(0, Number(req.body?.minLikes) || 0);
+  const minViews = Math.max(0, Number(req.body?.minViews) || 0);
+  const target = Math.min(Math.max(1, Number(req.body?.target) || 50), 300);
+  const maxPages = Math.min(keywords.length * 100, 800);
 
-    // Ngân sách lệnh search rộng tay để gom đủ (đa luồng sort/publish_time gộp dedup),
-    // scale theo số keyword (mỗi keyword ~90 lệnh để vét cạn nguồn).
-    const maxPages = Math.min(keywords.length * 100, 800);
-    const { videos, scanned, exhausted, perKeyword } = await searchVideos({ keywords, key: tokapiKey, minLikes, minViews, target, maxPages });
+  // Search đa luồng có thể mất VÀI PHÚT → vượt timeout ~100s của proxy (Cloudflare).
+  // STREAM tiến trình dạng NDJSON: gửi 1 dòng heartbeat sau mỗi trang để giữ kết
+  // nối, dòng cuối {type:"done"} là kết quả. Client đọc dòng cuối.
+  res.setHeader("Content-Type", "application/x-ndjson; charset=utf-8");
+  res.setHeader("Cache-Control", "no-cache, no-transform");
+  res.setHeader("X-Accel-Buffering", "no");
+  res.write(JSON.stringify({ type: "start" }) + "\n"); // byte đầu ra ngay để proxy không 524
+  try {
+    const onProgress = (found: number, scanned: number, page: number) => {
+      res.write(JSON.stringify({ type: "progress", found, scanned, page }) + "\n");
+    };
+    const { videos, scanned, exhausted, perKeyword } = await searchVideos({ keywords, key: tokapiKey, minLikes, minViews, target, maxPages }, onProgress);
     if (!videos.length) {
-      return res.status(400).json({ ok: false, message: `Không tìm thấy video nào cho "${keywords[0]}" đạt ngưỡng (đã quét ${scanned} kết quả).` });
+      res.write(JSON.stringify({ type: "done", ok: false, message: `Không tìm thấy video nào cho "${keywords[0]}" đạt ngưỡng (đã quét ${scanned} kết quả).` }) + "\n");
+      return res.end();
     }
-    res.json({ ok: true, keywords, perKeyword, count: videos.length, scanned, exhausted, videos });
+    res.write(JSON.stringify({ type: "done", ok: true, keywords, perKeyword, count: videos.length, scanned, exhausted, videos }) + "\n");
+    res.end();
   } catch (err: any) {
     console.error("Lỗi campaign search:", err);
-    res.status(500).json({ ok: false, message: "Lỗi hệ thống khi tìm kiếm video." });
+    res.write(JSON.stringify({ type: "done", ok: false, message: "Lỗi hệ thống khi tìm kiếm video." }) + "\n");
+    res.end();
   }
 });
 
@@ -410,13 +422,13 @@ app.post("/api/campaign/create", requireEditor, async (req, res) => {
 app.get("/api/ads/cohorts", requireEditor, async (req, res) => {
   try {
     const rows = isAdminReq(req)
-      ? await allQuery("SELECT id, product, created, count, insight, kind FROM ads_cohorts ORDER BY created DESC")
-      : await allQuery("SELECT id, product, created, count, insight, kind FROM ads_cohorts WHERE owner = ? ORDER BY created DESC", [ownerEmail(req)]);
+      ? await allQuery("SELECT id, product, created, count, insight, kind, owner FROM ads_cohorts ORDER BY created DESC")
+      : await allQuery("SELECT id, product, created, count, insight, kind, owner FROM ads_cohorts WHERE owner = ? ORDER BY created DESC", [ownerEmail(req)]);
     const out = [];
     for (const r of rows) {
       const prog = await getQuery<{ done: number; total: number }>(
         "SELECT SUM(CASE WHEN status='completed' THEN 1 ELSE 0 END) AS done, COUNT(*) AS total FROM history WHERE cohort_id = ?", [r.id]);
-      out.push({ id: r.id, product: r.product, created: r.created, count: r.count, done: prog?.done || 0, total: prog?.total || 0, hasInsight: !!r.insight, kind: r.kind || "ads" });
+      out.push({ id: r.id, product: r.product, created: r.created, count: r.count, done: prog?.done || 0, total: prog?.total || 0, hasInsight: !!r.insight, kind: r.kind || "ads", owner: r.owner || "" });
     }
     res.json(out);
   } catch (e) { res.status(500).json({ ok: false }); }

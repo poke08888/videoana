@@ -79,6 +79,8 @@ export interface Analysis {
   sourceUrl?: string; // link video gốc (TikTok/YouTube) để đối chứng nội dung
   stats?: EngagementStats;
   ads?: AdsReport;
+  eng?: { score: number; tier?: string; engagementRate?: number }; // điểm tương tác trong cụm campaign
+  score?: number; // điểm nội dung tổng (0–100) — đính kèm khi mở phiếu để hiển thị trong phiếu
   meta: {
     platform: string;
     duration: string;
