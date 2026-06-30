@@ -136,8 +136,9 @@ app.post("/api/history", requireAuth, async (req, res) => {
   const entry = req.body;
   if (entry && entry.id) {
     try {
+      const srcUrl = String(entry.analysis?.sourceUrl || "").trim() || null;
       await runQuery(
-        "INSERT OR REPLACE INTO history (id, title, platform, product, date, score, analysis, thumb, status, owner) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "INSERT OR REPLACE INTO history (id, title, platform, product, date, score, analysis, thumb, status, owner, source_url) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         [
           entry.id,
           entry.title,
@@ -148,7 +149,8 @@ app.post("/api/history", requireAuth, async (req, res) => {
           JSON.stringify(entry.analysis),
           entry.thumb || "",
           entry.status || "completed",
-          ownerEmail(req)
+          ownerEmail(req),
+          srcUrl
         ]
       );
       return res.json({ ok: true });

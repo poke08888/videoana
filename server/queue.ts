@@ -93,6 +93,43 @@ async function processItem(item: any) {
   let tiktokTemp: string | null = null;
   let tiktokStats: any = null; // chỉ số tương tác TikTok (nếu phân tích từ link)
 
+  // ── TÁI DÙNG KHO: nếu video này (cùng link gốc) đã từng được mổ xẻ xong, lấy
+  // lại phần phân tích NỘI DUNG thay vì tải + gọi Gemini lại (tiết kiệm chi phí).
+  // Chỉ overlay chỉ số theo cụm (eng/ads) của lần này lên trên.
+  const srcUrlForReuse = String(meta.tiktokUrl || meta.youtubeUrl || "").trim();
+  if (srcUrlForReuse) {
+    try {
+      const prior = await getQuery(
+        "SELECT title, analysis FROM history WHERE source_url = ? AND status = 'completed' AND id != ? ORDER BY rowid DESC LIMIT 1",
+        [srcUrlForReuse, item.id]
+      );
+      if (prior?.analysis) {
+        const base = JSON.parse(prior.analysis);
+        if (base && base.checklist && base.acts) {
+          // Bỏ chỉ số cũ thuộc cụm khác, gắn chỉ số của lần này.
+          delete base.ads; delete base.eng;
+          if (meta.ads) base.ads = meta.ads;
+          if (meta.eng) base.eng = meta.eng;
+          base.sourceUrl = srcUrlForReuse;
+          const reuseScore = scoreOf(base);
+          const reuseTitle = prior.title || meta.form?.title;
+          await runQuery(
+            "UPDATE history SET status = 'completed', score = ?, analysis = ?, source_url = ?, title = COALESCE(NULLIF(?, ''), title), queue_meta = NULL WHERE id = ?",
+            [reuseScore, JSON.stringify(base), srcUrlForReuse, reuseTitle || "", item.id]
+          );
+          if (meta.email) await runQuery("UPDATE users SET count = count + 1 WHERE email = ?", [meta.email.toLowerCase().trim()]).catch(() => {});
+          console.log(`[nonelab] TÁI DÙNG kho cho link trùng (bỏ qua Gemini): ${srcUrlForReuse}`);
+          if (meta.cohortId) {
+            try { await finalizeCohortIfDone(meta.cohortId, new Date().toISOString()); } catch (e) { console.error("[nonelab] Lỗi chốt cụm (reuse):", e); }
+          }
+          return; // xong — không tải video, không gọi Gemini.
+        }
+      }
+    } catch (e) {
+      console.warn("[nonelab] Lỗi tra cứu tái dùng kho (bỏ qua, phân tích bình thường):", e);
+    }
+  }
+
   try {
     // Link TikTok: tự tải video về server qua RapidAPI (tokapi) trước khi phân tích.
     if (meta.tiktokUrl) {
@@ -153,9 +190,10 @@ async function processItem(item: any) {
     const score = scoreOf(decoratedAnalysis);
 
     // Cập nhật kết quả phân tích thành công — xóa queue_meta để không lưu lại apiKey.
+    // Lưu source_url để lần sau gặp video trùng link thì tái dùng, không gọi Gemini.
     await runQuery(
-      "UPDATE history SET status = 'completed', score = ?, analysis = ?, queue_meta = NULL WHERE id = ?",
-      [score, JSON.stringify(decoratedAnalysis), item.id]
+      "UPDATE history SET status = 'completed', score = ?, analysis = ?, source_url = ?, queue_meta = NULL WHERE id = ?",
+      [score, JSON.stringify(decoratedAnalysis), srcUrl || null, item.id]
     );
 
     // Tăng lượt phân tích của người dùng

@@ -136,6 +136,14 @@ export async function connectDB() {
   await addColumnIfMissing("history", "queue_meta TEXT");
   await addColumnIfMissing("history", "cohort_id TEXT"); // gom video theo cụm import
   await addColumnIfMissing("history", "owner TEXT"); // email người tạo — chỉ chủ sở hữu (và admin) xem được
+  await addColumnIfMissing("history", "source_url TEXT"); // link video gốc — để tái dùng phân tích khi trùng link
+  // Backfill source_url cho phiếu cũ đã hoàn tất (lấy từ JSON analysis). Best-effort
+  // — cần JSON1 của SQLite; nếu không có thì bỏ qua (catch).
+  try {
+    await runQuery("UPDATE history SET source_url = json_extract(analysis, '$.sourceUrl') WHERE source_url IS NULL AND status='completed' AND json_valid(analysis) AND json_extract(analysis, '$.sourceUrl') IS NOT NULL");
+  } catch (e) {
+    console.warn("[nonelab] Bỏ qua backfill source_url (JSON1 không khả dụng?)");
+  }
   await addColumnIfMissing("users", "must_change_password INTEGER DEFAULT 0");
 
   // 2c. Bảng cụm phân tích chỉ số ads (mỗi lần import 1 file Excel = 1 cohort).

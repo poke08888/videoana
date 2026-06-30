@@ -1048,6 +1048,28 @@ function CampaignView({ isMobile, integration, showToast, onOpenReport, isAdmin 
     setPreview(null);
     await reload(); openCohort(r.cohortId);
   };
+  // Tìm THÊM: nâng mục tiêu rồi gộp video MỚI vào danh sách đang duyệt (giữ lựa chọn
+  // hiện tại). Dùng khi sau khi loại video sai chủ đề thì còn quá ít.
+  const doSearchMore = async () => {
+    if (!preview || busy) return;
+    if (preview.exhausted) return showToast("Đã quét hết nguồn cho từ khóa này — thêm từ khóa khác (cách nhau dấu phẩy) để tìm thêm.");
+    setBusy(true); setProgress(null);
+    const want = Math.min(preview.videos.length + 50, 300);
+    const r = await searchCampaign(
+      { keyword: preview.keywords.join(", "), minLikes: Number(minLikes) || 0, target: want },
+      (p) => setProgress(p)
+    );
+    setBusy(false); setProgress(null);
+    if (!r?.ok) return showToast(r?.message || "Tìm thêm thất bại");
+    const existing = new Set(preview.videos.map((v) => v.awemeId));
+    const fresh = (r.videos || []).filter((v: any) => !existing.has(v.awemeId));
+    if (!fresh.length) return showToast(r.exhausted ? "Đã hết nguồn — thử thêm từ khóa khác." : "Chưa có video mới nào.");
+    const pick = { ...picked };
+    for (const v of fresh) pick[v.awemeId] = true;
+    setPicked(pick);
+    setPreview({ ...preview, videos: [...preview.videos, ...fresh], scanned: r.scanned, exhausted: r.exhausted, perKeyword: r.perKeyword || preview.perKeyword });
+    showToast(`Thêm ${fresh.length} video mới (tổng ${preview.videos.length + fresh.length}).`);
+  };
   const saveK = async () => { if (!knowledge) return; setSavingK(true); const r = await saveKnowledge(knowledge.slug, knowledge.product, knowledge.content); setSavingK(false); showToast(r?.ok ? "Đã lưu kho kiến thức" : "Lưu thất bại"); };
 
   const tcol = (t: string) => (t === "tốt" ? ["rgba(60,122,94,.13)", "#2f6b4f"] : t === "thấp" ? ["rgba(158,58,58,.12)", "#8f3232"] : ["rgba(176,106,22,.14)", "#8a5614"]);
@@ -1107,8 +1129,16 @@ function CampaignView({ isMobile, integration, showToast, onOpenReport, isAdmin 
               </div>
               <div style={c("color:#a8946f;font-size:11.5px;margin-top:3px")}>Bỏ tick những video lạc chủ đề (vd tìm “khử mùi” nhưng ra “khử mùi tủ lạnh”). Bấm tiêu đề để mở video trên TikTok đối chứng.</div>
             </div>
-            <button onClick={doAnalyze} disabled={creating || !pickedCount} style={c(`padding:11px 20px;border:none;border-radius:11px;background:linear-gradient(150deg,#3c7a5e,#2a5a44);color:#fff;font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:14px;cursor:${creating || !pickedCount ? "default" : "pointer"};opacity:${creating || !pickedCount ? .55 : 1};white-space:nowrap`)}>{creating ? "Đang tạo…" : `✓ Phân tích ${pickedCount} video`}</button>
+            <div style={c("display:flex;gap:8px;flex-wrap:wrap")}>
+              <button onClick={doSearchMore} disabled={busy || creating} title={preview.exhausted ? "Đã hết nguồn cho từ khóa này" : "Tìm thêm video và gộp vào danh sách"} style={c(`padding:11px 16px;border:1px solid rgba(176,106,22,.45);border-radius:11px;background:#fff;color:#9a5a12;font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:13.5px;cursor:${busy || creating ? "default" : "pointer"};opacity:${busy || creating ? .55 : 1};white-space:nowrap`)}>{busy ? "Đang tìm…" : "＋ Tìm thêm"}</button>
+              <button onClick={doAnalyze} disabled={creating || busy || !pickedCount} style={c(`padding:11px 20px;border:none;border-radius:11px;background:linear-gradient(150deg,#3c7a5e,#2a5a44);color:#fff;font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:14px;cursor:${creating || busy || !pickedCount ? "default" : "pointer"};opacity:${creating || busy || !pickedCount ? .55 : 1};white-space:nowrap`)}>{creating ? "Đang tạo…" : `✓ Phân tích ${pickedCount} video`}</button>
+            </div>
           </div>
+          {pickedCount > 0 && pickedCount < 10 && (
+            <div style={c("margin-bottom:10px;padding:9px 12px;border-radius:9px;background:rgba(176,106,22,.08);border:1px solid rgba(176,106,22,.25);color:#8a5614;font-size:12px")}>
+              Chỉ còn <b>{pickedCount}</b> video sau khi lọc — bấm <b>＋ Tìm thêm</b> để gom thêm video cùng chủ đề{preview.exhausted ? " (nguồn từ khóa hiện tại đã cạn — hãy thêm từ khóa khác rồi tìm lại)" : ""}.
+            </div>
+          )}
           <div style={c("display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px")}>
             <input value={pvFilter} onChange={(e: any) => setPvFilter(e.target.value)} placeholder="Lọc nhanh theo caption…" style={c("flex:1;min-width:180px;padding:8px 12px;border:1px solid rgba(140,96,40,.28);border-radius:9px;background:#fdfaf3;font-size:13px")} />
             <button onClick={() => setAll(true)} style={c("padding:7px 12px;border:1px solid rgba(140,96,40,.3);border-radius:9px;background:#fff;font-size:12px;cursor:pointer")}>Chọn tất cả</button>
