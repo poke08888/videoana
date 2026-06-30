@@ -592,6 +592,30 @@ app.post("/api/auth/login", async (req, res) => {
   }
 });
 
+// 2a. Lấy hồ sơ HIỆN TẠI từ DB (role/perms mới nhất). Client gọi lúc khởi động
+// để cập nhật quyền ngay sau khi admin đổi vai trò — không cần đăng nhập lại.
+app.get("/api/auth/me", requireAuth, async (req, res) => {
+  try {
+    const userRow = await getQuery("SELECT * FROM users WHERE email = ?", [req.user!.email.toLowerCase().trim()]);
+    if (!userRow) return res.status(404).json({ ok: false, message: "Không tìm thấy tài khoản." });
+    if (!userRow.active) return res.status(403).json({ ok: false, error: "inactive", message: "Tài khoản của bạn đã bị khóa." });
+    const user = {
+      email: userRow.email,
+      name: userRow.name,
+      role: userRow.role,
+      count: userRow.count,
+      active: userRow.active,
+      avBg: userRow.avBg,
+      perms: JSON.parse(userRow.perms),
+    };
+    // Cấp token mới phản ánh role hiện tại (token cũ có thể mang role cũ).
+    res.json({ ok: true, user, token: signToken({ email: user.email, role: user.role }) });
+  } catch (err) {
+    console.error("Lỗi lấy hồ sơ:", err);
+    res.status(500).json({ ok: false, message: "Lỗi hệ thống." });
+  }
+});
+
 // 2b. Đổi mật khẩu (cho người đã đăng nhập) — dùng để buộc đổi mật khẩu mặc định.
 app.post("/api/auth/change-password", requireAuth, async (req, res) => {
   const { currentPassword, newPassword } = req.body || {};

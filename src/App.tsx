@@ -4,7 +4,7 @@ import { css as c } from "./lib/csx";
 import { decorate, makeEntry, presetPerms, scoreOf, seedUsers, slug } from "./lib/analysis";
 import { buildReportHTML } from "./lib/reportHtml";
 import { buildRaw, seedDates, seedForms } from "./data/sampleAnalysis";
-import { analyzeVideo, analyzeVideoBatch, testGemini, authHeaders, importAds, listCohorts, getCohort, finalizeCohort, getKnowledge, saveKnowledge, getHistoryItem, searchCampaign, createCampaign } from "./lib/api";
+import { analyzeVideo, analyzeVideoBatch, testGemini, authHeaders, importAds, listCohorts, getCohort, finalizeCohort, getKnowledge, saveKnowledge, getHistoryItem, searchCampaign, createCampaign, getMe } from "./lib/api";
 import { embedFrames } from "./lib/frames";
 import type { AdminUser, Analysis, FormState, HistoryEntry, Level, Perms, Screen, User } from "./types";
 
@@ -150,6 +150,21 @@ export default function App() {
         const u = JSON.parse(savedUser);
         setUser(u);
         setScreen("dashboard");
+        // Đồng bộ role/perms mới nhất từ server (admin có thể đã đổi quyền sau
+        // khi user đăng nhập) — cập nhật ngay, không cần đăng nhập lại.
+        getMe().then((r) => {
+          if (r?.ok && r.user) {
+            setUser(r.user);
+            localStorage.setItem("nonelab_user", JSON.stringify(r.user));
+            if (r.token) localStorage.setItem("nonelab_token", r.token);
+          } else if (r?.error === "inactive") {
+            // Tài khoản bị khóa → đăng xuất.
+            setUser(null);
+            localStorage.removeItem("nonelab_user");
+            localStorage.removeItem("nonelab_token");
+            setScreen("auth");
+          }
+        }).catch(() => {});
       }
     } catch { }
 

@@ -25,6 +25,16 @@ export function authHeaders(): Record<string, string> {
   }
 }
 
+/** Lấy hồ sơ hiện tại (role/perms mới nhất) — refresh quyền không cần đăng nhập lại. */
+export async function getMe(): Promise<any> {
+  try {
+    const res = await fetch("/api/auth/me", { headers: authHeaders() });
+    return await res.json().catch(() => ({ ok: false }));
+  } catch {
+    return { ok: false };
+  }
+}
+
 /** Gọi backend mổ xẻ video bằng Gemini. */
 export async function analyzeVideo(opts: {
   form: AnalyzeForm;
