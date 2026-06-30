@@ -97,52 +97,47 @@ export async function importAds(opts: { file: File; product: string; apiKey?: st
 export const getHistoryItem = (id: string): Promise<any> => jget(`/api/history/${id}`);
 
 /** Tìm video TikTok theo từ khóa + ngưỡng tương tác → tạo cụm campaign. */
-// Bước 1: tìm + trả danh sách video để duyệt (chưa phân tích).
-// Endpoint STREAM NDJSON (search có thể vài phút) — đọc từng dòng, cập nhật tiến
-// trình qua onProgress, lấy dòng {type:"done"} làm kết quả cuối.
-export async function searchCampaign(
-  opts: { keyword: string; minLikes?: number; minViews?: number; target?: number },
-  onProgress?: (p: { found: number; scanned: number; page: number }) => void
-): Promise<any> {
+// Bước 1: TẠO JOB tìm video chạy nền (không bị hủy khi đổi tab/F5). Trả jobId.
+export async function startCampaignSearch(opts: { keyword: string; minLikes?: number; minViews?: number; target?: number }): Promise<any> {
   try {
     const res = await fetch("/api/campaign/search", {
       method: "POST",
       headers: { ...authHeaders(), "Content-Type": "application/json" },
       body: JSON.stringify(opts),
     });
-    // Lỗi xác thực/validate trả JSON thường (không stream).
-    const ctype = res.headers.get("content-type") || "";
-    if (!res.ok && !ctype.includes("ndjson")) {
-      return await res.json().catch(() => ({ ok: false, message: `Lỗi máy chủ (${res.status}).` }));
-    }
-    if (!res.body) return await res.json().catch(() => ({ ok: false, message: "Phản hồi không hợp lệ." }));
-
-    const reader = res.body.getReader();
-    const decoder = new TextDecoder();
-    let buf = "";
-    let done: any = null;
-    const handleLine = (line: string) => {
-      const s = line.trim();
-      if (!s) return;
-      let obj: any;
-      try { obj = JSON.parse(s); } catch { return; }
-      if (obj.type === "progress") onProgress?.({ found: obj.found, scanned: obj.scanned, page: obj.page });
-      else if (obj.type === "done") done = obj;
-    };
-    for (;;) {
-      const { value, done: rdDone } = await reader.read();
-      if (rdDone) break;
-      buf += decoder.decode(value, { stream: true });
-      let nl: number;
-      while ((nl = buf.indexOf("\n")) >= 0) {
-        handleLine(buf.slice(0, nl));
-        buf = buf.slice(nl + 1);
-      }
-    }
-    if (buf) handleLine(buf);
-    return done || { ok: false, message: "Mất kết nối khi tìm kiếm (chưa nhận được kết quả)." };
+    return await res.json().catch(() => ({ ok: false, message: "Phản hồi không hợp lệ." }));
   } catch {
     return { ok: false, message: "Không gọi được backend." };
+  }
+}
+
+// Poll trạng thái 1 job (searching/ready/failed). Khi ready có .videos.
+export async function getCampaignJob(jobId: string): Promise<any> {
+  try {
+    const res = await fetch(`/api/campaign/job/${jobId}`, { headers: authHeaders() });
+    return await res.json().catch(() => ({ ok: false }));
+  } catch {
+    return { ok: false };
+  }
+}
+
+// Danh sách job đang chạy / vừa xong của người dùng — để khôi phục sau F5.
+export async function getActiveCampaignJobs(): Promise<any> {
+  try {
+    const res = await fetch("/api/campaign/jobs", { headers: authHeaders() });
+    return await res.json().catch(() => ({ ok: false, jobs: [] }));
+  } catch {
+    return { ok: false, jobs: [] };
+  }
+}
+
+// Bỏ job (sau khi đã tạo cohort hoặc huỷ).
+export async function discardCampaignJob(jobId: string): Promise<any> {
+  try {
+    const res = await fetch(`/api/campaign/job/${jobId}/discard`, { method: "POST", headers: authHeaders() });
+    return await res.json().catch(() => ({ ok: false }));
+  } catch {
+    return { ok: false };
   }
 }
 

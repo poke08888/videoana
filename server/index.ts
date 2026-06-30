@@ -330,41 +330,95 @@ app.post("/api/ads/import", requireEditor, upload.single("file"), async (req, re
 // BƯỚC 1 — chỉ TÌM và trả danh sách video để người dùng DUYỆT (không tạo cohort,
 // không tốn Gemini). Tìm nhiều từ khóa dễ lẫn category (vd "khử mùi" → "khử mùi tủ
 // lạnh"), nên phải xem trước rồi mới chọn video đưa vào phân tích.
-app.post("/api/campaign/search", requireEditor, async (req, res) => {
-  // Validate TRƯỚC khi stream (vẫn trả JSON lỗi bình thường).
-  const rawKeyword = String(req.body?.keyword || "").trim();
-  const keywords = parseKeywords(rawKeyword);
-  if (!keywords.length) return res.status(400).json({ ok: false, message: "Vui lòng nhập từ khóa." });
-  const tokapiKey = resolveTokapiKey(req.body?.tokapiKey);
-  if (!tokapiKey) return res.status(400).json({ ok: false, error: "no-tokapi-key", message: "Chưa cấu hình RapidAPI key (TOKAPI_RAPIDAPI_KEY)." });
-  const minLikes = Math.max(0, Number(req.body?.minLikes) || 0);
-  const minViews = Math.max(0, Number(req.body?.minViews) || 0);
-  const target = Math.min(Math.max(1, Number(req.body?.target) || 50), 300);
+// Chạy NỀN một job tìm video (cập nhật tiến trình + kết quả vào bảng search_jobs).
+// Tách khỏi vòng đời request → đổi tab/F5 không hủy; client poll để xem tiến trình.
+async function runSearchJob(jobId: string, keywords: string[], tokapiKey: string, minLikes: number, minViews: number, target: number) {
   const maxPages = Math.min(keywords.length * 100, 800);
-
-  // Search đa luồng có thể mất VÀI PHÚT → vượt timeout ~100s của proxy (Cloudflare).
-  // STREAM tiến trình dạng NDJSON: gửi 1 dòng heartbeat sau mỗi trang để giữ kết
-  // nối, dòng cuối {type:"done"} là kết quả. Client đọc dòng cuối.
-  res.setHeader("Content-Type", "application/x-ndjson; charset=utf-8");
-  res.setHeader("Cache-Control", "no-cache, no-transform");
-  res.setHeader("X-Accel-Buffering", "no");
-  res.write(JSON.stringify({ type: "start" }) + "\n"); // byte đầu ra ngay để proxy không 524
+  let lastWrite = 0;
   try {
     const onProgress = (found: number, scanned: number, page: number) => {
-      res.write(JSON.stringify({ type: "progress", found, scanned, page }) + "\n");
+      // Throttle ghi DB ~mỗi 1.5s để đỡ tốn I/O (search kéo dài hàng trăm trang).
+      const now = Date.now();
+      if (now - lastWrite < 1500) return;
+      lastWrite = now;
+      runQuery("UPDATE search_jobs SET found=?, scanned=?, pages=?, updated=? WHERE id=?", [found, scanned, page, new Date().toISOString(), jobId]).catch(() => {});
     };
     const { videos, scanned, exhausted, perKeyword } = await searchVideos({ keywords, key: tokapiKey, minLikes, minViews, target, maxPages }, onProgress);
     if (!videos.length) {
-      res.write(JSON.stringify({ type: "done", ok: false, message: `Không tìm thấy video nào cho "${keywords[0]}" đạt ngưỡng (đã quét ${scanned} kết quả).` }) + "\n");
-      return res.end();
+      await runQuery("UPDATE search_jobs SET status='failed', scanned=?, message=?, updated=? WHERE id=?",
+        [scanned, `Không tìm thấy video nào cho "${keywords[0]}" đạt ngưỡng (đã quét ${scanned} kết quả).`, new Date().toISOString(), jobId]);
+      return;
     }
-    res.write(JSON.stringify({ type: "done", ok: true, keywords, perKeyword, count: videos.length, scanned, exhausted, videos }) + "\n");
-    res.end();
+    await runQuery("UPDATE search_jobs SET status='ready', found=?, scanned=?, exhausted=?, per_keyword=?, videos=?, updated=? WHERE id=?",
+      [videos.length, scanned, exhausted ? 1 : 0, JSON.stringify(perKeyword), JSON.stringify(videos), new Date().toISOString(), jobId]);
   } catch (err: any) {
-    console.error("Lỗi campaign search:", err);
-    res.write(JSON.stringify({ type: "done", ok: false, message: "Lỗi hệ thống khi tìm kiếm video." }) + "\n");
-    res.end();
+    console.error("Lỗi runSearchJob:", err);
+    await runQuery("UPDATE search_jobs SET status='failed', message=?, updated=? WHERE id=?", ["Lỗi hệ thống khi tìm kiếm video.", new Date().toISOString(), jobId]).catch(() => {});
   }
+}
+
+// BƯỚC 1 — TẠO JOB tìm video chạy nền, trả jobId NGAY. Client poll /job/:id.
+app.post("/api/campaign/search", requireEditor, async (req, res) => {
+  try {
+    const keywords = parseKeywords(String(req.body?.keyword || ""));
+    if (!keywords.length) return res.status(400).json({ ok: false, message: "Vui lòng nhập từ khóa." });
+    const tokapiKey = resolveTokapiKey(req.body?.tokapiKey);
+    if (!tokapiKey) return res.status(400).json({ ok: false, error: "no-tokapi-key", message: "Chưa cấu hình RapidAPI key (TOKAPI_RAPIDAPI_KEY)." });
+    const minLikes = Math.max(0, Number(req.body?.minLikes) || 0);
+    const minViews = Math.max(0, Number(req.body?.minViews) || 0);
+    const target = Math.min(Math.max(1, Number(req.body?.target) || 50), 300);
+    const owner = ownerEmail(req);
+    const jobId = "j" + Math.random().toString(36).slice(2, 10);
+    const now = new Date().toISOString();
+    await runQuery(
+      "INSERT INTO search_jobs (id, owner, keywords, min_likes, min_views, target, status, created, updated) VALUES (?, ?, ?, ?, ?, ?, 'searching', ?, ?)",
+      [jobId, owner, JSON.stringify(keywords), minLikes, minViews, target, now, now]
+    );
+    // Chạy nền — KHÔNG await (request trả về ngay).
+    runSearchJob(jobId, keywords, tokapiKey, minLikes, minViews, target);
+    res.json({ ok: true, jobId, keywords, target });
+  } catch (err: any) {
+    console.error("Lỗi tạo job search:", err);
+    res.status(500).json({ ok: false, message: "Lỗi hệ thống khi khởi tạo tìm kiếm." });
+  }
+});
+
+// Poll 1 job (chủ sở hữu hoặc admin). Trả videos khi status='ready'.
+app.get("/api/campaign/job/:id", requireEditor, async (req, res) => {
+  try {
+    const j = await getQuery<any>("SELECT * FROM search_jobs WHERE id = ?", [req.params.id]);
+    if (!j) return res.status(404).json({ ok: false, message: "Không tìm thấy job." });
+    if (!isAdminReq(req) && String(j.owner || "").toLowerCase().trim() !== ownerEmail(req)) return res.status(404).json({ ok: false });
+    res.json({
+      ok: true, jobId: j.id, status: j.status,
+      keywords: JSON.parse(j.keywords || "[]"), target: j.target,
+      found: j.found || 0, scanned: j.scanned || 0, pages: j.pages || 0,
+      exhausted: !!j.exhausted, perKeyword: j.per_keyword ? JSON.parse(j.per_keyword) : {},
+      message: j.message || "",
+      videos: j.status === "ready" && j.videos ? JSON.parse(j.videos) : undefined,
+    });
+  } catch (e: any) { res.status(500).json({ ok: false }); }
+});
+
+// Job đang chạy/đã xong gần nhất của người dùng — để khôi phục sau khi F5/đổi máy.
+app.get("/api/campaign/jobs", requireEditor, async (req, res) => {
+  try {
+    const rows = isAdminReq(req)
+      ? await allQuery<any>("SELECT id, owner, keywords, target, status, found, scanned, created FROM search_jobs WHERE status IN ('searching','ready') ORDER BY created DESC LIMIT 5")
+      : await allQuery<any>("SELECT id, owner, keywords, target, status, found, scanned, created FROM search_jobs WHERE status IN ('searching','ready') AND owner = ? ORDER BY created DESC LIMIT 3", [ownerEmail(req)]);
+    res.json({ ok: true, jobs: rows.map((j) => ({ jobId: j.id, status: j.status, keywords: JSON.parse(j.keywords || "[]"), target: j.target, found: j.found || 0, scanned: j.scanned || 0, created: j.created })) });
+  } catch (e: any) { res.status(500).json({ ok: false, jobs: [] }); }
+});
+
+// Bỏ job (khi đã tạo cohort xong, hoặc người dùng huỷ kết quả).
+app.post("/api/campaign/job/:id/discard", requireEditor, async (req, res) => {
+  try {
+    const j = await getQuery<any>("SELECT owner FROM search_jobs WHERE id = ?", [req.params.id]);
+    if (j && (isAdminReq(req) || String(j.owner || "").toLowerCase().trim() === ownerEmail(req))) {
+      await runQuery("DELETE FROM search_jobs WHERE id = ?", [req.params.id]);
+    }
+    res.json({ ok: true });
+  } catch (e: any) { res.status(500).json({ ok: false }); }
 });
 
 // BƯỚC 2 — nhận danh sách video ĐÃ DUYỆT, tạo cohort + xếp hàng Gemini mổ xẻ.

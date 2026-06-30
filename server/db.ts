@@ -174,6 +174,33 @@ export async function connectDB() {
     )
   `);
 
+  // 2e. Job tìm video TikTok chạy NỀN — để search không bị hủy khi đổi tab/F5.
+  await runQuery(`
+    CREATE TABLE IF NOT EXISTS search_jobs (
+      id TEXT PRIMARY KEY,
+      owner TEXT,
+      keywords TEXT,          -- JSON array từ khóa
+      min_likes INTEGER DEFAULT 0,
+      min_views INTEGER DEFAULT 0,
+      target INTEGER DEFAULT 50,
+      status TEXT DEFAULT 'searching', -- 'searching' | 'ready' | 'failed'
+      found INTEGER DEFAULT 0,
+      scanned INTEGER DEFAULT 0,
+      pages INTEGER DEFAULT 0,
+      exhausted INTEGER DEFAULT 0,
+      per_keyword TEXT,       -- JSON
+      videos TEXT,            -- JSON array (khi ready)
+      message TEXT,
+      created TEXT,
+      updated TEXT
+    )
+  `);
+  // Job đang 'searching' khi backend tắt → không thể tiếp tục giữa chừng; đánh
+  // dấu failed để client biết và tìm lại.
+  try {
+    await runQuery("UPDATE search_jobs SET status='failed', message='Máy chủ khởi động lại — vui lòng tìm lại.' WHERE status='searching'");
+  } catch {}
+
   // 3. Tự động Seed 5 người dùng mặc định nếu bảng users trống
   try {
     const userRow = await getQuery("SELECT COUNT(*) as count FROM users");

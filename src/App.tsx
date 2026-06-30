@@ -4,7 +4,7 @@ import { css as c } from "./lib/csx";
 import { decorate, makeEntry, presetPerms, scoreOf, seedUsers, slug } from "./lib/analysis";
 import { buildReportHTML } from "./lib/reportHtml";
 import { buildRaw, seedDates, seedForms } from "./data/sampleAnalysis";
-import { analyzeVideo, analyzeVideoBatch, testGemini, authHeaders, importAds, listCohorts, getCohort, finalizeCohort, getKnowledge, saveKnowledge, getHistoryItem, searchCampaign, createCampaign, getMe } from "./lib/api";
+import { analyzeVideo, analyzeVideoBatch, testGemini, authHeaders, importAds, listCohorts, getCohort, finalizeCohort, getKnowledge, saveKnowledge, getHistoryItem, startCampaignSearch, getCampaignJob, getActiveCampaignJobs, discardCampaignJob, createCampaign, getMe } from "./lib/api";
 import { embedFrames } from "./lib/frames";
 import type { AdminUser, Analysis, FormState, HistoryEntry, Level, Perms, Screen, User } from "./types";
 
@@ -997,6 +997,11 @@ function CampaignView({ isMobile, integration, showToast, onOpenReport, isAdmin 
   const [pvFilter, setPvFilter] = useState("");
   const [creating, setCreating] = useState(false);
   const [progress, setProgress] = useState<{ found: number; scanned: number; page: number } | null>(null);
+  // Job tìm video chạy NỀN — sống sót khi đổi tab/F5. Client poll trạng thái.
+  const [jobId, setJobId] = useState<string | null>(null);
+  const [jobTarget, setJobTarget] = useState(0);
+  const jobModeRef = useRef<"new" | "more">("new");
+  const LSJOB = "nonelab_campaign_job";
 
   const reload = async () => { const cs = await listCohorts(); setCohorts((Array.isArray(cs) ? cs : []).filter((c: any) => c.kind === "campaign")); };
   useEffect(() => { reload(); }, []);
@@ -1012,21 +1017,14 @@ function CampaignView({ isMobile, integration, showToast, onOpenReport, isAdmin 
 
   const doSearch = async () => {
     if (!keyword.trim()) return showToast("Nhập từ khóa cần tìm");
-    // Bước tìm không dùng Gemini (chỉ TokAPI); bước phân tích server tự dùng key
-    // trong .env nếu client không có — nên KHÔNG chặn theo key cục bộ ở đây.
+    // Tìm = TẠO JOB chạy nền (không hủy khi đổi tab/F5); poll để xem tiến trình.
     setBusy(true); setPreview(null); setSel(null); setProgress(null);
-    const r = await searchCampaign(
-      { keyword: keyword.trim(), minLikes: Number(minLikes) || 0, target: Number(target) || 50 },
-      (p) => setProgress(p)
-    );
-    setBusy(false); setProgress(null);
-    if (!r?.ok) return showToast(r?.message || "Tìm kiếm thất bại");
-    // Mặc định chọn tất cả; người dùng bỏ tick video sai category.
-    const pick: Record<string, boolean> = {};
-    for (const v of r.videos) pick[v.awemeId] = true;
-    setPicked(pick); setPvFilter("");
-    setPreview({ videos: r.videos, keywords: r.keywords, scanned: r.scanned, exhausted: r.exhausted, perKeyword: r.perKeyword || {} });
-    showToast(`Tìm thấy ${r.count} video (quét ${r.scanned})${r.exhausted ? " — đã quét hết nguồn" : ""}. Duyệt rồi bấm phân tích.`);
+    jobModeRef.current = "new";
+    const r = await startCampaignSearch({ keyword: keyword.trim(), minLikes: Number(minLikes) || 0, target: Number(target) || 50 });
+    if (!r?.ok) { setBusy(false); return showToast(r?.message || "Không khởi tạo được tìm kiếm"); }
+    setJobTarget(r.target || Number(target) || 50);
+    try { localStorage.setItem(LSJOB, JSON.stringify({ jobId: r.jobId })); } catch {}
+    setJobId(r.jobId); // useEffect bắt đầu poll
   };
   const pickedCount = preview ? preview.videos.filter((v) => picked[v.awemeId]).length : 0;
   const pvVisible = preview ? preview.videos.filter((v) => !pvFilter.trim() || (v.desc || "").toLowerCase().includes(pvFilter.trim().toLowerCase())) : [];
@@ -1048,28 +1046,66 @@ function CampaignView({ isMobile, integration, showToast, onOpenReport, isAdmin 
     setPreview(null);
     await reload(); openCohort(r.cohortId);
   };
-  // Tìm THÊM: nâng mục tiêu rồi gộp video MỚI vào danh sách đang duyệt (giữ lựa chọn
-  // hiện tại). Dùng khi sau khi loại video sai chủ đề thì còn quá ít.
+  // Tìm THÊM: tạo job mới (mode 'more'), khi xong gộp video MỚI vào danh sách đang
+  // duyệt (giữ lựa chọn). Dùng khi sau khi loại video sai chủ đề thì còn quá ít.
   const doSearchMore = async () => {
     if (!preview || busy) return;
     if (preview.exhausted) return showToast("Đã quét hết nguồn cho từ khóa này — thêm từ khóa khác (cách nhau dấu phẩy) để tìm thêm.");
     setBusy(true); setProgress(null);
+    jobModeRef.current = "more";
     const want = Math.min(preview.videos.length + 50, 300);
-    const r = await searchCampaign(
-      { keyword: preview.keywords.join(", "), minLikes: Number(minLikes) || 0, target: want },
-      (p) => setProgress(p)
-    );
-    setBusy(false); setProgress(null);
-    if (!r?.ok) return showToast(r?.message || "Tìm thêm thất bại");
-    const existing = new Set(preview.videos.map((v) => v.awemeId));
-    const fresh = (r.videos || []).filter((v: any) => !existing.has(v.awemeId));
-    if (!fresh.length) return showToast(r.exhausted ? "Đã hết nguồn — thử thêm từ khóa khác." : "Chưa có video mới nào.");
-    const pick = { ...picked };
-    for (const v of fresh) pick[v.awemeId] = true;
-    setPicked(pick);
-    setPreview({ ...preview, videos: [...preview.videos, ...fresh], scanned: r.scanned, exhausted: r.exhausted, perKeyword: r.perKeyword || preview.perKeyword });
-    showToast(`Thêm ${fresh.length} video mới (tổng ${preview.videos.length + fresh.length}).`);
+    const r = await startCampaignSearch({ keyword: preview.keywords.join(", "), minLikes: Number(minLikes) || 0, target: want });
+    if (!r?.ok) { setBusy(false); return showToast(r?.message || "Tìm thêm thất bại"); }
+    setJobTarget(r.target || want);
+    setJobId(r.jobId);
   };
+
+  // Poll job tìm video. Sống độc lập với request → đổi tab/F5 không hủy search.
+  useEffect(() => {
+    if (!jobId) return;
+    let stop = false;
+    const finish = () => { setBusy(false); setProgress(null); setJobId(null); try { localStorage.removeItem(LSJOB); } catch {} };
+    const tick = async () => {
+      const j = await getCampaignJob(jobId);
+      if (stop) return;
+      if (!j?.ok) { showToast("Mất kết nối job tìm kiếm."); finish(); return; }
+      if (j.status === "searching") { setBusy(true); setProgress({ found: j.found || 0, scanned: j.scanned || 0, page: j.pages || 0 }); return; }
+      if (j.status === "failed") { showToast(j.message || "Tìm kiếm thất bại"); finish(); return; }
+      if (j.status === "ready") {
+        const videos: any[] = j.videos || [];
+        if (jobModeRef.current === "more") {
+          setPreview((prev) => {
+            if (!prev) return prev;
+            const existing = new Set(prev.videos.map((v) => v.awemeId));
+            const fresh = videos.filter((v) => !existing.has(v.awemeId));
+            setPicked((pp) => { const n = { ...pp }; for (const v of fresh) n[v.awemeId] = true; return n; });
+            showToast(fresh.length ? `Thêm ${fresh.length} video mới (tổng ${prev.videos.length + fresh.length}).` : (j.exhausted ? "Đã hết nguồn — thử thêm từ khóa khác." : "Chưa có video mới nào."));
+            return { ...prev, videos: [...prev.videos, ...fresh], scanned: j.scanned, exhausted: j.exhausted, perKeyword: j.perKeyword || prev.perKeyword };
+          });
+        } else {
+          const pick: Record<string, boolean> = {}; for (const v of videos) pick[v.awemeId] = true;
+          setPicked(pick); setPvFilter("");
+          setPreview({ videos, keywords: j.keywords, scanned: j.scanned, exhausted: j.exhausted, perKeyword: j.perKeyword || {} });
+          showToast(`Tìm thấy ${videos.length} video (quét ${j.scanned})${j.exhausted ? " — đã quét hết nguồn" : ""}. Duyệt rồi bấm phân tích.`);
+        }
+        discardCampaignJob(jobId).catch(() => {});
+        finish();
+      }
+    };
+    tick();
+    const iv = setInterval(tick, 3000);
+    return () => { stop = true; clearInterval(iv); };
+  }, [jobId]);
+
+  // Khôi phục job đang chạy sau khi F5 / đổi máy (server vẫn đang tìm).
+  useEffect(() => {
+    (async () => {
+      let resume: string | null = null;
+      try { const s = localStorage.getItem(LSJOB); if (s) resume = JSON.parse(s).jobId; } catch {}
+      if (!resume) { const r = await getActiveCampaignJobs(); if (r?.ok && r.jobs?.length) resume = r.jobs[0].jobId; }
+      if (resume) { jobModeRef.current = "new"; setBusy(true); setJobId(resume); }
+    })();
+  }, []);
   const saveK = async () => { if (!knowledge) return; setSavingK(true); const r = await saveKnowledge(knowledge.slug, knowledge.product, knowledge.content); setSavingK(false); showToast(r?.ok ? "Đã lưu kho kiến thức" : "Lưu thất bại"); };
 
   const tcol = (t: string) => (t === "tốt" ? ["rgba(60,122,94,.13)", "#2f6b4f"] : t === "thấp" ? ["rgba(158,58,58,.12)", "#8f3232"] : ["rgba(176,106,22,.14)", "#8a5614"]);
@@ -1111,7 +1147,7 @@ function CampaignView({ isMobile, integration, showToast, onOpenReport, isAdmin 
         {busy && (
           <div style={c("margin-top:10px;display:flex;align-items:center;gap:10px;color:#9a5a12;font-size:12.5px;font-family:'Space Grotesk',sans-serif")}>
             <span style={c("width:13px;height:13px;border:2px solid rgba(154,90,18,.3);border-top-color:#9a5a12;border-radius:50%;display:inline-block;animation:ns-spin 1s linear infinite")} />
-            {progress ? `Đã tìm được ${progress.found}/${Number(target) || 50} video theo yêu cầu · đã quét ${progress.scanned}` : "Đang kết nối TikTok… (search nhiều từ khóa có thể mất vài phút)"}
+            {progress ? `Đã tìm được ${progress.found}/${jobTarget || Number(target) || 50} video theo yêu cầu · đã quét ${progress.scanned}` : "Đang khởi tạo tìm kiếm nền… (đổi tab/F5 vẫn chạy)"}
           </div>
         )}
         <div style={c("color:#8a7c67;font-size:11.5px;margin-top:10px")}>Lưu ý: mỗi từ khóa lộ ra một kho ~600 video; nhập nhiều từ khóa (cách nhau dấu phẩy) sẽ gộp dedup để vét được nhiều hơn. Tìm xong bạn DUYỆT danh sách (loại video sai chủ đề) rồi mới bấm phân tích — chưa tốn Gemini ở bước tìm.</div>
