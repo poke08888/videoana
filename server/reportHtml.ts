@@ -221,7 +221,7 @@ ul.k li:before{content:"";position:absolute;left:4px;top:17px;width:7px;height:7
 footer{padding:40px 0 70px;color:#8a7c67;font-size:12.5px;font-family:var(--ui);letter-spacing:.04em}
 @media(max-width:680px){.two{grid-template-columns:1fr}.beats{margin-left:0}.mgrid{grid-template-columns:1fr}.camp{grid-template-columns:1fr}table,tbody,tr,td{display:block;width:100%}thead{display:none}.cc{width:auto}td{border:none;padding:3px 0}tr{border-bottom:1px solid rgba(70,54,32,.1);padding:14px 0}}
 </style></head><body>
-<header class="hero"><div class="wrap"><span class="eb">Nonelab · Phân tích video · Khung Năm Lực</span><h1>Phiếu <em>phân tích</em> video</h1><p class="sub">${esc(a.subtitle)}</p>${srcBlock}<dl class="meta">${metaRow}</dl></div></header>
+<header class="hero"><div class="wrap"><span class="eb">Nonelab · Phân tích video · Khung Năm Lực</span><h1>Phiếu <em>phân tích</em> video</h1><p class="sub">${esc(a.subtitle)}</p>${(() => { const s = (a as any).contentSummary || (a.acts || []).map((x: any) => x.summary).filter(Boolean).slice(0, 3).join(" "); return s ? `<p style="font-family:'Be Vietnam Pro',sans-serif;color:#e9dcc4;font-size:15px;line-height:1.6;margin:12px 0 0;max-width:66ch">${esc(s)}</p>` : ""; })()}${srcBlock}<dl class="meta">${metaRow}</dl></div></header>
 <main class="wrap">
 <section class="sec"><div class="sh"><span class="sno">Chốt nhanh</span><h2>Vì sao nó chạy</h2></div><div class="verdict">${verdict}</div></section>
 ${adsSection(a)}

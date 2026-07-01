@@ -1707,6 +1707,12 @@ function ReportView({ a, metaList, videoFile, isMobile }: { a: Analysis; metaLis
             <div style={c("font-family:'Space Grotesk',sans-serif;text-transform:uppercase;letter-spacing:.3em;font-size:10.5px;color:#e0a64e;font-weight:600;margin-bottom:16px")}>Nonelab · Phân tích video · Khung Năm Lực</div>
             <h1 style={c("font-family:'Fraunces',serif;font-weight:900;font-size:clamp(26px,5vw,52px);line-height:1.0;letter-spacing:-.02em;margin:0 0 10px;color:#f6efe0")}>Phiếu <span style={c("font-style:italic;font-weight:400;color:#e8bd72")}>phân tích</span> video</h1>
             <p style={c("font-family:'Fraunces',serif;font-style:italic;font-size:clamp(13px,2.4vw,20px);color:#cdbfa6;margin:0;max-width:60ch")}>{a.subtitle}</p>
+            {(() => {
+              const summary = a.contentSummary || (a.acts?.map((x) => x.summary).filter(Boolean).slice(0, 3).join(" ")) || "";
+              return summary ? (
+                <p style={c("font-size:clamp(12.5px,1.9vw,15px);color:#e9dcc4;line-height:1.6;margin:12px 0 0;max-width:66ch")}>{summary}</p>
+              ) : null;
+            })()}
             {(a.sourceUrl || a.ads?.link) && (
               <a href={a.sourceUrl || a.ads?.link} target="_blank" rel="noopener" style={c("display:inline-block;margin-top:12px;font-family:'Space Grotesk',sans-serif;font-size:13px;font-weight:600;color:#e8bd72;text-decoration:none;border-bottom:1px solid rgba(232,189,114,.4)")}>▶ Xem video gốc để đối chứng</a>
             )}

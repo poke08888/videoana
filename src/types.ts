@@ -76,6 +76,7 @@ export interface AdsReport {
 
 export interface Analysis {
   subtitle: string;
+  contentSummary?: string; // đoạn tóm tắt nội dung video (hiện dưới tiêu đề phiếu)
   sourceUrl?: string; // link video gốc (TikTok/YouTube) để đối chứng nội dung
   stats?: EngagementStats;
   ads?: AdsReport;

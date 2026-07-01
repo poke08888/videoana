@@ -24,6 +24,7 @@ Trả về DUY NHẤT một object JSON hợp lệ (không kèm markdown, không
 
 {
   "subtitle": "1 câu tóm tắt video (sản phẩm — chủ đề)",
+  "contentSummary": "2-3 câu tóm tắt NỘI DUNG video: video nói về gì, diễn biến chính, nhân vật làm gì, chốt ở đâu — để người đọc hình dung nhanh video mà chưa cần xem.",
   "meta": {
     "platform": "nền tảng", "duration": "ví dụ '46 giây · dọc 9:16'",
     "genre": "thể loại", "product": "tên sản phẩm",
