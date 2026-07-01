@@ -17,7 +17,7 @@ export interface SearchVideo {
   stats: EngagementStats;
 }
 
-async function searchPage(keyword: string, count: number, offset: number, key: string, extra?: Record<string, number>): Promise<any> {
+async function searchPage(keyword: string, count: number, offset: number, key: string, extra?: Record<string, number | string>): Promise<any> {
   const u = new URL(`https://${HOST}/v1/search/post`);
   u.searchParams.set("keyword", keyword);
   u.searchParams.set("count", String(count));
@@ -102,6 +102,8 @@ export interface SearchOpts {
   minViews?: number;
   target?: number; // số video cần gom (sau lọc)
   maxPages?: number; // trần số trang để chặn chi phí API
+  region?: string; // lọc theo vùng (vd 'VN' — chỉ video Việt Nam)
+  shouldStop?: () => boolean; // trả true để dừng sớm (người dùng bấm "Dừng tìm")
 }
 
 /** Tách chuỗi keyword người dùng nhập (phẩy / xuống dòng / chấm phẩy) thành mảng sạch, dedup. */
@@ -136,6 +138,7 @@ export async function searchVideos(
   const target = Math.min(Math.max(1, opts.target || 50), 500);
   // Trần TỔNG số lệnh search trên mọi keyword × luồng (chặn chi phí). Mặc định rộng tay.
   const pageBudget = Math.min(opts.maxPages || 160, 800);
+  const region = (opts.region || "").trim();
   const PAGE = 20;
   const PAGES_PER_STREAM = 20; // mỗi luồng API cạn ~16 trang
 
@@ -149,16 +152,18 @@ export async function searchVideos(
   outer: for (const keyword of keywords) {
     const before = out.length;
     for (const extra of SEARCH_STREAMS) {
-      if (out.length >= target || pages >= pageBudget) {
+      if (out.length >= target || pages >= pageBudget || opts.shouldStop?.()) {
         stoppedEarly = true;
         perKeyword[keyword] = out.length - before;
         break outer;
       }
       let offset = 0;
+      const streamExtra: Record<string, number | string> = region ? { ...extra, region } : extra;
       for (let p = 0; p < PAGES_PER_STREAM && out.length < target && pages < pageBudget; p++) {
+        if (opts.shouldStop?.()) { stoppedEarly = true; perKeyword[keyword] = out.length - before; break outer; }
         let j: any;
         try {
-          j = await searchPage(keyword, PAGE, offset, key, extra);
+          j = await searchPage(keyword, PAGE, offset, key, streamExtra);
           pages++;
         } catch {
           break; // lỗi luồng này → sang luồng khác

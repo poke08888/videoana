@@ -195,6 +195,7 @@ export async function connectDB() {
       updated TEXT
     )
   `);
+  await addColumnIfMissing("search_jobs", "region TEXT"); // lọc vùng (vd 'VN')
   // Job 'searching' khi backend tắt sẽ được TỰ CHẠY LẠI lúc khởi động (xem
   // resumeSearchJobs trong index.ts) — không đánh dấu failed ở đây.
 

@@ -97,8 +97,18 @@ export async function importAds(opts: { file: File; product: string; apiKey?: st
 export const getHistoryItem = (id: string): Promise<any> => jget(`/api/history/${id}`);
 
 /** Tìm video TikTok theo từ khóa + ngưỡng tương tác → tạo cụm campaign. */
+// Dừng tìm — giữ lại video đã tìm được.
+export async function stopCampaignSearch(jobId: string): Promise<any> {
+  try {
+    const res = await fetch(`/api/campaign/job/${jobId}/stop`, { method: "POST", headers: authHeaders() });
+    return await res.json().catch(() => ({ ok: false }));
+  } catch {
+    return { ok: false };
+  }
+}
+
 // Bước 1: TẠO JOB tìm video chạy nền (không bị hủy khi đổi tab/F5). Trả jobId.
-export async function startCampaignSearch(opts: { keyword: string; minLikes?: number; minViews?: number; target?: number }): Promise<any> {
+export async function startCampaignSearch(opts: { keyword: string; minLikes?: number; minViews?: number; target?: number; vnOnly?: boolean }): Promise<any> {
   try {
     const res = await fetch("/api/campaign/search", {
       method: "POST",

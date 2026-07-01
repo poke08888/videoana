@@ -330,29 +330,39 @@ app.post("/api/ads/import", requireEditor, upload.single("file"), async (req, re
 // BƯỚC 1 — chỉ TÌM và trả danh sách video để người dùng DUYỆT (không tạo cohort,
 // không tốn Gemini). Tìm nhiều từ khóa dễ lẫn category (vd "khử mùi" → "khử mùi tủ
 // lạnh"), nên phải xem trước rồi mới chọn video đưa vào phân tích.
+// Tập jobId người dùng yêu cầu DỪNG (in-memory). runSearchJob kiểm tra để dừng sớm.
+const cancelSearch = new Set<string>();
+
 // Chạy NỀN một job tìm video (cập nhật tiến trình + kết quả vào bảng search_jobs).
 // Tách khỏi vòng đời request → đổi tab/F5 không hủy; client poll để xem tiến trình.
-async function runSearchJob(jobId: string, keywords: string[], tokapiKey: string, minLikes: number, minViews: number, target: number) {
+// Bấm "Dừng tìm" vẫn GIỮ LẠI video đã tìm được để phân tích sau.
+async function runSearchJob(jobId: string, keywords: string[], tokapiKey: string, minLikes: number, minViews: number, target: number, region: string) {
   const maxPages = Math.min(keywords.length * 100, 800);
   let lastWrite = 0;
   try {
     const onProgress = (found: number, scanned: number, page: number) => {
-      // Throttle ghi DB ~mỗi 1.5s để đỡ tốn I/O (search kéo dài hàng trăm trang).
       const now = Date.now();
       if (now - lastWrite < 1500) return;
       lastWrite = now;
       runQuery("UPDATE search_jobs SET found=?, scanned=?, pages=?, updated=? WHERE id=?", [found, scanned, page, new Date().toISOString(), jobId]).catch(() => {});
     };
-    const { videos, scanned, exhausted, perKeyword } = await searchVideos({ keywords, key: tokapiKey, minLikes, minViews, target, maxPages }, onProgress);
+    const { videos, scanned, exhausted, perKeyword } = await searchVideos(
+      { keywords, key: tokapiKey, minLikes, minViews, target, maxPages, region, shouldStop: () => cancelSearch.has(jobId) },
+      onProgress
+    );
+    const wasStopped = cancelSearch.has(jobId);
+    cancelSearch.delete(jobId);
+    const nowIso = new Date().toISOString();
     if (!videos.length) {
       await runQuery("UPDATE search_jobs SET status='failed', scanned=?, message=?, updated=? WHERE id=?",
-        [scanned, `Không tìm thấy video nào cho "${keywords[0]}" đạt ngưỡng (đã quét ${scanned} kết quả).`, new Date().toISOString(), jobId]);
+        [scanned, wasStopped ? "Đã dừng — chưa tìm được video nào đạt ngưỡng." : `Không tìm thấy video nào cho "${keywords[0]}" đạt ngưỡng (đã quét ${scanned} kết quả).`, nowIso, jobId]);
       return;
     }
-    await runQuery("UPDATE search_jobs SET status='ready', found=?, scanned=?, exhausted=?, per_keyword=?, videos=?, updated=? WHERE id=?",
-      [videos.length, scanned, exhausted ? 1 : 0, JSON.stringify(perKeyword), JSON.stringify(videos), new Date().toISOString(), jobId]);
+    await runQuery("UPDATE search_jobs SET status='ready', found=?, scanned=?, exhausted=?, per_keyword=?, videos=?, message=?, updated=? WHERE id=?",
+      [videos.length, scanned, exhausted ? 1 : 0, JSON.stringify(perKeyword), JSON.stringify(videos), wasStopped ? "Đã dừng khi đang tìm — giữ lại video đã tìm được." : "", nowIso, jobId]);
   } catch (err: any) {
     console.error("Lỗi runSearchJob:", err);
+    cancelSearch.delete(jobId);
     await runQuery("UPDATE search_jobs SET status='failed', message=?, updated=? WHERE id=?", ["Lỗi hệ thống khi tìm kiếm video.", new Date().toISOString(), jobId]).catch(() => {});
   }
 }
@@ -367,15 +377,16 @@ app.post("/api/campaign/search", requireEditor, async (req, res) => {
     const minLikes = Math.max(0, Number(req.body?.minLikes) || 0);
     const minViews = Math.max(0, Number(req.body?.minViews) || 0);
     const target = Math.min(Math.max(1, Number(req.body?.target) || 50), 300);
+    const region = req.body?.vnOnly ? "VN" : ""; // chỉ tìm video Việt Nam
     const owner = ownerEmail(req);
     const jobId = "j" + Math.random().toString(36).slice(2, 10);
     const now = new Date().toISOString();
     await runQuery(
-      "INSERT INTO search_jobs (id, owner, keywords, min_likes, min_views, target, status, created, updated) VALUES (?, ?, ?, ?, ?, ?, 'searching', ?, ?)",
-      [jobId, owner, JSON.stringify(keywords), minLikes, minViews, target, now, now]
+      "INSERT INTO search_jobs (id, owner, keywords, min_likes, min_views, target, region, status, created, updated) VALUES (?, ?, ?, ?, ?, ?, ?, 'searching', ?, ?)",
+      [jobId, owner, JSON.stringify(keywords), minLikes, minViews, target, region, now, now]
     );
     // Chạy nền — KHÔNG await (request trả về ngay).
-    runSearchJob(jobId, keywords, tokapiKey, minLikes, minViews, target);
+    runSearchJob(jobId, keywords, tokapiKey, minLikes, minViews, target, region);
     res.json({ ok: true, jobId, keywords, target });
   } catch (err: any) {
     console.error("Lỗi tạo job search:", err);
@@ -400,14 +411,26 @@ app.get("/api/campaign/job/:id", requireEditor, async (req, res) => {
   } catch (e: any) { res.status(500).json({ ok: false }); }
 });
 
-// Job đang chạy/đã xong gần nhất của người dùng — để khôi phục sau khi F5/đổi máy.
+// Danh sách "chiến dịch chưa phân tích" của người dùng (job searching/ready) —
+// để khôi phục sau F5/đổi máy VÀ để quay lại phân tích bất kỳ lúc nào.
 app.get("/api/campaign/jobs", requireEditor, async (req, res) => {
   try {
     const rows = isAdminReq(req)
-      ? await allQuery<any>("SELECT id, owner, keywords, target, status, found, scanned, created FROM search_jobs WHERE status IN ('searching','ready') ORDER BY created DESC LIMIT 5")
-      : await allQuery<any>("SELECT id, owner, keywords, target, status, found, scanned, created FROM search_jobs WHERE status IN ('searching','ready') AND owner = ? ORDER BY created DESC LIMIT 3", [ownerEmail(req)]);
-    res.json({ ok: true, jobs: rows.map((j) => ({ jobId: j.id, status: j.status, keywords: JSON.parse(j.keywords || "[]"), target: j.target, found: j.found || 0, scanned: j.scanned || 0, created: j.created })) });
+      ? await allQuery<any>("SELECT id, owner, keywords, target, region, status, found, scanned, exhausted, message, created FROM search_jobs WHERE status IN ('searching','ready') ORDER BY created DESC LIMIT 20")
+      : await allQuery<any>("SELECT id, owner, keywords, target, region, status, found, scanned, exhausted, message, created FROM search_jobs WHERE status IN ('searching','ready') AND owner = ? ORDER BY created DESC LIMIT 20", [ownerEmail(req)]);
+    res.json({ ok: true, jobs: rows.map((j) => ({ jobId: j.id, owner: j.owner || "", status: j.status, keywords: JSON.parse(j.keywords || "[]"), target: j.target, region: j.region || "", found: j.found || 0, scanned: j.scanned || 0, exhausted: !!j.exhausted, message: j.message || "", created: j.created })) });
   } catch (e: any) { res.status(500).json({ ok: false, jobs: [] }); }
+});
+
+// DỪNG tìm — giữ lại video đã tìm được (job sẽ chuyển sang 'ready' với phần đã có).
+app.post("/api/campaign/job/:id/stop", requireEditor, async (req, res) => {
+  try {
+    const j = await getQuery<any>("SELECT owner, status FROM search_jobs WHERE id = ?", [req.params.id]);
+    if (!j) return res.status(404).json({ ok: false });
+    if (!isAdminReq(req) && String(j.owner || "").toLowerCase().trim() !== ownerEmail(req)) return res.status(404).json({ ok: false });
+    if (j.status === "searching") cancelSearch.add(req.params.id); // runSearchJob sẽ dừng ở trang kế tiếp
+    res.json({ ok: true });
+  } catch (e: any) { res.status(500).json({ ok: false }); }
 });
 
 // Bỏ job (khi đã tạo cohort xong, hoặc người dùng huỷ kết quả).
@@ -876,7 +899,7 @@ const PORT = Number(process.env.PORT || 8787);
 // còn dở (status='searching') để search không mất — dùng tokapi key từ .env.
 async function resumeSearchJobs() {
   try {
-    const jobs = await allQuery<any>("SELECT id, keywords, min_likes, min_views, target FROM search_jobs WHERE status='searching'");
+    const jobs = await allQuery<any>("SELECT id, keywords, min_likes, min_views, target, region FROM search_jobs WHERE status='searching'");
     if (!jobs.length) return;
     const tokapiKey = resolveTokapiKey(undefined);
     for (const j of jobs) {
@@ -889,7 +912,7 @@ async function resumeSearchJobs() {
       // Reset tiến trình rồi chạy lại từ đầu (không await — chạy nền).
       await runQuery("UPDATE search_jobs SET found=0, scanned=0, pages=0, updated=? WHERE id=?", [new Date().toISOString(), j.id]).catch(() => {});
       console.log(`[nonelab] Tự chạy lại job tìm video sau khởi động: ${j.id} (${keywords.join(", ")})`);
-      runSearchJob(j.id, keywords, tokapiKey, j.min_likes || 0, j.min_views || 0, j.target || 50);
+      runSearchJob(j.id, keywords, tokapiKey, j.min_likes || 0, j.min_views || 0, j.target || 50, j.region || "");
     }
   } catch (err) {
     console.error("[nonelab] Lỗi tự chạy lại job tìm video:", err);

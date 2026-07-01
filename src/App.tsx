@@ -4,7 +4,7 @@ import { css as c } from "./lib/csx";
 import { decorate, makeEntry, presetPerms, scoreOf, seedUsers, slug } from "./lib/analysis";
 import { buildReportHTML } from "./lib/reportHtml";
 import { buildRaw, seedDates, seedForms } from "./data/sampleAnalysis";
-import { analyzeVideo, analyzeVideoBatch, testGemini, authHeaders, importAds, listCohorts, getCohort, finalizeCohort, getKnowledge, saveKnowledge, getHistoryItem, startCampaignSearch, getCampaignJob, getActiveCampaignJobs, discardCampaignJob, createCampaign, getMe } from "./lib/api";
+import { analyzeVideo, analyzeVideoBatch, testGemini, authHeaders, importAds, listCohorts, getCohort, finalizeCohort, getKnowledge, saveKnowledge, getHistoryItem, startCampaignSearch, getCampaignJob, getActiveCampaignJobs, discardCampaignJob, stopCampaignSearch, createCampaign, getMe } from "./lib/api";
 import { embedFrames } from "./lib/frames";
 import type { AdminUser, Analysis, FormState, HistoryEntry, Level, Perms, Screen, User } from "./types";
 
@@ -1002,6 +1002,9 @@ function CampaignView({ isMobile, integration, showToast, onOpenReport, isAdmin 
   const [jobTarget, setJobTarget] = useState(0);
   const jobModeRef = useRef<"new" | "more">("new");
   const LSJOB = "nonelab_campaign_job";
+  const [vnOnly, setVnOnly] = useState(true); // mặc định chỉ tìm video Việt Nam
+  const [jobs, setJobs] = useState<any[]>([]); // "chiến dịch chưa phân tích" (job searching/ready)
+  const [openJobId, setOpenJobId] = useState<string | null>(null); // job đang mở để duyệt
 
   const reload = async () => { const cs = await listCohorts(); setCohorts((Array.isArray(cs) ? cs : []).filter((c: any) => c.kind === "campaign")); };
   useEffect(() => { reload(); }, []);
@@ -1015,17 +1018,22 @@ function CampaignView({ isMobile, integration, showToast, onOpenReport, isAdmin 
     return () => clearInterval(t);
   }, [sel?.cohort.id, sel?.videos]);
 
+  const reloadJobs = async () => { const r = await getActiveCampaignJobs(); const js = (r?.ok && Array.isArray(r.jobs)) ? r.jobs : []; setJobs(js); return js; };
+
   const doSearch = async () => {
     if (!keyword.trim()) return showToast("Nhập từ khóa cần tìm");
-    // Tìm = TẠO JOB chạy nền (không hủy khi đổi tab/F5); poll để xem tiến trình.
-    setBusy(true); setPreview(null); setSel(null); setProgress(null);
+    // Tìm = TẠO JOB chạy nền (không hủy khi đổi tab/F5, sống sót restart). Poll tiến trình.
+    setPreview(null); setOpenJobId(null); setSel(null); setProgress(null);
     jobModeRef.current = "new";
-    const r = await startCampaignSearch({ keyword: keyword.trim(), minLikes: Number(minLikes) || 0, target: Number(target) || 50 });
-    if (!r?.ok) { setBusy(false); return showToast(r?.message || "Không khởi tạo được tìm kiếm"); }
+    const r = await startCampaignSearch({ keyword: keyword.trim(), minLikes: Number(minLikes) || 0, target: Number(target) || 50, vnOnly });
+    if (!r?.ok) return showToast(r?.message || "Không khởi tạo được tìm kiếm");
     setJobTarget(r.target || Number(target) || 50);
+    setBusy(true);
     try { localStorage.setItem(LSJOB, JSON.stringify({ jobId: r.jobId })); } catch {}
     setJobId(r.jobId); // useEffect bắt đầu poll
+    reloadJobs();
   };
+  const stopSearch = async () => { if (!jobId) return; await stopCampaignSearch(jobId); showToast("Đang dừng… sẽ giữ lại video đã tìm được."); };
   const pickedCount = preview ? preview.videos.filter((v) => picked[v.awemeId]).length : 0;
   const pvVisible = preview ? preview.videos.filter((v) => !pvFilter.trim() || (v.desc || "").toLowerCase().includes(pvFilter.trim().toLowerCase())) : [];
   const setAll = (on: boolean, onlyVisible = false) => {
@@ -1033,6 +1041,24 @@ function CampaignView({ isMobile, integration, showToast, onOpenReport, isAdmin 
     const next = { ...picked };
     for (const v of (onlyVisible ? pvVisible : preview.videos)) next[v.awemeId] = on;
     setPicked(next);
+  };
+  // Mở 1 "chiến dịch chưa phân tích" (job) để duyệt — hoặc theo dõi nếu đang tìm.
+  const openJob = async (jid: string) => {
+    const j = await getCampaignJob(jid);
+    if (!j?.ok) return showToast("Không mở được chiến dịch");
+    if (j.status === "searching") { jobModeRef.current = "new"; setJobTarget(j.target || 0); setBusy(true); setJobId(jid); return; }
+    if (j.status !== "ready") return showToast(j.message || "Chiến dịch chưa sẵn sàng");
+    const videos: any[] = j.videos || [];
+    const pick: Record<string, boolean> = {}; for (const v of videos) pick[v.awemeId] = true;
+    setPicked(pick); setPvFilter(""); setSel(null);
+    setPreview({ videos, keywords: j.keywords, scanned: j.scanned, exhausted: j.exhausted, perKeyword: j.perKeyword || {} });
+    setOpenJobId(jid);
+  };
+  const deleteJob = async (jid: string) => {
+    await discardCampaignJob(jid);
+    if (openJobId === jid) { setPreview(null); setOpenJobId(null); }
+    if (jobId === jid) { setJobId(null); setBusy(false); }
+    reloadJobs();
   };
   const doAnalyze = async () => {
     if (!preview) return;
@@ -1043,24 +1069,24 @@ function CampaignView({ isMobile, integration, showToast, onOpenReport, isAdmin 
     setCreating(false);
     if (!r?.ok) return showToast(r?.message || "Tạo campaign thất bại");
     showToast(`Đã đưa ${r.count} video vào mổ xẻ nền…`);
-    setPreview(null);
-    await reload(); openCohort(r.cohortId);
+    if (openJobId) discardCampaignJob(openJobId).catch(() => {}); // chiến dịch đã phân tích → bỏ job pending
+    setPreview(null); setOpenJobId(null);
+    await reloadJobs(); await reload(); openCohort(r.cohortId);
   };
-  // Tìm THÊM: tạo job mới (mode 'more'), khi xong gộp video MỚI vào danh sách đang
-  // duyệt (giữ lựa chọn). Dùng khi sau khi loại video sai chủ đề thì còn quá ít.
+  // Tìm THÊM: tạo job tạm (mode 'more'), khi xong gộp video MỚI vào danh sách đang duyệt.
   const doSearchMore = async () => {
     if (!preview || busy) return;
     if (preview.exhausted) return showToast("Đã quét hết nguồn cho từ khóa này — thêm từ khóa khác (cách nhau dấu phẩy) để tìm thêm.");
-    setBusy(true); setProgress(null);
     jobModeRef.current = "more";
     const want = Math.min(preview.videos.length + 50, 300);
-    const r = await startCampaignSearch({ keyword: preview.keywords.join(", "), minLikes: Number(minLikes) || 0, target: want });
-    if (!r?.ok) { setBusy(false); return showToast(r?.message || "Tìm thêm thất bại"); }
-    setJobTarget(r.target || want);
-    setJobId(r.jobId);
+    const r = await startCampaignSearch({ keyword: preview.keywords.join(", "), minLikes: Number(minLikes) || 0, target: want, vnOnly });
+    if (!r?.ok) return showToast(r?.message || "Tìm thêm thất bại");
+    setJobTarget(r.target || want); setBusy(true); setJobId(r.jobId);
   };
 
-  // Poll job tìm video. Sống độc lập với request → đổi tab/F5 không hủy search.
+  // Poll job tìm video đang theo dõi (tiến trình + kết quả). Job vẫn nằm server nên
+  // đổi tab/F5/đổi máy đều khôi phục được; job KHÔNG bị xóa khi xong (thành chiến
+  // dịch chưa phân tích) — chỉ xóa khi bấm Phân tích hoặc Xóa.
   useEffect(() => {
     if (!jobId) return;
     let stop = false;
@@ -1068,10 +1094,10 @@ function CampaignView({ isMobile, integration, showToast, onOpenReport, isAdmin 
     const tick = async () => {
       const j = await getCampaignJob(jobId);
       if (stop) return;
-      if (!j?.ok) { showToast("Mất kết nối job tìm kiếm."); finish(); return; }
-      if (j.target) setJobTarget(j.target); // mẫu số đúng target thật của job (kể cả khi khôi phục)
+      if (!j?.ok) { finish(); return; }
+      if (j.target) setJobTarget(j.target);
       if (j.status === "searching") { setBusy(true); setProgress({ found: j.found || 0, scanned: j.scanned || 0, page: j.pages || 0 }); return; }
-      if (j.status === "failed") { showToast(j.message || "Tìm kiếm thất bại"); finish(); return; }
+      if (j.status === "failed") { showToast(j.message || "Tìm kiếm thất bại"); finish(); reloadJobs(); return; }
       if (j.status === "ready") {
         const videos: any[] = j.videos || [];
         if (jobModeRef.current === "more") {
@@ -1083,14 +1109,15 @@ function CampaignView({ isMobile, integration, showToast, onOpenReport, isAdmin 
             showToast(fresh.length ? `Thêm ${fresh.length} video mới (tổng ${prev.videos.length + fresh.length}).` : (j.exhausted ? "Đã hết nguồn — thử thêm từ khóa khác." : "Chưa có video mới nào."));
             return { ...prev, videos: [...prev.videos, ...fresh], scanned: j.scanned, exhausted: j.exhausted, perKeyword: j.perKeyword || prev.perKeyword };
           });
+          discardCampaignJob(jobId).catch(() => {}); // job 'more' chỉ là tạm
         } else {
           const pick: Record<string, boolean> = {}; for (const v of videos) pick[v.awemeId] = true;
           setPicked(pick); setPvFilter("");
           setPreview({ videos, keywords: j.keywords, scanned: j.scanned, exhausted: j.exhausted, perKeyword: j.perKeyword || {} });
-          showToast(`Tìm thấy ${videos.length} video (quét ${j.scanned})${j.exhausted ? " — đã quét hết nguồn" : ""}. Duyệt rồi bấm phân tích.`);
+          setOpenJobId(jobId); // GIỮ job → thành chiến dịch chưa phân tích
+          showToast(`Tìm thấy ${videos.length} video${j.message ? ` · ${j.message}` : ""}. Duyệt rồi bấm phân tích.`);
         }
-        discardCampaignJob(jobId).catch(() => {});
-        finish();
+        finish(); reloadJobs();
       }
     };
     tick();
@@ -1098,15 +1125,22 @@ function CampaignView({ isMobile, integration, showToast, onOpenReport, isAdmin 
     return () => { stop = true; clearInterval(iv); };
   }, [jobId]);
 
-  // Khôi phục job đang chạy sau khi F5 / đổi máy (server vẫn đang tìm).
+  // Lúc mở trang: nạp danh sách chiến dịch chưa phân tích; nếu có job đang tìm → theo dõi.
   useEffect(() => {
     (async () => {
-      let resume: string | null = null;
-      try { const s = localStorage.getItem(LSJOB); if (s) resume = JSON.parse(s).jobId; } catch {}
-      if (!resume) { const r = await getActiveCampaignJobs(); if (r?.ok && r.jobs?.length) resume = r.jobs[0].jobId; }
-      if (resume) { jobModeRef.current = "new"; setBusy(true); setJobId(resume); }
+      const js = await reloadJobs();
+      let active: string | null = null;
+      try { const s = localStorage.getItem(LSJOB); if (s) { const id = JSON.parse(s).jobId; if (js.find((x: any) => x.jobId === id && x.status === "searching")) active = id; } } catch {}
+      if (!active) { const s = js.find((x: any) => x.status === "searching"); if (s) active = s.jobId; }
+      if (active) { jobModeRef.current = "new"; setBusy(true); setJobId(active); }
     })();
   }, []);
+  // Cập nhật danh sách chiến dịch định kỳ khi có job đang tìm (để thẻ nhảy số).
+  useEffect(() => {
+    if (!jobs.some((j) => j.status === "searching")) return;
+    const iv = setInterval(reloadJobs, 4000);
+    return () => clearInterval(iv);
+  }, [jobs]);
   const saveK = async () => { if (!knowledge) return; setSavingK(true); const r = await saveKnowledge(knowledge.slug, knowledge.product, knowledge.content); setSavingK(false); showToast(r?.ok ? "Đã lưu kho kiến thức" : "Lưu thất bại"); };
 
   const tcol = (t: string) => (t === "tốt" ? ["rgba(60,122,94,.13)", "#2f6b4f"] : t === "thấp" ? ["rgba(158,58,58,.12)", "#8f3232"] : ["rgba(176,106,22,.14)", "#8a5614"]);
@@ -1145,14 +1179,53 @@ function CampaignView({ isMobile, integration, showToast, onOpenReport, isAdmin 
           </div>
           <button onClick={doSearch} disabled={busy} style={c(`padding:12px 22px;border:none;border-radius:11px;background:linear-gradient(150deg,#c07c1e,#9a5a12);color:#fff;font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:14px;cursor:${busy ? "default" : "pointer"};opacity:${busy ? .6 : 1};white-space:nowrap`)}>{busy ? "Đang tìm…" : "🔍 Tìm video"}</button>
         </div>
+        <label style={c("display:inline-flex;align-items:center;gap:8px;margin-top:12px;cursor:pointer;user-select:none")}>
+          <input type="checkbox" checked={vnOnly} onChange={(e: any) => setVnOnly(e.target.checked)} style={c("width:16px;height:16px;accent-color:#9a5a12")} />
+          <span style={c("font-size:13px;color:#2a2016")}>🇻🇳 Chỉ tìm video Việt Nam (tiếng Việt)</span>
+        </label>
         {busy && (
-          <div style={c("margin-top:10px;display:flex;align-items:center;gap:10px;color:#9a5a12;font-size:12.5px;font-family:'Space Grotesk',sans-serif")}>
+          <div style={c("margin-top:10px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;color:#9a5a12;font-size:12.5px;font-family:'Space Grotesk',sans-serif")}>
             <span style={c("width:13px;height:13px;border:2px solid rgba(154,90,18,.3);border-top-color:#9a5a12;border-radius:50%;display:inline-block;animation:ns-spin 1s linear infinite")} />
-            {progress ? `Đã tìm được ${progress.found}/${jobTarget || Number(target) || 50} video theo yêu cầu · đã quét ${progress.scanned}` : "Đang khởi tạo tìm kiếm nền… (đổi tab/F5 vẫn chạy)"}
+            <span>{progress ? `Đã tìm được ${progress.found}/${jobTarget || Number(target) || 50} video theo yêu cầu · đã quét ${progress.scanned}` : "Đang khởi tạo tìm kiếm nền… (đổi tab/F5 vẫn chạy)"}</span>
+            {jobId && <button onClick={stopSearch} style={c("padding:5px 12px;border:1px solid rgba(158,58,58,.45);border-radius:8px;background:#fff6f4;color:#8f3232;font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:12px;cursor:pointer")}>■ Dừng tìm (giữ video đã tìm)</button>}
           </div>
         )}
-        <div style={c("color:#8a7c67;font-size:11.5px;margin-top:10px")}>Lưu ý: mỗi từ khóa lộ ra một kho ~600 video; nhập nhiều từ khóa (cách nhau dấu phẩy) sẽ gộp dedup để vét được nhiều hơn. Tìm xong bạn DUYỆT danh sách (loại video sai chủ đề) rồi mới bấm phân tích — chưa tốn Gemini ở bước tìm.</div>
+        <div style={c("color:#8a7c67;font-size:11.5px;margin-top:10px")}>Lưu ý: mỗi từ khóa lộ ra một kho ~600 video; nhập nhiều từ khóa (cách nhau dấu phẩy) sẽ gộp dedup để vét được nhiều hơn. Tìm xong, video được GIỮ LẠI ở "chiến dịch chưa phân tích" — bạn có thể duyệt & phân tích bất kỳ lúc nào (chưa tốn Gemini ở bước tìm).</div>
       </div>
+
+      {jobs.length > 0 && (
+        <div style={c("margin-bottom:22px")}>
+          <div style={c("font-family:'Space Grotesk',sans-serif;font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:#8a7c67;margin-bottom:10px")}>Chiến dịch chưa phân tích ({jobs.length})</div>
+          <div style={c("display:flex;flex-direction:column;gap:8px")}>
+            {jobs.map((j) => {
+              const searching = j.status === "searching";
+              const isActive = jobId === j.jobId;
+              const cnt = isActive && progress ? progress.found : j.found;
+              return (
+                <div key={j.jobId} style={c(`display:flex;gap:12px;align-items:center;background:#fffdf8;border:1px solid ${searching ? "rgba(176,106,22,.4)" : "rgba(140,96,40,.22)"};border-radius:12px;padding:12px 14px;flex-wrap:wrap`)}>
+                  <div style={c("flex:1;min-width:180px")}>
+                    <div style={c("font-weight:600;font-size:13.5px;color:#2a2016")}>🔍 {(j.keywords || []).join(", ") || "—"} {j.region === "VN" ? "· 🇻🇳" : ""}</div>
+                    <div style={c("font-size:11.5px;color:#8a7c67;margin-top:2px")}>
+                      {searching ? `Đang tìm… ${cnt}/${j.target} video (đã quét ${isActive && progress ? progress.scanned : j.scanned})` : `${j.found} video · chưa phân tích${j.exhausted ? " · đã quét hết nguồn" : ""}`}
+                    </div>
+                  </div>
+                  {searching ? (
+                    <>
+                      {!isActive && <button onClick={() => openJob(j.jobId)} style={c("padding:7px 12px;border:1px solid rgba(140,96,40,.3);border-radius:9px;background:#fff;color:#9a5a12;font-size:12px;font-weight:600;cursor:pointer")}>Theo dõi</button>}
+                      <button onClick={async () => { await stopCampaignSearch(j.jobId); showToast("Đang dừng… giữ lại video đã tìm."); }} style={c("padding:7px 12px;border:1px solid rgba(158,58,58,.4);border-radius:9px;background:#fff6f4;color:#8f3232;font-size:12px;font-weight:600;cursor:pointer")}>■ Dừng</button>
+                    </>
+                  ) : (
+                    <>
+                      <button onClick={() => openJob(j.jobId)} style={c("padding:7px 14px;border:none;border-radius:9px;background:linear-gradient(150deg,#3c7a5e,#2a5a44);color:#fff;font-size:12.5px;font-weight:600;cursor:pointer")}>Duyệt & phân tích →</button>
+                      <button onClick={() => { if (confirm("Xóa chiến dịch chưa phân tích này?")) deleteJob(j.jobId); }} style={c("padding:7px 10px;border:1px solid rgba(140,96,40,.3);border-radius:9px;background:#fff;color:#8a7c67;font-size:12px;cursor:pointer")}>Xóa</button>
+                    </>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {preview && (
         <div style={c(`background:#fffdf8;border:1px solid rgba(176,106,22,.34);border-radius:18px;padding:${isMobile ? "16px" : "20px 22px"};margin-bottom:22px`)}>
