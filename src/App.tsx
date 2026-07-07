@@ -267,11 +267,11 @@ export default function App() {
 
   async function startAnalyze() {
     const f = form;
-    // Tách nhiều link TikTok (mỗi dòng 1 link).
-    const tiktokLinks = tiktokUrl.split(/\r?\n/).map((s) => s.trim()).filter((s) => /tiktok\.com/i.test(s));
+    // Tách nhiều link TikTok/Douyin (mỗi dòng 1 link) — backend tự nhận diện nền tảng.
+    const tiktokLinks = tiktokUrl.split(/\r?\n/).map((s) => s.trim()).filter((s) => /tiktok\.com|douyin\.com/i.test(s));
 
     if (selectedFiles.length === 0 && tiktokLinks.length === 0 && !youtubeUrl) {
-      showToast("Hãy tải video .mp4 lên hoặc dán link TikTok để phân tích");
+      showToast("Hãy tải video .mp4 lên hoặc dán link TikTok/Douyin để phân tích");
       return;
     }
 
@@ -321,7 +321,7 @@ export default function App() {
     setScreen("analyzing");
     setProgress(6);
     setStageIdx(0);
-    setAnalyzeNote(singleTiktok ? "Đang tải video TikTok về…" : (singleFile || youtubeUrl ? "Gemini đang xem video…" : "Suy luận từ mô tả…"));
+    setAnalyzeNote(singleTiktok ? (/douyin\.com/i.test(singleTiktok) ? "Đang tải video Douyin về…" : "Đang tải video TikTok về…") : (singleFile || youtubeUrl ? "Gemini đang xem video…" : "Suy luận từ mô tả…"));
     if (ivRef.current) clearInterval(ivRef.current);
     ivRef.current = setInterval(progressTick, 340);
 
@@ -1738,8 +1738,8 @@ function UploadView(props: any) {
         </div>
 
         <div>
-          <label style={label()}>🎵 Dán link TikTok — mỗi dòng 1 link, hệ thống tự tải về & phân tích (nhiều link chạy song song trong hàng đợi)</label>
-          <textarea className="ns-in" value={tiktokUrl} onChange={(e: any) => setTiktokUrl(e.target.value)} placeholder={"https://www.tiktok.com/@user/video/1234…\nhttps://www.tiktok.com/@user/video/5678…\nvt.tiktok.com/…"} style={c("width:100%;min-height:96px;resize:vertical;padding:12px 14px;border:1px solid rgba(140,96,40,.28);border-radius:11px;background:#fffdf8;font-size:14px;line-height:1.6;transition:.2s;font-family:'Space Grotesk',sans-serif")} />
+          <label style={label()}>🎵 Dán link TikTok / Douyin — mỗi dòng 1 link, hệ thống tự nhận diện nền tảng, tải về & phân tích (nhiều link chạy song song trong hàng đợi)</label>
+          <textarea className="ns-in" value={tiktokUrl} onChange={(e: any) => setTiktokUrl(e.target.value)} placeholder={"https://www.tiktok.com/@user/video/1234…\nhttps://v.douyin.com/AbCdEf/…\nhttps://www.douyin.com/video/7345…\nvt.tiktok.com/…"} style={c("width:100%;min-height:96px;resize:vertical;padding:12px 14px;border:1px solid rgba(140,96,40,.28);border-radius:11px;background:#fffdf8;font-size:14px;line-height:1.6;transition:.2s;font-family:'Space Grotesk',sans-serif")} />
         </div>
 
         <button onClick={startAnalyze} style={c(`margin-top:20px;${isMobile ? "width:100%;" : ""}padding:14px 26px;border:none;border-radius:12px;background:linear-gradient(150deg,#c07c1e,#9a5a12);color:#fff;font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:15px;cursor:pointer;box-shadow:0 8px 20px rgba(154,90,18,.3)`)}>⚡ Bắt đầu phân tích</button>

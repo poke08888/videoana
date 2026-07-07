@@ -6,6 +6,7 @@ import { analyzeVideo } from "./gemini.js";
 import { decorate, scoreOf } from "../src/lib/analysis.js";
 import { embedFramesServer } from "./frames.js";
 import { downloadTikTok, resolveTokapiKey } from "./tiktok.js";
+import { isDouyinUrl, downloadDouyin, resolveDouyinKey } from "./douyin.js";
 import { getProductKnowledge, finalizeCohortIfDone } from "./cohort.js";
 
 const UPLOAD_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), "uploads");
@@ -131,12 +132,21 @@ async function processItem(item: any) {
   }
 
   try {
-    // Link TikTok: tự tải video về server qua RapidAPI (tokapi) trước khi phân tích.
+    // Link TikTok/Douyin: tự nhận diện theo domain rồi tải video về server
+    // (TikTok qua RapidAPI tokapi, Douyin qua TikHub) trước khi phân tích.
     if (meta.tiktokUrl) {
-      const tkKey = resolveTokapiKey(meta.tokapiKey);
-      if (!tkKey) throw new Error("Thiếu RapidAPI key (TOKAPI_RAPIDAPI_KEY) để tải video TikTok.");
-      console.log(`[nonelab] Đang tải video TikTok: ${meta.tiktokUrl}`);
-      const dl = await downloadTikTok(meta.tiktokUrl, tkKey, UPLOAD_DIR);
+      let dl: { path: string; desc: string; stats: any };
+      if (isDouyinUrl(meta.tiktokUrl)) {
+        const dyKey = resolveDouyinKey(meta.douyinKey);
+        if (!dyKey) throw new Error("Thiếu RapidAPI key (TOKAPI_RAPIDAPI_KEY / DOUYIN_RAPIDAPI_KEY) để tải video Douyin.");
+        console.log(`[nonelab] Đang tải video Douyin: ${meta.tiktokUrl}`);
+        dl = await downloadDouyin(meta.tiktokUrl, dyKey, UPLOAD_DIR);
+      } else {
+        const tkKey = resolveTokapiKey(meta.tokapiKey);
+        if (!tkKey) throw new Error("Thiếu RapidAPI key (TOKAPI_RAPIDAPI_KEY) để tải video TikTok.");
+        console.log(`[nonelab] Đang tải video TikTok: ${meta.tiktokUrl}`);
+        dl = await downloadTikTok(meta.tiktokUrl, tkKey, UPLOAD_DIR);
+      }
       videoPath = dl.path;
       tiktokTemp = dl.path;
       tiktokStats = dl.stats;

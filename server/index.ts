@@ -22,6 +22,7 @@ import { buildReportHTML } from "./reportHtml.js";
 import { startQueueProcessor } from "./queue.js";
 import { signToken, requireAuth, requireAdmin, requireEditor, isValidRole } from "./auth.js";
 import { isTikTokUrl, resolveTokapiKey, downloadTikTok } from "./tiktok.js";
+import { isDouyinUrl, resolveDouyinKey, downloadDouyin } from "./douyin.js";
 import { embedFramesServer } from "./frames.js";
 import { readXlsxGrid } from "./xlsx.js";
 import { parseAdsGrid, buildCohort, type ScoredVideo } from "./adsAnalytics.js";
@@ -180,7 +181,8 @@ app.post("/api/analyze/batch", requireAuth, upload.array("videos", 20), async (r
 
   const youtubeUrl = (req.body?.youtubeUrl || "").trim();
 
-  // Danh sách link TikTok: nhận JSON array hoặc chuỗi nhiều dòng; chỉ giữ link hợp lệ.
+  // Danh sách link TikTok/Douyin: nhận JSON array hoặc chuỗi nhiều dòng; chỉ giữ
+  // link hợp lệ. Tự nhận diện nền tảng theo domain — TikTok đi tokapi, Douyin đi TikHub.
   const tiktokUrls: string[] = (() => {
     const raw = req.body?.tiktokUrls;
     if (!raw) return [];
@@ -191,10 +193,11 @@ app.post("/api/analyze/batch", requireAuth, upload.array("videos", 20), async (r
     } catch {
       arr = String(raw).split(/\r?\n/);
     }
-    return arr.map((s) => String(s).trim()).filter((s) => isTikTokUrl(s));
+    return arr.map((s) => String(s).trim()).filter((s) => isTikTokUrl(s) || isDouyinUrl(s));
   })();
 
   const tokapiKey = resolveTokapiKey(req.body?.tokapiKey);
+  const douyinKey = resolveDouyinKey(req.body?.douyinKey);
 
   if (!apiKey) {
     for (const file of files) fs.promises.unlink(file.path).catch(() => {});
@@ -202,12 +205,17 @@ app.post("/api/analyze/batch", requireAuth, upload.array("videos", 20), async (r
   }
 
   if (files.length === 0 && !youtubeUrl && tiktokUrls.length === 0) {
-    return res.status(400).json({ ok: false, message: "Vui lòng chọn ít nhất một video hoặc dán link TikTok/YouTube." });
+    return res.status(400).json({ ok: false, message: "Vui lòng chọn ít nhất một video hoặc dán link TikTok/Douyin/YouTube." });
   }
 
-  if (tiktokUrls.length > 0 && !tokapiKey) {
+  if (tiktokUrls.some((u) => isTikTokUrl(u)) && !tokapiKey) {
     for (const file of files) fs.promises.unlink(file.path).catch(() => {});
     return res.status(400).json({ ok: false, error: "no-tokapi-key", message: "Chưa cấu hình RapidAPI key cho TikTok (đặt TOKAPI_RAPIDAPI_KEY trong .env)." });
+  }
+
+  if (tiktokUrls.some((u) => isDouyinUrl(u)) && !douyinKey) {
+    for (const file of files) fs.promises.unlink(file.path).catch(() => {});
+    return res.status(400).json({ ok: false, error: "no-douyin-key", message: "Chưa cấu hình RapidAPI key cho Douyin (đặt TOKAPI_RAPIDAPI_KEY hoặc DOUYIN_RAPIDAPI_KEY trong .env)." });
   }
 
   try {
@@ -231,9 +239,15 @@ app.post("/api/analyze/batch", requireAuth, upload.array("videos", 20), async (r
 
     let count = 0;
 
-    // Link TikTok (nhiều) — worker sẽ tự tải video & cập nhật tiêu đề từ caption.
+    // Link TikTok/Douyin (nhiều) — worker sẽ tự tải video & cập nhật tiêu đề từ caption.
     for (const url of tiktokUrls) {
-      await insertItem("Video TikTok (đang tải…)", { apiKey, model, form: { ...form }, tiktokUrl: url, tokapiKey, email: userEmail });
+      const douyin = isDouyinUrl(url);
+      await insertItem(
+        douyin ? "Video Douyin (đang tải…)" : "Video TikTok (đang tải…)",
+        douyin
+          ? { apiKey, model, form: { ...form }, tiktokUrl: url, douyinKey, email: userEmail }
+          : { apiKey, model, form: { ...form }, tiktokUrl: url, tokapiKey, email: userEmail }
+      );
       count++;
     }
 
@@ -831,21 +845,33 @@ app.post("/api/analyze", requireAuth, upload.single("video"), async (req, res) =
       return res.status(400).json({ ok: false, error: "no-key", message: "Chưa kết nối Gemini API. Vào Quản trị nhập API key, hoặc đặt GEMINI_API_KEY trong .env." });
     }
 
-    // Link TikTok: tự động tải video về server qua RapidAPI (tokapi) rồi phân tích.
+    // Link TikTok/Douyin: tự nhận diện theo domain rồi tải video về server
+    // (TikTok qua RapidAPI tokapi, Douyin qua TikHub) trước khi phân tích.
     if (tiktokUrl) {
-      if (!isTikTokUrl(tiktokUrl)) {
+      if (isDouyinUrl(tiktokUrl)) {
+        const dyKey = resolveDouyinKey(req.body?.douyinKey);
+        if (!dyKey) {
+          cleanup();
+          return res.status(400).json({ ok: false, error: "no-douyin-key", message: "Chưa cấu hình RapidAPI key cho Douyin (đặt TOKAPI_RAPIDAPI_KEY hoặc DOUYIN_RAPIDAPI_KEY trong .env)." });
+        }
+        const dl = await downloadDouyin(tiktokUrl, dyKey, UPLOAD_DIR);
+        tiktokPath = dl.path;
+        tiktokStats = dl.stats;
+        if (!form.title && dl.desc) form.title = dl.desc.slice(0, 120);
+      } else if (isTikTokUrl(tiktokUrl)) {
+        const tkKey = resolveTokapiKey(req.body?.tokapiKey);
+        if (!tkKey) {
+          cleanup();
+          return res.status(400).json({ ok: false, error: "no-tokapi-key", message: "Chưa cấu hình RapidAPI key cho TikTok (đặt TOKAPI_RAPIDAPI_KEY trong .env)." });
+        }
+        const dl = await downloadTikTok(tiktokUrl, tkKey, UPLOAD_DIR);
+        tiktokPath = dl.path;
+        tiktokStats = dl.stats;
+        if (!form.title && dl.desc) form.title = dl.desc.slice(0, 120);
+      } else {
         cleanup();
-        return res.status(400).json({ ok: false, error: "bad-tiktok", message: "Link TikTok không hợp lệ." });
+        return res.status(400).json({ ok: false, error: "bad-tiktok", message: "Link TikTok/Douyin không hợp lệ." });
       }
-      const tkKey = resolveTokapiKey(req.body?.tokapiKey);
-      if (!tkKey) {
-        cleanup();
-        return res.status(400).json({ ok: false, error: "no-tokapi-key", message: "Chưa cấu hình RapidAPI key cho TikTok (đặt TOKAPI_RAPIDAPI_KEY trong .env)." });
-      }
-      const dl = await downloadTikTok(tiktokUrl, tkKey, UPLOAD_DIR);
-      tiktokPath = dl.path;
-      tiktokStats = dl.stats;
-      if (!form.title && dl.desc) form.title = dl.desc.slice(0, 120);
     }
 
     const videoPath = file?.path || tiktokPath || undefined;
