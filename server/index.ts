@@ -657,7 +657,7 @@ app.get("/share/:id", async (req, res) => {
       return res.status(400).send("<h3 style=\"text-align:center;margin-top:50px;font-family:sans-serif;color:#574a3a;\">Phiếu phân tích này vẫn đang được xử lý trong hàng đợi chạy nền. Vui lòng quay lại sau!</h3>");
     }
     const analysis = JSON.parse(row.analysis);
-    const html = buildReportHTML(analysis);
+    const html = buildReportHTML(analysis, Number(row.score));
     res.setHeader("Content-Type", "text/html; charset=utf-8");
     res.send(html);
   } catch (err) {

@@ -98,6 +98,15 @@ function statsSection(a: Analysis): string {
 
 const TIER_CHIP: Record<string, string> = { "tốt": "ok", "khá": "mid", "thấp": "low" };
 
+/** Tính lại điểm tổng từ checklist (cùng công thức scoreOf ở src/lib/analysis). */
+function computeScore(a: Analysis): number {
+  const map: Record<string, number> = { ok: 1, mid: 0.5, low: 0 };
+  const list = a.checklist || [];
+  if (!list.length) return 0;
+  const s = list.reduce((t, r) => t + (map[r.level] ?? 0), 0);
+  return Math.round((s / list.length) * 100);
+}
+
 /** Khối "Hiệu quả quảng cáo" — chỉ hiện khi video có chỉ số ads (từ import Excel). */
 function adsSection(a: Analysis): string {
   const s = a.ads;
@@ -117,9 +126,14 @@ function adsSection(a: Analysis): string {
   return `<section class="sec"><div class="sh"><span class="sno">Chỉ số ads</span><h2>Hiệu quả quảng cáo · xếp loại ${esc(s.label)}</h2></div><div class="verdict">${cards}</div></section>`;
 }
 
-/** Tạo file HTML độc lập của phiếu phân tích. */
-export function buildReportHTML(a: Analysis): string {
+/** Tạo file HTML độc lập của phiếu phân tích. `score` = điểm tổng (0-100) của
+ *  phiếu — truyền từ history.score; nếu thiếu sẽ tự tính lại từ phiếu. */
+export function buildReportHTML(a: Analysis, score?: number): string {
   const meta = a.meta;
+  const sc = Number.isFinite(score) && (score as number) > 0 ? Math.round(score as number) : computeScore(a);
+  const scoreBadge = sc > 0
+    ? `<span class="scoreb" title="Điểm tổng của phiếu phân tích"><b>${sc}</b><i>điểm /100</i></span>`
+    : "";
   const src = a.sourceUrl || (a.ads && a.ads.link) || "";
   const srcBlock = src
     ? `<p class="srcl"><a href="${esc(src)}" target="_blank" rel="noopener">▶ Xem video gốc</a><span>${esc(src)}</span></p>`
@@ -219,9 +233,13 @@ td{padding:14px;border-bottom:1px solid rgba(70,54,32,.1);vertical-align:top}.cc
 ul.k{list-style:none;padding:0;margin:0}ul.k li{position:relative;padding:10px 0 10px 24px;border-bottom:1px solid rgba(70,54,32,.1);font-size:13.5px;color:#574a3a;line-height:1.5}
 ul.k li:before{content:"";position:absolute;left:4px;top:17px;width:7px;height:7px;border-radius:50%;background:#b06a16}
 footer{padding:40px 0 70px;color:#8a7c67;font-size:12.5px;font-family:var(--ui);letter-spacing:.04em}
+.ebrow{display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap}
+.scoreb{display:inline-flex;align-items:baseline;gap:8px;background:rgba(224,166,78,.13);border:1px solid rgba(224,166,78,.5);border-radius:99px;padding:7px 16px}
+.scoreb b{font-family:var(--disp);font-size:26px;font-weight:900;color:#e8bd72;line-height:1}
+.scoreb i{font-style:normal;font-family:var(--ui);font-size:9.5px;letter-spacing:.18em;text-transform:uppercase;color:#cdbfa6;font-weight:600}
 @media(max-width:680px){.two{grid-template-columns:1fr}.beats{margin-left:0}.mgrid{grid-template-columns:1fr}.camp{grid-template-columns:1fr}table,tbody,tr,td{display:block;width:100%}thead{display:none}.cc{width:auto}td{border:none;padding:3px 0}tr{border-bottom:1px solid rgba(70,54,32,.1);padding:14px 0}}
 </style></head><body>
-<header class="hero"><div class="wrap"><span class="eb">Nonelab · Phân tích video · Khung Năm Lực</span><h1>Phiếu <em>phân tích</em> video</h1><p class="sub">${esc(a.subtitle)}</p>${(() => { const s = (a as any).contentSummary || (a.acts || []).map((x: any) => x.summary).filter(Boolean).slice(0, 3).join(" "); return s ? `<p style="font-family:'Be Vietnam Pro',sans-serif;color:#e9dcc4;font-size:15px;line-height:1.6;margin:12px 0 0;max-width:66ch">${esc(s)}</p>` : ""; })()}${srcBlock}<dl class="meta">${metaRow}</dl></div></header>
+<header class="hero"><div class="wrap"><div class="ebrow"><span class="eb">Nonelab · Phân tích video · Khung Năm Lực</span>${scoreBadge}</div><h1>Phiếu <em>phân tích</em> video</h1><p class="sub">${esc(a.subtitle)}</p>${(() => { const s = (a as any).contentSummary || (a.acts || []).map((x: any) => x.summary).filter(Boolean).slice(0, 3).join(" "); return s ? `<p style="font-family:'Be Vietnam Pro',sans-serif;color:#e9dcc4;font-size:15px;line-height:1.6;margin:12px 0 0;max-width:66ch">${esc(s)}</p>` : ""; })()}${srcBlock}<dl class="meta">${metaRow}</dl></div></header>
 <main class="wrap">
 <section class="sec"><div class="sh"><span class="sno">Chốt nhanh</span><h2>Vì sao nó chạy</h2></div><div class="verdict">${verdict}</div></section>
 ${adsSection(a)}
