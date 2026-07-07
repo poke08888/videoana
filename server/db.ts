@@ -174,6 +174,20 @@ export async function connectDB() {
     )
   `);
 
+  // 2e-bis. Báo cáo TỔNG HỢP lý do thành công — gom nhiều phiếu đã chọn từ màn
+  // Lịch sử, Gemini đúc điểm chung thành 1 báo cáo, lưu lại để xem lại sau.
+  await runQuery(`
+    CREATE TABLE IF NOT EXISTS syntheses (
+      id TEXT PRIMARY KEY,
+      owner TEXT,
+      title TEXT,
+      created TEXT,
+      count INTEGER DEFAULT 0,
+      ids TEXT,      -- JSON array id các phiếu nguồn
+      report TEXT    -- JSON báo cáo tổng hợp
+    )
+  `);
+
   // 2e. Job tìm video TikTok chạy NỀN — để search không bị hủy khi đổi tab/F5.
   await runQuery(`
     CREATE TABLE IF NOT EXISTS search_jobs (

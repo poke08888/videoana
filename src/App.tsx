@@ -4,7 +4,7 @@ import { css as c } from "./lib/csx";
 import { decorate, makeEntry, presetPerms, scoreOf, seedUsers, slug } from "./lib/analysis";
 import { buildReportHTML } from "./lib/reportHtml";
 import { buildRaw, seedDates, seedForms } from "./data/sampleAnalysis";
-import { analyzeVideo, analyzeVideoBatch, testGemini, authHeaders, importAds, listCohorts, getCohort, finalizeCohort, getKnowledge, saveKnowledge, getHistoryItem, startCampaignSearch, getCampaignJob, getActiveCampaignJobs, discardCampaignJob, stopCampaignSearch, createCampaign, getMe } from "./lib/api";
+import { analyzeVideo, analyzeVideoBatch, testGemini, authHeaders, importAds, listCohorts, getCohort, finalizeCohort, getKnowledge, saveKnowledge, getHistoryItem, startCampaignSearch, getCampaignJob, getActiveCampaignJobs, discardCampaignJob, stopCampaignSearch, createCampaign, getMe, synthesizeReports, listSyntheses, getSynthesis, deleteSynthesis } from "./lib/api";
 import { embedFrames } from "./lib/frames";
 import type { AdminUser, Analysis, FormState, HistoryEntry, Level, Perms, Screen, User } from "./types";
 
@@ -109,6 +109,10 @@ export default function App() {
   const [currentReportId, setCurrentReportId] = useState<string>("");
   const [youtubeUrl, setYoutubeUrl] = useState("");
   const [tiktokUrl, setTiktokUrl] = useState("");
+
+  // Báo cáo tổng hợp lý do thành công (từ các phiếu tick chọn ở Lịch sử).
+  const [synthesisReport, setSynthesisReport] = useState<any>(null);
+  const [synthesizing, setSynthesizing] = useState(false);
 
   const [progress, setProgress] = useState(0);
   const [stageIdx, setStageIdx] = useState(0);
@@ -433,6 +437,7 @@ export default function App() {
     campaign: ["Campaign từ khóa", "Tìm video TikTok theo từ khóa + tương tác → điểm chung video viral"],
     report: ["Phiếu phân tích", "Kết quả phân tích theo khung Năm Lực"],
     history: ["Lịch sử phân tích", "Tất cả phiếu phân tích đã tạo"],
+    synthesis: ["Báo cáo tổng hợp", "Điểm chung lý do thành công của các video đã chọn"],
     admin: ["Quản trị người dùng", "Quản lý tài khoản & phân quyền"],
   };
   const [screenTitle, screenSub] = titles[screen] || ["", ""];
@@ -494,6 +499,36 @@ export default function App() {
     setAnalyzeError(null);
     setScreen("upload");
     showToast(src ? "Đã điền sẵn link video gốc — bấm Bắt đầu phân tích" : "Chọn lại video (hoặc dán link) để phân tích lại phiếu này");
+  };
+
+  // Tổng hợp lý do thành công từ các phiếu đã tick chọn ở màn Lịch sử.
+  const synthesizeSelected = async (ids: string[]) => {
+    if (synthesizing) return;
+    if (ids.length < 2) {
+      showToast("Tick chọn ít nhất 2 video đã phân tích xong để tổng hợp");
+      return;
+    }
+    setSynthesizing(true);
+    showToast(`Đang tổng hợp ${ids.length} phiếu — Gemini đang đúc điểm chung…`);
+    const r = await synthesizeReports({ ids, apiKey: integration.key || undefined, model: integration.model });
+    setSynthesizing(false);
+    if (r.ok) {
+      setSynthesisReport(r);
+      setScreen("synthesis");
+      window.scrollTo({ top: 0 });
+    } else {
+      showToast(r.message || "Không tổng hợp được — thử lại sau.");
+    }
+  };
+
+  // Mở lại 1 báo cáo tổng hợp đã lưu.
+  const openSynthesis = async (id: string) => {
+    const r = await getSynthesis(id);
+    if (r.ok) {
+      setSynthesisReport(r);
+      setScreen("synthesis");
+      window.scrollTo({ top: 0 });
+    } else showToast("Không mở được báo cáo tổng hợp.");
   };
 
   const shareReport = () => {
@@ -843,7 +878,8 @@ export default function App() {
 
           <div style={c(`padding:${isMobile ? "16px 16px 90px" : "30px 34px 60px"}`)}>
             {screen === "dashboard" && <Dashboard stats={labels.dashboard} recent={history.slice(0, 3)} onOpen={openReport} onAll={() => go("history")} isMobile={isMobile} />}
-            {screen === "history" && <HistoryView history={history} onOpen={openReport} onReanalyze={reanalyzeEntry} showToast={showToast} isAdmin={user?.role === "Quản trị"} />}
+            {screen === "history" && <HistoryView history={history} onOpen={openReport} onReanalyze={reanalyzeEntry} showToast={showToast} isAdmin={user?.role === "Quản trị"} onSynthesize={synthesizeSelected} synthesizing={synthesizing} onOpenSynthesis={openSynthesis} />}
+            {screen === "synthesis" && synthesisReport && <SynthesisView data={synthesisReport} isMobile={isMobile} onBack={() => go("history")} />}
             {screen === "upload" && (
               <UploadView
                 form={form}
@@ -1645,7 +1681,30 @@ function Dashboard({ stats, recent, onOpen, onAll, isMobile }: { stats: { label:
   );
 }
 
-function HistoryView({ history, onOpen, onReanalyze, showToast, isAdmin }: { history: HistoryEntry[]; onOpen: (h: HistoryEntry) => void; onReanalyze: (h: HistoryEntry) => void; showToast: (msg: string) => void; isAdmin?: boolean }) {
+function HistoryView({ history, onOpen, onReanalyze, showToast, isAdmin, onSynthesize, synthesizing, onOpenSynthesis }: { history: HistoryEntry[]; onOpen: (h: HistoryEntry) => void; onReanalyze: (h: HistoryEntry) => void; showToast: (msg: string) => void; isAdmin?: boolean; onSynthesize: (ids: string[]) => void; synthesizing: boolean; onOpenSynthesis: (id: string) => void }) {
+  // Tick chọn các phiếu hoàn tất để "Tổng hợp phân tích" (gom lý do thành công chung).
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [saved, setSaved] = useState<{ id: string; title: string; created: string; count: number; owner?: string }[]>([]);
+
+  useEffect(() => {
+    listSyntheses().then((r) => { if (r?.ok && Array.isArray(r.items)) setSaved(r.items); }).catch(() => {});
+  }, []);
+
+  const toggleSelect = (id: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const removeSaved = async (id: string) => {
+    await deleteSynthesis(id);
+    setSaved((xs) => xs.filter((x) => x.id !== id));
+    showToast("Đã xóa báo cáo tổng hợp");
+  };
+
   const handleClick = (h: HistoryEntry) => {
     if (h.status === "pending") {
       showToast("Video đang xếp hàng chờ phân tích...");
@@ -1663,12 +1722,48 @@ function HistoryView({ history, onOpen, onReanalyze, showToast, isAdmin }: { his
     onOpen(h);
   };
 
+  const nSel = selected.size;
+  const completedCount = history.filter((h) => !h.status || h.status === "completed").length;
+
   return (
     <div className="ns-fade ns-rise" style={c("display:flex;flex-direction:column;gap:11px")}>
+      {/* Thanh tổng hợp: tick chọn phiếu → gom lý do thành công chung thành 1 báo cáo */}
+      {completedCount >= 2 && (
+        <div style={c("display:flex;align-items:center;gap:12px;flex-wrap:wrap;background:rgba(176,106,22,.07);border:1px dashed rgba(176,106,22,.35);border-radius:13px;padding:11px 15px")}>
+          <div style={c("flex:1;min-width:220px;font-size:13px;color:#6b5b44")}>
+            🧩 <b>Tổng hợp lý do thành công:</b> tick chọn từ 2 video đã phân tích xong rồi bấm nút — hệ thống gom điểm chung thành 1 báo cáo.
+          </div>
+          {nSel > 0 && (
+            <button onClick={() => setSelected(new Set())} style={c("padding:8px 12px;border:1px solid rgba(140,96,40,.3);border-radius:10px;background:#fffdf8;color:#8a7c67;font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:12.5px;cursor:pointer")}>Bỏ chọn ({nSel})</button>
+          )}
+          <button
+            onClick={() => onSynthesize(Array.from(selected))}
+            disabled={synthesizing || nSel < 2}
+            style={c(`padding:9px 16px;border:none;border-radius:10px;background:${synthesizing || nSel < 2 ? "rgba(154,90,18,.35)" : "linear-gradient(150deg,#c07c1e,#9a5a12)"};color:#fff;font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:13px;cursor:${synthesizing || nSel < 2 ? "not-allowed" : "pointer"};white-space:nowrap`)}
+          >{synthesizing ? "⏳ Đang tổng hợp…" : `🧩 Tổng hợp phân tích${nSel ? ` (${nSel})` : ""}`}</button>
+        </div>
+      )}
+
+      {/* Báo cáo tổng hợp đã lưu — bấm để xem lại */}
+      {saved.length > 0 && (
+        <div style={c("display:flex;gap:8px;flex-wrap:wrap;align-items:center")}>
+          <span style={c("font-family:'Space Grotesk',sans-serif;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:#8a7c67")}>📊 Báo cáo đã lưu:</span>
+          {saved.map((s) => (
+            <span key={s.id} style={c("display:inline-flex;align-items:center;gap:7px;background:#fffdf8;border:1px solid rgba(140,96,40,.25);border-radius:99px;padding:6px 11px;font-size:12.5px;color:#6b5b44")}>
+              <a onClick={() => onOpenSynthesis(s.id)} style={c("cursor:pointer;font-weight:600;color:#8a5614;max-width:260px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis")}>{s.title}</a>
+              <span style={c("color:#a8946f;font-size:11px")}>({s.count} video)</span>
+              <a onClick={() => removeSaved(s.id)} title="Xóa báo cáo" style={c("cursor:pointer;color:#8f3232;font-weight:700")}>✕</a>
+            </span>
+          ))}
+        </div>
+      )}
+
       {history.map((h) => {
         const isPending = h.status === "pending";
         const isProcessing = h.status === "processing";
         const isFailed = h.status === "failed";
+        const isDone = !isPending && !isProcessing && !isFailed;
+        const isSel = selected.has(h.id);
 
         let scoreDisplay = String(h.score);
         let scoreSub = "điểm";
@@ -1690,9 +1785,18 @@ function HistoryView({ history, onOpen, onReanalyze, showToast, isAdmin }: { his
 
         return (
           <div key={h.id} onClick={() => handleClick(h)} style={{
-            ...c("display:flex;gap:18px;align-items:center;background:#fffdf8;border:1px solid rgba(140,96,40,.18);border-radius:15px;padding:14px 18px;cursor:pointer;transition:.18s"),
+            ...c("display:flex;gap:18px;align-items:center;background:#fffdf8;border-radius:15px;padding:14px 18px;cursor:pointer;transition:.18s"),
+            border: isSel ? "1px solid rgba(176,106,22,.65)" : "1px solid rgba(140,96,40,.18)",
+            boxShadow: isSel ? "0 0 0 2px rgba(176,106,22,.18)" : "none",
             opacity: (isPending || isProcessing || isFailed) ? 0.75 : 1
           }}>
+            {completedCount >= 2 && (
+              <div
+                onClick={(e) => { e.stopPropagation(); if (isDone) toggleSelect(h.id); else showToast("Chỉ tổng hợp được phiếu đã phân tích xong"); }}
+                title={isDone ? "Chọn phiếu này để tổng hợp" : "Phiếu chưa hoàn tất"}
+                style={c(`width:22px;height:22px;flex:none;border-radius:7px;display:grid;place-items:center;font-size:13px;font-weight:700;transition:.15s;border:1.5px solid ${isSel ? "#9a5a12" : "rgba(140,96,40,.35)"};background:${isSel ? "linear-gradient(150deg,#c07c1e,#9a5a12)" : "#fffdf8"};color:#fff;cursor:${isDone ? "pointer" : "not-allowed"};opacity:${isDone ? 1 : 0.35}`)}
+              >{isSel ? "✓" : ""}</div>
+            )}
             <div style={{ ...c("width:80px;height:56px;border-radius:10px;flex:none;display:grid;place-items:center;font-size:22px"), background: h.thumb }}>{icon}</div>
             <div style={c("flex:1;min-width:0")}>
               <div style={c("font-family:'Fraunces',serif;font-size:16px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis")}>{h.title}</div>
@@ -1719,6 +1823,97 @@ function HistoryView({ history, onOpen, onReanalyze, showToast, isAdmin }: { his
           </div>
         );
       })}
+    </div>
+  );
+}
+
+/** Báo cáo TỔNG HỢP lý do thành công — gom điểm chung từ các phiếu đã chọn. */
+function SynthesisView({ data, isMobile, onBack }: { data: any; isMobile: boolean; onBack: () => void }) {
+  const r = data?.report || {};
+  const reasons: any[] = Array.isArray(r.reasons) ? r.reasons : [];
+  const actions: string[] = Array.isArray(r.actionChecklist) ? r.actionChecklist : [];
+  const created = data?.created ? new Date(data.created).toLocaleString("vi-VN") : "";
+  const card = c("background:#fffdf8;border:1px solid rgba(140,96,40,.18);border-radius:15px;padding:18px 20px");
+  const tag = c("font-family:'Space Grotesk',sans-serif;font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;color:#a8946f;margin-bottom:6px");
+
+  return (
+    <div className="ns-fade ns-rise" style={c(`display:flex;flex-direction:column;gap:14px;max-width:${isMobile ? "100%" : "860px"}`)}>
+      <div style={c("display:flex;align-items:center;gap:12px;flex-wrap:wrap")}>
+        <button onClick={onBack} style={c("padding:8px 14px;border:1px solid rgba(140,96,40,.3);border-radius:10px;background:#fffdf8;color:#6b5b44;font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:12.5px;cursor:pointer")}>← Lịch sử</button>
+        <div style={c("flex:1;min-width:200px")}>
+          <div style={c("font-family:'Fraunces',serif;font-size:20px;font-weight:700;color:#2a2016")}>{r.title || data?.title || "Báo cáo tổng hợp"}</div>
+          <div style={c("font-size:12px;color:#8a7c67;margin-top:2px")}>🧩 Tổng hợp từ {data?.count} video · {created}</div>
+        </div>
+      </div>
+
+      {r.overview && (
+        <div style={card}>
+          <div style={tag}>Tổng quan</div>
+          <div style={c("font-size:14.5px;line-height:1.65;color:#4a3d2c")}>{r.overview}</div>
+        </div>
+      )}
+
+      {reasons.length > 0 && (
+        <div style={c("display:flex;flex-direction:column;gap:11px")}>
+          <div style={c("font-family:'Fraunces',serif;font-size:17px;font-weight:700;color:#2a2016")}>⚡ Lý do thành công chung ({reasons.length})</div>
+          {reasons.map((x, i) => (
+            <div key={i} style={card}>
+              <div style={c("display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:6px")}>
+                <span style={c("font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:15px;color:#8a5614")}>{i + 1}. {x.reason}</span>
+                {x.share && <span style={c("font-family:'Space Grotesk',sans-serif;font-size:11.5px;font-weight:600;padding:3px 10px;border-radius:99px;background:rgba(60,122,94,.12);color:#2a5a44")}>{x.share}</span>}
+              </div>
+              {x.detail && <div style={c("font-size:13.5px;line-height:1.6;color:#4a3d2c;margin-bottom:8px")}>{x.detail}</div>}
+              {Array.isArray(x.evidence) && x.evidence.length > 0 && (
+                <div style={c("border-left:3px solid rgba(176,106,22,.4);padding:2px 0 2px 12px;margin-bottom:8px;display:flex;flex-direction:column;gap:5px")}>
+                  {x.evidence.map((ev: any, j: number) => (
+                    <div key={j} style={c("font-size:12.5px;line-height:1.55;color:#6b5b44;font-style:italic")}>“{String(ev)}”</div>
+                  ))}
+                </div>
+              )}
+              {x.apply && (
+                <div style={c("background:rgba(176,106,22,.08);border-radius:10px;padding:9px 13px;font-size:13px;color:#6b4a12")}>
+                  <b>👉 Áp dụng:</b> {x.apply}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {r.hookPattern && (
+        <div style={card}>
+          <div style={tag}>Khuôn hook chung</div>
+          <div style={c("font-size:14px;line-height:1.6;color:#4a3d2c")}>{r.hookPattern}</div>
+        </div>
+      )}
+
+      {r.formula && (
+        <div style={card}>
+          <div style={tag}>Công thức chung</div>
+          <div style={c("font-family:'Space Grotesk',sans-serif;font-size:13.5px;line-height:1.7;color:#2a2016;background:rgba(140,96,40,.06);border-radius:10px;padding:12px 14px")}>{r.formula}</div>
+        </div>
+      )}
+
+      {r.differences && (
+        <div style={card}>
+          <div style={tag}>Điểm cao vs điểm thấp</div>
+          <div style={c("font-size:13.5px;line-height:1.6;color:#4a3d2c")}>{r.differences}</div>
+        </div>
+      )}
+
+      {actions.length > 0 && (
+        <div style={card}>
+          <div style={tag}>Checklist hành động cho video tiếp theo</div>
+          <div style={c("display:flex;flex-direction:column;gap:7px;margin-top:4px")}>
+            {actions.map((a, i) => (
+              <div key={i} style={c("display:flex;gap:9px;font-size:13.5px;line-height:1.55;color:#4a3d2c")}>
+                <span style={c("color:#3c7a5e;font-weight:700")}>☐</span>
+                <span>{a}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -122,6 +122,22 @@ export async function analyzeVideo(args: AnalyzeArgs): Promise<any> {
   return json;
 }
 
+/** Gọi Gemini với prompt THUẦN CHỮ (không video), yêu cầu trả JSON — dùng cho
+ *  báo cáo tổng hợp nhiều phiếu. Có retry khi Gemini quá tải. */
+export async function generateJSON(apiKey: string, model: string | undefined, prompt: string): Promise<any> {
+  const ai = client(apiKey);
+  const resp = await withRetry(() =>
+    ai.models.generateContent({
+      model: model || DEFAULT_MODEL,
+      contents: prompt,
+      config: { responseMimeType: "application/json", temperature: 0.5 },
+    })
+  );
+  const json = extractJSON((resp.text ?? "").trim());
+  if (!json) throw new Error("Gemini trả về JSON không hợp lệ.");
+  return json;
+}
+
 function extractJSON(text: string): any | null {
   if (!text) return null;
   let t = text.trim().replace(/^```(?:json)?/i, "").replace(/```$/i, "").trim();

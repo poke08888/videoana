@@ -184,6 +184,32 @@ export async function saveKnowledge(slug: string, product: string, content: stri
   return res.json().catch(() => ({ ok: false }));
 }
 
+// ── Tổng hợp lý do thành công (gom nhiều phiếu → 1 báo cáo) ─────────────────
+export async function synthesizeReports(opts: { ids: string[]; apiKey?: string; model?: string }): Promise<any> {
+  try {
+    const res = await fetch("/api/synthesize", {
+      method: "POST",
+      headers: { ...authHeaders(), "Content-Type": "application/json" },
+      body: JSON.stringify(opts),
+    });
+    return await res.json().catch(() => ({ ok: false, message: "Phản hồi không hợp lệ." }));
+  } catch {
+    return { ok: false, message: "Không gọi được backend." };
+  }
+}
+
+export const listSyntheses = (): Promise<any> => jget("/api/syntheses");
+export const getSynthesis = (id: string): Promise<any> => jget(`/api/synthesis/${id}`);
+
+export async function deleteSynthesis(id: string): Promise<any> {
+  try {
+    const res = await fetch(`/api/synthesis/${id}`, { method: "DELETE", headers: authHeaders() });
+    return await res.json().catch(() => ({ ok: false }));
+  } catch {
+    return { ok: false };
+  }
+}
+
 /** Gọi backend phân tích hàng loạt video chạy nền (Batch Queue). */
 export async function analyzeVideoBatch(opts: {
   form: AnalyzeForm;

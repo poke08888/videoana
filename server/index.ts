@@ -15,7 +15,7 @@ import multer from "multer";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { analyzeVideo, testConnection, humanizeError } from "./gemini.js";
+import { analyzeVideo, testConnection, humanizeError, generateJSON } from "./gemini.js";
 import { DEFAULT_MODEL, type AnalyzeForm } from "./nonelabPrompt.js";
 import { connectDB, runQuery, allQuery, getQuery, hashPassword, verifyPassword, generateSalt } from "./db.js";
 import { buildReportHTML } from "./reportHtml.js";
@@ -28,6 +28,7 @@ import { readXlsxGrid } from "./xlsx.js";
 import { parseAdsGrid, buildCohort, type ScoredVideo } from "./adsAnalytics.js";
 import { searchVideos, rankEngagement, parseKeywords } from "./tiktokSearch.js";
 import { getProductKnowledge, saveProductKnowledge, finalizeCohortIfDone, productSlug } from "./cohort.js";
+import { buildSynthesisPrompt, type SourceVideo } from "./synthesize.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const UPLOAD_DIR = path.join(__dirname, "uploads");
@@ -573,6 +574,76 @@ app.put("/api/knowledge/:slug", requireEditor, async (req, res) => {
   const product = String(req.body?.product || req.params.slug);
   await saveProductKnowledge(product, content, new Date().toISOString());
   res.json({ ok: true });
+});
+
+// ── Tổng hợp lý do thành công: gom các phiếu đã chọn → Gemini đúc báo cáo chung ──
+app.post("/api/synthesize", requireAuth, async (req, res) => {
+  try {
+    const ids: string[] = Array.isArray(req.body?.ids) ? req.body.ids.map((x: any) => String(x)).filter(Boolean).slice(0, 30) : [];
+    if (ids.length < 2) return res.status(400).json({ ok: false, message: "Chọn ít nhất 2 video đã phân tích xong để tổng hợp." });
+    const apiKey = resolveKey(req.body?.apiKey);
+    if (!apiKey) return res.status(400).json({ ok: false, error: "no-key", message: "Chưa kết nối Gemini API." });
+
+    // Chỉ lấy phiếu HOÀN TẤT thuộc về người dùng (admin lấy được tất cả).
+    const ph = ids.map(() => "?").join(",");
+    const rows = await allQuery<any>(
+      `SELECT id, title, score, analysis, owner FROM history WHERE id IN (${ph}) AND status = 'completed'`, ids);
+    const mine = rows.filter((r) => isAdminReq(req) || String(r.owner || "").toLowerCase().trim() === ownerEmail(req));
+    const videos: SourceVideo[] = [];
+    for (const r of mine) {
+      try {
+        const a = JSON.parse(r.analysis);
+        if (a && a.checklist) videos.push({ id: r.id, title: r.title, score: r.score, analysis: a });
+      } catch {}
+    }
+    if (videos.length < 2) return res.status(400).json({ ok: false, message: "Cần ít nhất 2 phiếu hoàn tất hợp lệ (đã chọn được " + videos.length + ")." });
+
+    const report = await generateJSON(apiKey, req.body?.model, buildSynthesisPrompt(videos));
+    if (!report || !Array.isArray(report.reasons)) throw new Error("Báo cáo tổng hợp không đúng định dạng.");
+
+    const id = "s" + Math.random().toString(36).slice(2, 10);
+    const created = new Date().toISOString();
+    const title = String(report.title || `Tổng hợp ${videos.length} video`).slice(0, 140);
+    await runQuery(
+      "INSERT INTO syntheses (id, owner, title, created, count, ids, report) VALUES (?, ?, ?, ?, ?, ?, ?)",
+      [id, ownerEmail(req), title, created, videos.length, JSON.stringify(videos.map((v) => v.id)), JSON.stringify(report)]
+    );
+    res.json({ ok: true, id, title, created, count: videos.length, report });
+  } catch (err: any) {
+    console.error("Lỗi tổng hợp phân tích:", err);
+    res.status(502).json({ ok: false, message: humanizeError(err) });
+  }
+});
+
+// Danh sách báo cáo tổng hợp đã lưu (của mình; admin thấy tất cả).
+app.get("/api/syntheses", requireAuth, async (req, res) => {
+  try {
+    const rows = isAdminReq(req)
+      ? await allQuery("SELECT id, owner, title, created, count FROM syntheses ORDER BY created DESC LIMIT 50")
+      : await allQuery("SELECT id, owner, title, created, count FROM syntheses WHERE owner = ? ORDER BY created DESC LIMIT 50", [ownerEmail(req)]);
+    res.json({ ok: true, items: rows });
+  } catch { res.status(500).json({ ok: false, items: [] }); }
+});
+
+// Xem lại 1 báo cáo tổng hợp.
+app.get("/api/synthesis/:id", requireAuth, async (req, res) => {
+  try {
+    const r = await getQuery<any>("SELECT * FROM syntheses WHERE id = ?", [req.params.id]);
+    if (!r) return res.status(404).json({ ok: false });
+    if (!isAdminReq(req) && String(r.owner || "").toLowerCase().trim() !== ownerEmail(req)) return res.status(404).json({ ok: false });
+    res.json({ ok: true, id: r.id, title: r.title, created: r.created, count: r.count, ids: JSON.parse(r.ids || "[]"), report: JSON.parse(r.report || "{}") });
+  } catch { res.status(500).json({ ok: false }); }
+});
+
+// Xóa 1 báo cáo tổng hợp.
+app.delete("/api/synthesis/:id", requireAuth, async (req, res) => {
+  try {
+    const r = await getQuery<any>("SELECT owner FROM syntheses WHERE id = ?", [req.params.id]);
+    if (r && (isAdminReq(req) || String(r.owner || "").toLowerCase().trim() === ownerEmail(req))) {
+      await runQuery("DELETE FROM syntheses WHERE id = ?", [req.params.id]);
+    }
+    res.json({ ok: true });
+  } catch { res.status(500).json({ ok: false }); }
 });
 
 // 6. API Chia sẻ phiếu phân tích công khai dưới dạng link
