@@ -39,6 +39,13 @@ async function douyinGet(pathname: string, params: Record<string, string>, key: 
   });
   if (!res.ok) {
     const body = await res.text().catch(() => "");
+    if (res.status === 429) {
+      throw new Error(
+        /quota/i.test(body)
+          ? "Hết hạn mức gói RapidAPI cho Douyin (douyin-api6) — nâng cấp gói tại rapidapi.com rồi thử lại."
+          : "Douyin API đang bị giới hạn nhịp gọi (429) — thử lại sau ít phút."
+      );
+    }
     throw new Error(`Douyin API HTTP ${res.status}: ${body.slice(0, 200)}`);
   }
   return res.json();
