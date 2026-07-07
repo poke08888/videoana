@@ -1744,19 +1744,30 @@ function HistoryView({ history, onOpen, onReanalyze, showToast, isAdmin, onSynth
         </div>
       )}
 
-      {/* Báo cáo tổng hợp đã lưu — bấm để xem lại */}
-      {saved.length > 0 && (
-        <div style={c("display:flex;gap:8px;flex-wrap:wrap;align-items:center")}>
-          <span style={c("font-family:'Space Grotesk',sans-serif;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:#8a7c67")}>📊 Báo cáo đã lưu:</span>
-          {saved.map((s) => (
-            <span key={s.id} style={c("display:inline-flex;align-items:center;gap:7px;background:#fffdf8;border:1px solid rgba(140,96,40,.25);border-radius:99px;padding:6px 11px;font-size:12.5px;color:#6b5b44")}>
-              <a onClick={() => onOpenSynthesis(s.id)} style={c("cursor:pointer;font-weight:600;color:#8a5614;max-width:260px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis")}>{s.title}</a>
-              <span style={c("color:#a8946f;font-size:11px")}>({s.count} video)</span>
-              <a onClick={() => removeSaved(s.id)} title="Xóa báo cáo" style={c("cursor:pointer;color:#8f3232;font-weight:700")}>✕</a>
-            </span>
-          ))}
-        </div>
-      )}
+      {/* Báo cáo tổng hợp đã lưu — hiển thị như 1 dòng video, kèm sticker nhận diện */}
+      {saved.map((s) => {
+        const createdStr = s.created ? new Date(s.created).toLocaleDateString("vi-VN") : "";
+        return (
+          <div key={s.id} onClick={() => onOpenSynthesis(s.id)} style={c("display:flex;gap:18px;align-items:center;background:linear-gradient(150deg,#fffdf8,#fbf4e4);border:1px solid rgba(60,122,94,.35);border-radius:15px;padding:14px 18px;cursor:pointer;transition:.18s")}>
+            {completedCount >= 2 && <div style={c("width:22px;flex:none")} />}
+            <div style={c("width:80px;height:56px;border-radius:10px;flex:none;display:grid;place-items:center;font-size:24px;background:linear-gradient(150deg,#3c7a5e,#2a5a44)")}>📊</div>
+            <div style={c("flex:1;min-width:0")}>
+              <div style={c("font-family:'Fraunces',serif;font-size:16px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis")}>{s.title}</div>
+              <div style={c("font-size:12.5px;color:#8a7c67;margin-top:3px;display:flex;align-items:center;gap:8px;flex-wrap:wrap")}>
+                <span style={c("font-family:'Space Grotesk',sans-serif;font-size:10.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;padding:2px 9px;border-radius:99px;background:rgba(60,122,94,.14);color:#2a5a44;border:1px solid rgba(60,122,94,.3)")}>🧩 Báo cáo tổng hợp</span>
+                <span>Gom từ {s.count} video · {createdStr}</span>
+                {isAdmin && s.owner && <span style={c("font-family:'Space Grotesk',sans-serif;font-size:11px;font-weight:600;padding:2px 8px;border-radius:99px;background:rgba(176,106,22,.1);color:#8a5614")}>👤 {s.owner}</span>}
+              </div>
+            </div>
+            <button
+              onClick={(e) => { e.stopPropagation(); removeSaved(s.id); }}
+              title="Xóa báo cáo"
+              style={c("flex:none;padding:8px 13px;border:1px solid rgba(143,50,50,.35);border-radius:10px;background:#fff6f4;color:#8f3232;font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:12.5px;cursor:pointer;white-space:nowrap")}
+            >✕ Xóa</button>
+            <span style={c("color:#2a5a44;font-size:18px;flex:none")}>→</span>
+          </div>
+        );
+      })}
 
       {history.map((h) => {
         const isPending = h.status === "pending";
