@@ -226,11 +226,13 @@ async function processItem(item: any) {
   } catch (err: any) {
     console.error(`[nonelab] Phân tích video thất bại [${item.title}]:`, err);
 
-    // Lưu lỗi vào trong trường analysis để phục vụ debug
+    // Lưu lỗi vào trường analysis để debug + GIỮ LẠI link video gốc (source_url
+    // và analysis.sourceUrl) để người dùng bấm "Phân tích lại" không phải tìm link.
     const errorMsg = String(err.message || err);
+    const failSrc = String(meta.tiktokUrl || meta.youtubeUrl || "").trim();
     await runQuery(
-      "UPDATE history SET status = 'failed', analysis = ?, queue_meta = NULL WHERE id = ?",
-      [JSON.stringify({ error: errorMsg }), item.id]
+      "UPDATE history SET status = 'failed', analysis = ?, source_url = ?, queue_meta = NULL WHERE id = ?",
+      [JSON.stringify(failSrc ? { error: errorMsg, sourceUrl: failSrc } : { error: errorMsg }), failSrc || null, item.id]
     );
   } finally {
     // Xóa file video cục bộ (tải lên hoặc tải từ TikTok) để giải phóng ổ cứng.

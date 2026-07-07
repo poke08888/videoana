@@ -484,12 +484,16 @@ export default function App() {
   const reanalyzeEntry = (h: HistoryEntry) => {
     setFormPatch({ title: h.title, platform: h.platform, product: h.product });
     setSelectedFiles([]);
-    setYoutubeUrl("");
-    setTiktokUrl("");
+    // Phiếu có link video gốc (kể cả phiếu LỖI — link được giữ lại) → điền sẵn
+    // link để bấm phân tích lại ngay, không phải tìm lại.
+    const src = String((h.analysis as any)?.sourceUrl || "").trim();
+    const isLinkVideo = /tiktok\.com|douyin\.com/i.test(src);
+    setTiktokUrl(isLinkVideo ? src : "");
+    setYoutubeUrl(src && !isLinkVideo ? src : "");
     setFormPatch({ file: "" });
     setAnalyzeError(null);
     setScreen("upload");
-    showToast("Chọn lại video (hoặc dán link) để phân tích lại phiếu này");
+    showToast(src ? "Đã điền sẵn link video gốc — bấm Bắt đầu phân tích" : "Chọn lại video (hoặc dán link) để phân tích lại phiếu này");
   };
 
   const shareReport = () => {
