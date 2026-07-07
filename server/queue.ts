@@ -61,6 +61,10 @@ export async function startQueueProcessor() {
   }, 3000);
 }
 
+// Tiêu đề có chữ Trung/Nhật/Hàn không (caption Douyin) — nếu có thì thay bằng
+// tóm tắt tiếng Việt của phiếu sau khi phân tích xong.
+const hasCJK = (s: any): boolean => /[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uac00-\ud7af]/.test(String(s || ""));
+
 // Helper: chạy câu lệnh và trả về số dòng bị ảnh hưởng (this.changes).
 function runQueryChanges(sql: string, params: any[] = []): Promise<number> {
   return new Promise((resolve, reject) => {
@@ -113,7 +117,8 @@ async function processItem(item: any) {
           if (meta.eng) base.eng = meta.eng;
           base.sourceUrl = srcUrlForReuse;
           const reuseScore = scoreOf(base);
-          const reuseTitle = prior.title || meta.form?.title;
+          let reuseTitle = prior.title || meta.form?.title;
+          if (hasCJK(reuseTitle) && base.subtitle) reuseTitle = String(base.subtitle).slice(0, 120);
           await runQuery(
             "UPDATE history SET status = 'completed', score = ?, analysis = ?, source_url = ?, title = COALESCE(NULLIF(?, ''), title), queue_meta = NULL WHERE id = ?",
             [reuseScore, JSON.stringify(base), srcUrlForReuse, reuseTitle || "", item.id]
@@ -154,6 +159,7 @@ async function processItem(item: any) {
         const t = dl.desc.slice(0, 120);
         meta.form = { ...meta.form, title: meta.form?.title || t };
         await runQuery("UPDATE history SET title = ? WHERE id = ?", [t, item.id]);
+        item.title = t; // để bước hoàn tất biết tiêu đề hiện tại (kiểm tra tiếng Trung)
       }
     }
 
@@ -199,11 +205,15 @@ async function processItem(item: any) {
 
     const score = scoreOf(decoratedAnalysis);
 
+    // Tiêu đề là tiếng Trung/Nhật/Hàn (caption Douyin) → thay bằng tóm tắt tiếng
+    // Việt của phiếu (subtitle) cho dễ đọc trong danh sách.
+    const viTitle = hasCJK(item.title) ? String((decoratedAnalysis as any).subtitle || "").slice(0, 120) : "";
+
     // Cập nhật kết quả phân tích thành công — xóa queue_meta để không lưu lại apiKey.
     // Lưu source_url để lần sau gặp video trùng link thì tái dùng, không gọi Gemini.
     await runQuery(
-      "UPDATE history SET status = 'completed', score = ?, analysis = ?, source_url = ?, queue_meta = NULL WHERE id = ?",
-      [score, JSON.stringify(decoratedAnalysis), srcUrl || null, item.id]
+      "UPDATE history SET status = 'completed', score = ?, analysis = ?, source_url = ?, title = COALESCE(NULLIF(?, ''), title), queue_meta = NULL WHERE id = ?",
+      [score, JSON.stringify(decoratedAnalysis), srcUrl || null, viTitle, item.id]
     );
 
     // Tăng lượt phân tích của người dùng
