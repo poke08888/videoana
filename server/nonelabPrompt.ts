@@ -34,7 +34,7 @@ Trả về DUY NHẤT một object JSON hợp lệ (không kèm markdown, không
     { "label": "tên trục ngắn", "big": "2-3 từ chốt", "note": "1 câu giải thích" }
   ],
   "hook": {
-    "quote": "trích nguyên văn câu hook 3 giây đầu",
+    "quote": "trích câu hook 3 giây đầu — bằng TIẾNG VIỆT (video tiếng nước ngoài thì dịch sang tiếng Việt, không để tiếng gốc)",
     "type": "mâu thuẫn | con số+bối cảnh bất ngờ | gọi thẳng người xem | nói hộ suy nghĩ thầm | reframe phi lý | pattern interrupt",
     "viewerFirst": true,   // true=viewer-first, false=creator-first
     "score": 8,            // 1-10
@@ -47,7 +47,7 @@ Trả về DUY NHẤT một object JSON hợp lệ (không kèm markdown, không
         {
           "ts": "0:02",
           "vi": "hành động chính trong cảnh (1 câu)",
-          "voiceover": "VOICE-OFF/LỜI THOẠI nguyên văn nói trong cảnh này — chép ĐÚNG TỪNG CHỮ tiếng Việt theo audio (cả thuyết minh lẫn thoại on-screen). Nếu cảnh không có lời thì để chuỗi rỗng ''.",
+          "voiceover": "VOICE-OFF/LỜI THOẠI trong cảnh này, LUÔN bằng TIẾNG VIỆT: video tiếng Việt thì chép đúng từng chữ theo audio; video tiếng nước ngoài (Trung/Anh...) thì DỊCH toàn bộ lời nói sang tiếng Việt tự nhiên, giữ đúng ý và giọng điệu bán hàng — KHÔNG để tiếng gốc. Nếu cảnh không có lời thì để chuỗi rỗng ''.",
           "note": "vì sao cảnh này hiệu quả",
           "size": "Cỡ cảnh — dùng ĐÚNG viết tắt: ECU/CU/MCU/MS/CS/MFS/FS/WS",
           "angle": "Tầm máy + Góc nghiêng (vd 'Eye Level · góc thẳng' hoặc 'Ground Level · low angle')",
@@ -73,7 +73,7 @@ Trả về DUY NHẤT một object JSON hợp lệ (không kèm markdown, không
   "formulaVisual": "Công thức cấu trúc hình ảnh, dùng mũi tên → : [Mở đầu] ... → [Nội dung] ... → [Sản phẩm] ... → [Chốt] ...",
   "formulaScript": "Công thức cấu trúc lời thoại, dùng mũi tên → : Nỗi đau/nhu cầu → Điểm bán → Lợi ích cốt lõi → CTA",
   "verdictText": "2-4 câu chấm theo CÔNG THỨC BÙNG NỔ (Mở đầu bùng nổ + Điểm bán nhìn thấy được). Nhớ: thiếu một phần là hỏng.",
-  "quotes": ["5-6 câu thoại đắt cần lưu vào kho lời thoại (文案库)"],
+  "quotes": ["5-6 câu thoại đắt cần lưu vào kho lời thoại (文案库) — luôn bằng TIẾNG VIỆT (dịch nếu video nói tiếng nước ngoài)"],
   "visuals": ["5-6 cảnh quay đắt cần lưu vào kho hình ảnh (画面库)"],
   "objchuan": { "type": "cùng loại | công dụng tương tự | cùng khách hàng | kết quả tương tự | chéo ngành", "note": "vì sao" },
   "newAngles": ["5-8 góc quay mới đẻ ra từ khung này cho sản phẩm Nonelab (mỗi góc: bối cảnh + điểm bán)"],
@@ -160,10 +160,14 @@ ${ctx || "(người dùng không cung cấp thêm thông tin)"}
 YÊU CẦU ĐẦU RA:
 - Cụ thể, chi tiết — quan sát chung chung là vô dụng.
 - Điền ĐÚNG góc máy theo chuẩn quốc tế ở từng beat.
-- BẮT BUỘC chép VOICE-OFF/LỜI THOẠI nguyên văn ("voiceover") cho TỪNG beat: nghe kỹ
-  audio và transcribe đúng từng chữ tiếng Việt phần thuyết minh + thoại trong cảnh đó
-  (kèm theo timestamp của beat). Không tóm tắt, không diễn giải lại — chép nguyên văn.
-  Cảnh nào không có lời nói thì để "voiceover": "".
+- BẮT BUỘC ghi VOICE-OFF/LỜI THOẠI ("voiceover") cho TỪNG beat: nghe kỹ audio phần
+  thuyết minh + thoại trong cảnh đó (theo timestamp của beat). Video tiếng Việt:
+  transcribe đúng từng chữ. Video tiếng nước ngoài (tiếng Trung, tiếng Anh...):
+  DỊCH TOÀN BỘ lời nói sang TIẾNG VIỆT tự nhiên, trọn nghĩa, giữ giọng điệu bán hàng —
+  TUYỆT ĐỐI không để nguyên tiếng gốc, không phiên âm. Không tóm tắt, không diễn giải
+  lại — dịch/chép đủ câu. Cảnh nào không có lời nói thì để "voiceover": "".
+- MỌI trường lời thoại khác ("hook.quote", "quotes", trích dẫn trong "steals") cũng
+  LUÔN bằng tiếng Việt theo đúng quy tắc trên.
 - "checklist" phải đủ 7 mục đúng thứ tự, "level" chỉ nhận "ok" | "mid" | "low".
 - "verdict" đúng 4 mục.
 
