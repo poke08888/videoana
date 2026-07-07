@@ -908,6 +908,7 @@ app.post("/api/analyze", requireAuth, upload.single("video"), async (req, res) =
     res.json({ ok: true, analysis, usedAI: true, watchedVideo: !!(file || tiktokPath || youtubeUrl), model });
   } catch (err: any) {
     cleanup();
+    console.error("[nonelab] Lỗi phân tích đơn lẻ:", err);
     res.status(502).json({ ok: false, error: "gemini-failed", message: humanizeError(err) });
   }
 });

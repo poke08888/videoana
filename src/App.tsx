@@ -275,9 +275,11 @@ export default function App() {
       return;
     }
 
-    // Nhiều nguồn (>1 video/file/link) -> đẩy vào Hàng đợi xử lý ngầm song song.
+    // Nhiều nguồn (>1 video/file) HOẶC có link dán vào -> đẩy vào Hàng đợi nền.
+    // Link luôn đi hàng đợi vì luồng đồng bộ (tải video + Gemini) dễ vượt ~100s
+    // → Cloudflare tunnel cắt kết nối (524); hàng đợi còn tự retry khi Gemini bận.
     const totalSources = selectedFiles.length + tiktokLinks.length;
-    if (totalSources > 1) {
+    if (totalSources > 1 || tiktokLinks.length > 0) {
       setAnalyzeError(null);
       showToast(`Đang đưa ${totalSources} video vào hàng đợi...`);
       try {
