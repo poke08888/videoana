@@ -29,9 +29,11 @@ export function authHeaders(): Record<string, string> {
 export async function getMe(): Promise<any> {
   try {
     const res = await fetch("/api/auth/me", { headers: authHeaders() });
-    return await res.json().catch(() => ({ ok: false }));
+    const data = await res.json().catch(() => ({ ok: false }));
+    // Kèm status để caller phân biệt token hết hạn (401) với backend sập (0).
+    return { status: res.status, ...data };
   } catch {
-    return { ok: false };
+    return { ok: false, status: 0 };
   }
 }
 
@@ -204,6 +206,63 @@ export const getSynthesis = (id: string): Promise<any> => jget(`/api/synthesis/$
 export async function deleteSynthesis(id: string): Promise<any> {
   try {
     const res = await fetch(`/api/synthesis/${id}`, { method: "DELETE", headers: authHeaders() });
+    return await res.json().catch(() => ({ ok: false }));
+  } catch {
+    return { ok: false };
+  }
+}
+
+// ── Khung hạt giống (bản đồ content từ điểm mạnh sản phẩm) ──────────────────
+// Chỉ Biên tập + Quản trị. Sinh theo TỪNG PHẦN để chạy song song + retry riêng.
+
+export interface SeedFrameFormInput {
+  ten: string;
+  nganh: string;
+  usp: string[];
+  khach?: string;
+  pain?: string;
+  trangThai: "moi" | "cu";
+}
+
+export async function seedFramePart(opts: {
+  part: string;
+  form: SeedFrameFormInput;
+  strength?: string;
+  apiKey?: string;
+  model?: string;
+}): Promise<any> {
+  try {
+    const res = await fetch("/api/seedframe/part", {
+      method: "POST",
+      headers: { ...authHeaders(), "Content-Type": "application/json" },
+      body: JSON.stringify(opts),
+    });
+    const data = await res.json().catch(() => ({ ok: false, message: "Phản hồi không hợp lệ." }));
+    return { status: res.status, ...data };
+  } catch {
+    return { ok: false, status: 0, message: "Không gọi được backend." };
+  }
+}
+
+export async function saveSeedFrame(opts: { id?: string; form: SeedFrameFormInput; result: any }): Promise<any> {
+  try {
+    const res = await fetch("/api/seedframe/save", {
+      method: "POST",
+      headers: { ...authHeaders(), "Content-Type": "application/json" },
+      body: JSON.stringify(opts),
+    });
+    return await res.json().catch(() => ({ ok: false }));
+  } catch {
+    return { ok: false };
+  }
+}
+
+export const listSeedFrames = (): Promise<any> => jget("/api/seedframes");
+export const getSeedFrame = (id: string): Promise<any> => jget(`/api/seedframe/${id}`);
+
+export async function deleteSeedFrame(id: string): Promise<any> {
+  try {
+    const res = await fetch(`/api/seedframe/${id}`, { method: "DELETE", headers: authHeaders() });
     return await res.json().catch(() => ({ ok: false }));
   } catch {
     return { ok: false };

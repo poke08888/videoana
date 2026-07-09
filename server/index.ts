@@ -29,6 +29,7 @@ import { parseAdsGrid, buildCohort, type ScoredVideo } from "./adsAnalytics.js";
 import { searchVideos, rankEngagement, parseKeywords } from "./tiktokSearch.js";
 import { getProductKnowledge, saveProductKnowledge, finalizeCohortIfDone, productSlug } from "./cohort.js";
 import { buildSynthesisPrompt, type SourceVideo } from "./synthesize.js";
+import { buildSeedFramePrompt, isValidSeedPart, normalizeSeedForm, SEED_FRAME_PARTS, type SeedFramePart } from "./seedFrame.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const UPLOAD_DIR = path.join(__dirname, "uploads");
@@ -641,6 +642,98 @@ app.delete("/api/synthesis/:id", requireAuth, async (req, res) => {
     const r = await getQuery<any>("SELECT owner FROM syntheses WHERE id = ?", [req.params.id]);
     if (r && (isAdminReq(req) || String(r.owner || "").toLowerCase().trim() === ownerEmail(req))) {
       await runQuery("DELETE FROM syntheses WHERE id = ?", [req.params.id]);
+    }
+    res.json({ ok: true });
+  } catch { res.status(500).json({ ok: false }); }
+});
+
+// ── Khung hạt giống: bản đồ content từ điểm mạnh sản phẩm ────────────────────
+// Chỉ Biên tập + Quản trị (requireEditor). Client gọi từng PHẦN song song
+// (persona/concepts/bench chung + directions/doichuan theo từng nhóm điểm mạnh)
+// để mỗi request nhỏ, nhanh, phần nào lỗi thì thử lại riêng.
+app.post("/api/seedframe/part", requireEditor, async (req, res) => {
+  try {
+    const part = String(req.body?.part || "") as SeedFramePart;
+    if (!SEED_FRAME_PARTS.includes(part)) {
+      return res.status(400).json({ ok: false, message: "Phần cần sinh không hợp lệ." });
+    }
+    const form = normalizeSeedForm(req.body?.form);
+    if (!form) {
+      return res.status(400).json({ ok: false, message: "Cần tối thiểu tên sản phẩm và ít nhất một nhóm điểm mạnh." });
+    }
+    const strength = String(req.body?.strength || "").trim().slice(0, 300) || undefined;
+    const apiKey = resolveKey(req.body?.apiKey);
+    if (!apiKey) return res.status(400).json({ ok: false, error: "no-key", message: "Chưa kết nối Gemini API." });
+
+    const data = await generateJSON(apiKey, req.body?.model, buildSeedFramePrompt(part, form, strength));
+    if (!isValidSeedPart(part, data)) throw new Error("Gemini trả về dữ liệu không đúng khung của phần này.");
+    res.json({ ok: true, part, data });
+  } catch (err: any) {
+    console.error("Lỗi sinh khung hạt giống:", err);
+    res.status(502).json({ ok: false, message: humanizeError(err) });
+  }
+});
+
+// Lưu / cập nhật 1 bản đồ khung hạt giống (client gửi kèm id để ghi đè sau retry).
+app.post("/api/seedframe/save", requireEditor, async (req, res) => {
+  try {
+    const form = normalizeSeedForm(req.body?.form);
+    const result = req.body?.result;
+    if (!form || !result || typeof result !== "object") {
+      return res.status(400).json({ ok: false, message: "Thiếu dữ liệu bản đồ để lưu." });
+    }
+    const now = new Date().toISOString();
+    let id = String(req.body?.id || "").trim();
+    if (id) {
+      // Chỉ chủ sở hữu (hoặc admin) mới được ghi đè bản đồ có sẵn.
+      const r = await getQuery<any>("SELECT owner, created FROM seed_frames WHERE id = ?", [id]);
+      if (r && !isAdminReq(req) && String(r.owner || "").toLowerCase().trim() !== ownerEmail(req)) {
+        return res.status(403).json({ ok: false, message: "Không có quyền sửa bản đồ này." });
+      }
+      await runQuery(
+        "INSERT OR REPLACE INTO seed_frames (id, owner, product, created, updated, form, result) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        [id, r?.owner || ownerEmail(req), form.ten, r?.created || now, now, JSON.stringify(form), JSON.stringify(result)]
+      );
+    } else {
+      id = "kf" + Math.random().toString(36).slice(2, 10);
+      await runQuery(
+        "INSERT INTO seed_frames (id, owner, product, created, updated, form, result) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        [id, ownerEmail(req), form.ten, now, now, JSON.stringify(form), JSON.stringify(result)]
+      );
+    }
+    res.json({ ok: true, id });
+  } catch (err) {
+    console.error("Lỗi lưu khung hạt giống:", err);
+    res.status(500).json({ ok: false });
+  }
+});
+
+// Danh sách bản đồ đã lưu (của mình; admin thấy tất cả).
+app.get("/api/seedframes", requireEditor, async (req, res) => {
+  try {
+    const rows = isAdminReq(req)
+      ? await allQuery("SELECT id, owner, product, created, updated FROM seed_frames ORDER BY updated DESC LIMIT 50")
+      : await allQuery("SELECT id, owner, product, created, updated FROM seed_frames WHERE owner = ? ORDER BY updated DESC LIMIT 50", [ownerEmail(req)]);
+    res.json({ ok: true, items: rows });
+  } catch { res.status(500).json({ ok: false, items: [] }); }
+});
+
+// Xem lại 1 bản đồ.
+app.get("/api/seedframe/:id", requireEditor, async (req, res) => {
+  try {
+    const r = await getQuery<any>("SELECT * FROM seed_frames WHERE id = ?", [req.params.id]);
+    if (!r) return res.status(404).json({ ok: false });
+    if (!isAdminReq(req) && String(r.owner || "").toLowerCase().trim() !== ownerEmail(req)) return res.status(404).json({ ok: false });
+    res.json({ ok: true, id: r.id, product: r.product, created: r.created, updated: r.updated, form: JSON.parse(r.form || "{}"), result: JSON.parse(r.result || "{}") });
+  } catch { res.status(500).json({ ok: false }); }
+});
+
+// Xóa 1 bản đồ.
+app.delete("/api/seedframe/:id", requireEditor, async (req, res) => {
+  try {
+    const r = await getQuery<any>("SELECT owner FROM seed_frames WHERE id = ?", [req.params.id]);
+    if (r && (isAdminReq(req) || String(r.owner || "").toLowerCase().trim() === ownerEmail(req))) {
+      await runQuery("DELETE FROM seed_frames WHERE id = ?", [req.params.id]);
     }
     res.json({ ok: true });
   } catch { res.status(500).json({ ok: false }); }

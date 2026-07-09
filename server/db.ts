@@ -188,6 +188,20 @@ export async function connectDB() {
     )
   `);
 
+  // 2e-ter. Khung hạt giống — bản đồ content từ điểm mạnh sản phẩm (5 khối),
+  // lưu lại để xem lại / xuất file. Chỉ Biên tập + Quản trị dùng tính năng này.
+  await runQuery(`
+    CREATE TABLE IF NOT EXISTS seed_frames (
+      id TEXT PRIMARY KEY,
+      owner TEXT,
+      product TEXT,
+      created TEXT,
+      updated TEXT,
+      form TEXT,     -- JSON input (tên SP, ngành, nhóm điểm mạnh, khách, pain, trạng thái)
+      result TEXT    -- JSON 5 khối kết quả
+    )
+  `);
+
   // 2e. Job tìm video TikTok chạy NỀN — để search không bị hủy khi đổi tab/F5.
   await runQuery(`
     CREATE TABLE IF NOT EXISTS search_jobs (

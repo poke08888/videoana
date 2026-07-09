@@ -4,7 +4,8 @@ import { css as c } from "./lib/csx";
 import { decorate, makeEntry, presetPerms, scoreOf, seedUsers, slug } from "./lib/analysis";
 import { buildReportHTML } from "./lib/reportHtml";
 import { buildRaw, seedDates, seedForms } from "./data/sampleAnalysis";
-import { analyzeVideo, analyzeVideoBatch, testGemini, authHeaders, importAds, listCohorts, getCohort, finalizeCohort, getKnowledge, saveKnowledge, getHistoryItem, startCampaignSearch, getCampaignJob, getActiveCampaignJobs, discardCampaignJob, stopCampaignSearch, createCampaign, getMe, synthesizeReports, listSyntheses, getSynthesis, deleteSynthesis } from "./lib/api";
+import { analyzeVideo, analyzeVideoBatch, testGemini, authHeaders, importAds, listCohorts, getCohort, finalizeCohort, getKnowledge, saveKnowledge, getHistoryItem, startCampaignSearch, getCampaignJob, getActiveCampaignJobs, discardCampaignJob, stopCampaignSearch, createCampaign, getMe, synthesizeReports, listSyntheses, getSynthesis, deleteSynthesis, seedFramePart, saveSeedFrame, listSeedFrames, getSeedFrame, deleteSeedFrame } from "./lib/api";
+import type { SeedFrameFormInput } from "./lib/api";
 import { embedFrames } from "./lib/frames";
 import type { AdminUser, Analysis, FormState, HistoryEntry, Level, Perms, Screen, User } from "./types";
 
@@ -161,8 +162,9 @@ export default function App() {
             setUser(r.user);
             localStorage.setItem("nonelab_user", JSON.stringify(r.user));
             if (r.token) localStorage.setItem("nonelab_token", r.token);
-          } else if (r?.error === "inactive") {
-            // Tài khoản bị khóa → đăng xuất.
+          } else if (r?.error === "inactive" || r?.status === 401) {
+            // Tài khoản bị khóa hoặc token đã hết hạn/không hợp lệ → đăng xuất
+            // (nếu không, UI trông như đang đăng nhập nhưng mọi API đều 401).
             setUser(null);
             localStorage.removeItem("nonelab_user");
             localStorage.removeItem("nonelab_token");
@@ -427,6 +429,7 @@ export default function App() {
     { key: "upload", label: "Phân tích video mới", sub: "Tải video & nhập thông tin để AI phân tích" },
     { key: "ads", label: "Phân tích chỉ số", sub: "Import Excel chỉ số ads & rút kết luận content" },
     { key: "campaign", label: "Campaign từ khóa", sub: "Tìm video TikTok theo từ khóa + tương tác → điểm chung video viral" },
+    { key: "seedframe", label: "Khung hạt giống", sub: "Bản đồ content từ điểm mạnh sản phẩm — 5 khối theo phương pháp hạt giống" },
     { key: "history", label: "Lịch sử phân tích", sub: "Tất cả phiếu phân tích đã tạo" },
     { key: "admin", label: "Quản trị", sub: "Quản lý tài khoản & Cài đặt API key" },
   ];
@@ -435,6 +438,7 @@ export default function App() {
     upload: ["Phân tích video mới", "Tải video & nhập thông tin để AI phân tích"],
     ads: ["Phân tích chỉ số", "Import Excel chỉ số ads → kết luận content nào có chỉ số tốt"],
     campaign: ["Campaign từ khóa", "Tìm video TikTok theo từ khóa + tương tác → điểm chung video viral"],
+    seedframe: ["Khung hạt giống", "Điểm mạnh sản phẩm → bản đồ content 5 khối + đối chuẩn 3 ngôn ngữ + kế hoạch test"],
     report: ["Phiếu phân tích", "Kết quả phân tích theo khung Năm Lực"],
     history: ["Lịch sử phân tích", "Tất cả phiếu phân tích đã tạo"],
     synthesis: ["Báo cáo tổng hợp", "Điểm chung lý do thành công của các video đã chọn"],
@@ -811,14 +815,15 @@ export default function App() {
             {navDef.map((it) => {
               if (it.key === "history" && !user?.perms?.history) return null;
               if (it.key === "admin" && !user?.perms?.manage) return null;
-              // Phân tích chỉ số & Campaign từ khóa: chỉ Biên tập và Quản trị.
-              if ((it.key === "ads" || it.key === "campaign") && !(user?.role === "Quản trị" || user?.role === "Biên tập")) return null;
+              // Phân tích chỉ số, Campaign từ khóa & Khung hạt giống: chỉ Biên tập và Quản trị.
+              if ((it.key === "ads" || it.key === "campaign" || it.key === "seedframe") && !(user?.role === "Quản trị" || user?.role === "Biên tập")) return null;
               const on = screen === it.key;
               const icons: Record<string, string> = {
                 dashboard: "◇",
                 upload: "＋",
                 ads: "📈",
                 campaign: "🔍",
+                seedframe: "🌱",
                 report: "📊",
                 history: "≡",
                 admin: "⚙"
@@ -902,6 +907,7 @@ export default function App() {
             )}
             {screen === "ads" && <AdsView isMobile={isMobile} integration={integration} showToast={showToast} onOpenReport={openReport} isAdmin={user?.role === "Quản trị"} />}
             {screen === "campaign" && <CampaignView isMobile={isMobile} integration={integration} showToast={showToast} onOpenReport={openReport} isAdmin={user?.role === "Quản trị"} />}
+            {screen === "seedframe" && <SeedFrameView isMobile={isMobile} integration={integration} showToast={showToast} isAdmin={user?.role === "Quản trị"} canExport={!!user?.perms?.export} />}
             {screen === "report" && a && <ReportView a={a} metaList={metaList} videoFile={selectedFiles[0] || null} isMobile={isMobile} />}
             {screen === "admin" && (
               <AdminView
@@ -929,10 +935,12 @@ export default function App() {
           {navDef.map((it) => {
             if (it.key === "history" && !user?.perms?.history) return null;
             if (it.key === "admin" && !user?.perms?.manage) return null;
+            if (it.key === "seedframe" && !(user?.role === "Quản trị" || user?.role === "Biên tập")) return null;
             const on = screen === it.key;
             const icons: Record<string, string> = {
               dashboard: "◇",
               upload: "＋",
+              seedframe: "🌱",
               report: "📊",
               history: "≡",
               admin: "⚙"
@@ -1419,6 +1427,729 @@ function CampaignView({ isMobile, integration, showToast, onOpenReport, isAdmin 
       {!cohorts.length && !sel && (
         <div style={c("text-align:center;color:#8a7c67;font-size:14px;padding:30px 0")}>Chưa có campaign nào. Nhập từ khóa ở trên để bắt đầu.</div>
       )}
+    </div>
+  );
+}
+
+/* ════════════════════════ KHUNG HẠT GIỐNG ════════════════════════
+ * Bản đồ content từ điểm mạnh sản phẩm — 5 khối theo skill khung-hat-giong:
+ * ① điểm mạnh → hướng nội dung · ② chân dung khách & thời điểm có nhu cầu ·
+ * ③ concept nghịch lý/over · ④ đối chuẩn 5 hướng × 3 ngôn ngữ · ⑤ kế hoạch test.
+ * Backend sinh theo TỪNG PHẦN (Gemini) — client gọi song song, phần lỗi retry riêng.
+ * Chỉ Biên tập + Quản trị thấy màn này (nav đã lọc; server chặn thêm bằng requireEditor). */
+
+const SF_NGANH = [
+  "Chăm sóc cá nhân (khử mùi, sữa tắm...)",
+  "Mỹ phẩm / skincare",
+  "Nước hoa",
+  "FMCG / tiêu dùng nhanh",
+  "Thời trang / phụ kiện",
+  "Gia dụng",
+  "F&B",
+  "Khác",
+];
+
+// Nhịp vận hành + nguyên tắc ngân sách (nêu ở cuối output — đúng theo skill).
+const SF_NHIP = "3–5 khung hạt giống/tuần · 15–20 video/khung · 4 vòng test trong 1 tháng · lướt và lưu ≥200 video đối chuẩn/ngày · chỉ mượn khung, luôn tự tạo \"điểm cộng\" riêng.";
+const SF_BUDGET: Record<string, string> = {
+  moi: "SP mới: booking test ~10% GMV kỳ vọng · ads chia ~50/50 awareness/conversion · KOC chiếm 70–80% tầng awareness để test painpoint.",
+  cu: "SP đang bán: booking test ~3% GMV kỳ vọng · 80–90% ads dồn tầng conversion có gắn giỏ.",
+};
+
+// Chạy tối đa `size` tác vụ song song (tránh dồn quá nhiều request Gemini một lúc).
+async function sfRunPool(tasks: (() => Promise<any>)[], size = 3): Promise<{ ok: boolean; value?: any; error?: any }[]> {
+  const results: { ok: boolean; value?: any; error?: any }[] = new Array(tasks.length);
+  let idx = 0;
+  async function worker() {
+    while (idx < tasks.length) {
+      const i = idx++;
+      try {
+        results[i] = { ok: true, value: await tasks[i]() };
+      } catch (e) {
+        results[i] = { ok: false, error: e };
+      }
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(size, tasks.length) }, worker));
+  return results;
+}
+
+const sfEsc = (s: any) =>
+  String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+
+function SeedFrameView({ isMobile, integration, showToast, isAdmin, canExport }: { isMobile: boolean; integration: { key: string; model: string }; showToast: (m: string) => void; isAdmin?: boolean; canExport?: boolean }) {
+  const [form, setForm] = useState({ ten: "", nganh: SF_NGANH[0], usp: "", khach: "", pain: "", trangThai: "moi" as "moi" | "cu" });
+  const [loading, setLoading] = useState(false);
+  const [progress, setProgress] = useState("");
+  const [err, setErr] = useState("");
+  const [dirs, setDirs] = useState<any[] | null>(null);
+  const [personas, setPersonas] = useState<any[] | null>(null);
+  const [concepts, setConcepts] = useState<any[] | null>(null);
+  const [doiChuan, setDoiChuan] = useState<any[] | null>(null);
+  const [bench, setBench] = useState<any | null>(null);
+  const [busy, setBusy] = useState<Record<string, boolean>>({});
+  const [selected, setSelected] = useState<Record<string, boolean>>({});
+  const [copied, setCopied] = useState(false);
+  const [savedList, setSavedList] = useState<any[]>([]);
+  const [currentId, setCurrentId] = useState("");
+  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const set = (k: string) => (e: any) => setForm((s) => ({ ...s, [k]: e.target.value }));
+  const uspList = () => form.usp.split("\n").map((s) => s.trim()).filter(Boolean).slice(0, 6);
+  const normForm = (): SeedFrameFormInput => ({ ten: form.ten.trim(), nganh: form.nganh, usp: uspList(), khach: form.khach.trim(), pain: form.pain.trim(), trangThai: form.trangThai });
+
+  const reloadSaved = async () => { const r = await listSeedFrames(); if (r?.ok) setSavedList(r.items || []); };
+  useEffect(() => { reloadSaved(); }, []);
+
+  /* Gọi 1 phần với tối đa 3 lần thử (server đã tự retry lỗi tạm của Gemini;
+   * client thử lại thêm khi JSON hỏng/mạng chập). Lỗi key/quyền thì dừng ngay. */
+  const callPart = async (part: string, f: SeedFrameFormInput, strength?: string) => {
+    let last: any = null;
+    for (let i = 0; i < 3; i++) {
+      if (i) await sleep(1200 * i);
+      const r = await seedFramePart({ part, form: f, strength, apiKey: integration.key || undefined, model: integration.model });
+      if (r?.ok) return r.data;
+      last = r;
+      // Token hết hạn: retry vô ích — báo rõ để người dùng đăng nhập lại.
+      if (r?.status === 401) {
+        last = { message: "Phiên đăng nhập đã hết hạn — hãy đăng xuất rồi đăng nhập lại." };
+        break;
+      }
+      if (r?.error === "no-key" || r?.status === 403 || /Biên tập|Quản trị|xác thực|API key/i.test(String(r?.message || ""))) break;
+    }
+    throw new Error(last?.message || "Không sinh được phần này.");
+  };
+
+  /* Lưu bản đồ lên server (tự động sau khi sinh/retry/tick chọn). */
+  const persist = async (f: SeedFrameFormInput, result: any) => {
+    const r = await saveSeedFrame({ id: currentId || undefined, form: f, result });
+    if (r?.ok && r.id && r.id !== currentId) setCurrentId(r.id);
+    reloadSaved();
+  };
+  const resultOf = (over: any = {}) => ({ dirs, personas, concepts, doiChuan, bench, selected, ...over });
+  // Tick chọn thay đổi → lưu lại sau 1 giây (không spam server).
+  useEffect(() => {
+    if (!currentId || !dirs) return;
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(() => { persist(normForm(), resultOf()); }, 1000);
+    return () => { if (saveTimer.current) clearTimeout(saveTimer.current); };
+  }, [selected]);
+
+  const generate = async () => {
+    const list = uspList();
+    if (!form.ten.trim() || list.length === 0) {
+      setErr("Cần tối thiểu tên sản phẩm và ít nhất một nhóm điểm mạnh (mỗi dòng một nhóm).");
+      return;
+    }
+    const f = normForm();
+    setErr(""); setLoading(true); setCurrentId("");
+    setDirs(null); setPersonas(null); setConcepts(null); setDoiChuan(null); setBench(null); setSelected({});
+    setProgress(`Đang lập bản đồ ${list.length} nhóm điểm mạnh + bối cảnh nhu cầu + concept + ma trận đối chuẩn 5 hướng × 3 ngôn ngữ (${3 + list.length * 4} lượt Gemini, chạy dần)...`);
+
+    const tasks = [
+      () => callPart("conceptsA", f),
+      () => callPart("conceptsB", f),
+      () => callPart("bench", f),
+      ...list.map((db) => () => callPart("persona", f, db)),
+      ...list.map((db) => () => callPart("directions", f, db)),
+      ...list.map((db) => () => callPart("doichuanA", f, db)),
+      ...list.map((db) => () => callPart("doichuanB", f, db)),
+    ];
+    const rs = await sfRunPool(tasks, 3);
+
+    const cA = rs[0], cB = rs[1], bR = rs[2];
+    const pR = rs.slice(3, 3 + list.length);
+    const dR = rs.slice(3 + list.length, 3 + 2 * list.length);
+    const kA = rs.slice(3 + 2 * list.length, 3 + 3 * list.length);
+    const kB = rs.slice(3 + 3 * list.length);
+
+    // Khối ②: mỗi nhóm điểm mạnh một bảng bối cảnh riêng (theo skill mới).
+    const vPersonas = list.map((db, i) => ({
+      diem_ban: db,
+      rows: pR[i].ok ? pR[i].value.rows || [] : [],
+      failed: !pR[i].ok,
+    }));
+    const cRows = [...(cA.ok ? cA.value.rows || [] : []), ...(cB.ok ? cB.value.rows || [] : [])];
+    const vConcepts = cA.ok || cB.ok ? cRows : null;
+    const vBench = bR.ok ? bR.value : null;
+    const vDirs = list.map((db, i) => ({
+      diem_ban: db,
+      mo_ta: dR[i].ok ? dR[i].value.mo_ta || [] : [],
+      huong: dR[i].ok ? dR[i].value.huong || [] : [],
+      failed: !dR[i].ok,
+    }));
+    const vDoiChuan = list.map((db, i) => ({
+      diem_ban: db,
+      cach_list: [...(kA[i].ok ? kA[i].value.cach_list || [] : []), ...(kB[i].ok ? kB[i].value.cach_list || [] : [])],
+      failedA: !kA[i].ok,
+      failedB: !kB[i].ok,
+    }));
+
+    const anyOk = vPersonas.some((p) => !p.failed) || !!vConcepts || !!vBench || vDirs.some((d) => !d.failed) || vDoiChuan.some((k) => k.cach_list.length);
+    if (!anyOk) {
+      const firstErr = rs.find((r) => !r.ok);
+      setErr(`Tạo không thành công (${(firstErr?.error as any)?.message || "lỗi không rõ"}). Đợi vài giây rồi bấm lại.`);
+    } else {
+      setPersonas(vPersonas); setConcepts(vConcepts); setBench(vBench); setDirs(vDirs); setDoiChuan(vDoiChuan);
+      const failParts: string[] = [];
+      const nFailDirs = vDirs.filter((d) => d.failed).length;
+      if (nFailDirs) failParts.push(`${nFailDirs} nhóm điểm mạnh`);
+      const nFailDc = vDoiChuan.filter((k) => k.failedA || k.failedB).length;
+      if (nFailDc) failParts.push(`đối chuẩn của ${nFailDc} nhóm`);
+      const nFailPer = vPersonas.filter((p) => p.failed).length;
+      if (nFailPer) failParts.push(`bối cảnh nhu cầu của ${nFailPer} nhóm`);
+      if (!vConcepts) failParts.push("concept nghịch lý");
+      if (!vBench) failParts.push("kế hoạch test");
+      setErr(failParts.length ? `Một phần chưa tạo được (${failParts.join(", ")}) — bấm "Thử lại" ở mục tương ứng.` : "");
+      await persist(f, { dirs: vDirs, personas: vPersonas, concepts: vConcepts, doiChuan: vDoiChuan, bench: vBench, selected: {} });
+      showToast("Đã lập xong bản đồ content — tự động lưu vào danh sách.");
+    }
+    setLoading(false); setProgress("");
+  };
+
+  /* ── Retry từng phần ── */
+  const retryDir = async (i: number) => {
+    if (!dirs) return;
+    setBusy((b) => ({ ...b, ["d" + i]: true }));
+    try {
+      const v = await callPart("directions", normForm(), dirs[i].diem_ban);
+      const next = dirs.map((d, k) => (k === i ? { ...d, mo_ta: v.mo_ta || [], huong: v.huong || [], failed: false } : d));
+      setDirs(next);
+      persist(normForm(), resultOf({ dirs: next }));
+    } catch (e: any) { showToast(e?.message || "Vẫn chưa tạo được — thử lại sau."); }
+    setBusy((b) => ({ ...b, ["d" + i]: false }));
+  };
+
+  const retryDoiChuan = async (i: number) => {
+    if (!doiChuan) return;
+    setBusy((b) => ({ ...b, ["k" + i]: true }));
+    const item = doiChuan[i];
+    const jobs: { half: "A" | "B"; fn: () => Promise<any> }[] = [];
+    if (item.failedA) jobs.push({ half: "A", fn: () => callPart("doichuanA", normForm(), item.diem_ban) });
+    if (item.failedB) jobs.push({ half: "B", fn: () => callPart("doichuanB", normForm(), item.diem_ban) });
+    const rs = await sfRunPool(jobs.map((j) => j.fn), 2);
+    const next = doiChuan.map((k, j) => {
+      if (j !== i) return k;
+      const nx = { ...k, cach_list: [...k.cach_list] };
+      rs.forEach((r, idx) => {
+        if (!r.ok) return;
+        nx.cach_list = [...nx.cach_list, ...(r.value.cach_list || [])];
+        if (jobs[idx].half === "A") nx.failedA = false; else nx.failedB = false;
+      });
+      const order = "①②③④⑤";
+      nx.cach_list.sort((a: any, b: any) => order.indexOf((a.cach || " ")[0]) - order.indexOf((b.cach || " ")[0]));
+      return nx;
+    });
+    setDoiChuan(next);
+    persist(normForm(), resultOf({ doiChuan: next }));
+    setBusy((b) => ({ ...b, ["k" + i]: false }));
+  };
+
+  const retryPersona = async (i: number) => {
+    if (!personas) return;
+    setBusy((b) => ({ ...b, ["p" + i]: true }));
+    try {
+      const v = await callPart("persona", normForm(), personas[i].diem_ban);
+      const next = personas.map((p, j) => (j === i ? { ...p, rows: v.rows || [], failed: false } : p));
+      setPersonas(next);
+      persist(normForm(), resultOf({ personas: next }));
+    } catch (e: any) { showToast(e?.message || "Vẫn chưa tạo được — thử lại sau."); }
+    setBusy((b) => ({ ...b, ["p" + i]: false }));
+  };
+
+  const retryConcepts = async () => {
+    setBusy((b) => ({ ...b, c: true }));
+    const rs = await sfRunPool([() => callPart("conceptsA", normForm()), () => callPart("conceptsB", normForm())], 2);
+    const rows = [...(rs[0].ok ? rs[0].value.rows || [] : []), ...(rs[1].ok ? rs[1].value.rows || [] : [])];
+    if (rows.length) { setConcepts(rows); persist(normForm(), resultOf({ concepts: rows })); }
+    else showToast("Vẫn chưa tạo được — thử lại sau.");
+    setBusy((b) => ({ ...b, c: false }));
+  };
+
+  const retryBench = async () => {
+    setBusy((b) => ({ ...b, b: true }));
+    try { const v = await callPart("bench", normForm()); setBench(v); persist(normForm(), resultOf({ bench: v })); }
+    catch (e: any) { showToast(e?.message || "Vẫn chưa tạo được — thử lại sau."); }
+    setBusy((b) => ({ ...b, b: false }));
+  };
+
+  /* ── Mở lại / xóa bản đồ đã lưu ── */
+  const openSaved = async (id: string) => {
+    const r = await getSeedFrame(id);
+    if (!r?.ok) return showToast("Không mở được bản đồ này.");
+    const f = r.form || {};
+    setForm({ ten: f.ten || "", nganh: f.nganh || SF_NGANH[0], usp: (f.usp || []).join("\n"), khach: f.khach || "", pain: f.pain || "", trangThai: f.trangThai === "cu" ? "cu" : "moi" });
+    const rs = r.result || {};
+    // Bản đồ lưu theo skill cũ: khối ② là 1 bảng chung (mảng dòng có boi_canh
+    // trực tiếp) — bọc lại thành 1 nhóm để vẫn xem được.
+    let ps = rs.personas || null;
+    if (Array.isArray(ps) && ps.length && ps[0]?.boi_canh) ps = [{ diem_ban: "Bản cũ — bảng chung", rows: ps, failed: false }];
+    setDirs(rs.dirs || null); setPersonas(ps); setConcepts(rs.concepts || null);
+    setDoiChuan(rs.doiChuan || null); setBench(rs.bench || null); setSelected(rs.selected || {});
+    setCurrentId(r.id); setErr("");
+    window.scrollTo({ top: 0 });
+  };
+  const removeSaved = async (id: string, e: any) => {
+    e.stopPropagation();
+    if (!confirm("Xóa bản đồ này?")) return;
+    await deleteSeedFrame(id);
+    if (id === currentId) resetNew();
+    reloadSaved();
+  };
+  const resetNew = () => {
+    setForm({ ten: "", nganh: SF_NGANH[0], usp: "", khach: "", pain: "", trangThai: "moi" });
+    setDirs(null); setPersonas(null); setConcepts(null); setDoiChuan(null); setBench(null);
+    setSelected({}); setCurrentId(""); setErr("");
+  };
+
+  const toggle = (key: string) => setSelected((s) => ({ ...s, [key]: !s[key] }));
+  const selectedCount = Object.values(selected).filter(Boolean).length;
+
+  /* ── Xuất Markdown (copy vào clipboard — dán được vào Sheets/Docs) ── */
+  const exportMd = () => {
+    if (!dirs) return;
+    let md = `# KHUNG HẠT GIỐNG — BẢN ĐỒ CONTENT: ${form.ten}\n`;
+    md += `\n## ① Bản đồ điểm mạnh thực tế → hướng nội dung\n`;
+    dirs.forEach((d, i) => {
+      md += `\n### Nhóm điểm mạnh ${i + 1}: ${d.diem_ban}\nĐiểm mạnh cụ thể / mô tả thực tế:\n${(d.mo_ta || []).map((m: string) => `- ${m}`).join("\n")}\n\nHướng content khai thác (★ = chọn dựng khung tuần này):\n`;
+      (d.huong || []).forEach((h: any, j: number) => {
+        md += `${j + 1}. ${selected[`d-${i}-${j}`] ? "★ " : ""}**${h.loai}**: ${h.mo_ta}\n`;
+      });
+    });
+    if (personas) {
+      md += `\n## ② Thời điểm / bối cảnh có nhu cầu theo từng điểm mạnh\n`;
+      personas.forEach((p: any, i: number) => {
+        if (p.failed || !(p.rows || []).length) return;
+        md += `\n### Nhóm ${i + 1}: ${p.diem_ban}\n\n| Thời điểm, bối cảnh | Ai tạo ra nhu cầu | Nỗi đau thật | Điểm mạnh đưa vào content |\n|---|---|---|---|\n`;
+        (p.rows || []).forEach((r: any) => { md += `| ${r.boi_canh} | ${r.ai} | ${r.noi_dau} | ${r.thong_diep} |\n`; });
+      });
+    }
+    if (concepts) {
+      md += `\n## ③ Tình huống oái oăm / nghịch lý — concept kịch bản over (★ = đã chọn)\n`;
+      concepts.forEach((r: any, i: number) => {
+        md += `\n${i + 1}. ${selected[`c-${i}`] ? "★ " : ""}**"${r.concept_ten}"** — ${r.boi_canh}\n   - Ai: ${r.ai} · Nỗi đau: ${r.noi_dau} · Điểm mạnh: ${r.diem_manh}\n   - Kịch bản: ${r.concept_mo_ta}\n`;
+      });
+    }
+    if (doiChuan) {
+      md += `\n## ④ Đối chuẩn theo từng nhóm điểm mạnh (5 hướng × 3 ngôn ngữ)\n`;
+      doiChuan.forEach((k, i) => {
+        if (!k.cach_list.length) return;
+        md += `\n### Nhóm ${i + 1}: ${k.diem_ban}\n`;
+        k.cach_list.forEach((cc: any) => {
+          md += `\n**${cc.cach}**\n- Gợi ý: ${cc.goi_y}\n- Tiếng Việt: ${(cc.vi || []).join(", ")}\n- English: ${(cc.en || []).join(", ")}\n- 中文: ${(cc.zh || []).join(", ")}\n`;
+        });
+      });
+    }
+    if (bench) {
+      md += `\n## ⑤ Kế hoạch test 4 vòng\n`;
+      (bench.ke_hoach_test || []).forEach((v: any, i: number) => { md += `${i + 1}. ${v.ten} — ${v.muc_tieu} (Tiêu chí: ${v.tieu_chi})\n`; });
+    }
+    md += `\n## Nguyên tắc vận hành\n- ${SF_NHIP}\n- ${SF_BUDGET[form.trangThai]}\n`;
+    navigator.clipboard.writeText(md).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000); });
+  };
+
+  /* ── Xuất HTML tự đứng (gửi cho người khác) ── */
+  const exportHtml = () => {
+    if (!dirs) return;
+    const today = new Date().toLocaleDateString("vi-VN");
+    const chip = (t: string, cls = "") => `<span class="chip ${cls}">${sfEsc(t)}</span>`;
+    let h = "";
+    h += `<h2>① Bản đồ điểm mạnh thực tế → hướng nội dung</h2>`;
+    dirs.forEach((d, i) => {
+      if (d.failed) return;
+      h += `<div class="card"><div class="grouphead"><span class="idx">NHÓM ${String(i + 1).padStart(2, "0")}</span> ${sfEsc(d.diem_ban).toUpperCase()}</div>`;
+      if ((d.mo_ta || []).length) h += `<div class="desc"><div class="lbl">ĐIỂM MẠNH CỤ THỂ / MÔ TẢ THỰC TẾ</div>${(d.mo_ta || []).map((m: string) => `<p>· ${sfEsc(m)}</p>`).join("")}</div>`;
+      (d.huong || []).forEach((x: any, j: number) => {
+        h += `<div class="row"><b>${j + 1}. ${sfEsc(x.loai)}</b> ${selected[`d-${i}-${j}`] ? `<span class="star">★ đã chọn</span>` : ""}<p>${sfEsc(x.mo_ta)}</p></div>`;
+      });
+      h += `</div>`;
+    });
+    if (personas && personas.some((p: any) => !p.failed && (p.rows || []).length)) {
+      h += `<h2>② Thời điểm / bối cảnh có nhu cầu theo từng điểm mạnh</h2>`;
+      personas.forEach((p: any, i: number) => {
+        if (p.failed || !(p.rows || []).length) return;
+        h += `<div class="card" style="padding:14px 16px"><div class="grouphead"><span class="idx">NHÓM ${String(i + 1).padStart(2, "0")}</span> ${sfEsc(p.diem_ban)}</div>`;
+        h += `<table><tr><th>Thời điểm, bối cảnh</th><th>Ai tạo ra nhu cầu</th><th>Nỗi đau thật</th><th>Điểm mạnh đưa vào content</th></tr>`;
+        (p.rows || []).forEach((r: any) => {
+          h += `<tr><td><b>${sfEsc(r.boi_canh)}</b></td><td>${sfEsc(r.ai)}</td><td class="pain">${sfEsc(r.noi_dau)}</td><td><b>${sfEsc(r.thong_diep)}</b></td></tr>`;
+        });
+        h += `</table></div>`;
+      });
+    }
+    if (concepts && concepts.length) {
+      h += `<h2>③ Tình huống oái oăm / nghịch lý — concept kịch bản over</h2><div class="grid">`;
+      concepts.forEach((r: any, i: number) => {
+        h += `<div class="card concept"><div class="cname">"${sfEsc(r.concept_ten)}"</div>${selected[`c-${i}`] ? `<span class="star">★ đã chọn</span>` : ""}<p class="bctx"><b>${sfEsc(r.boi_canh)}</b></p><p class="meta"><span class="pain">${sfEsc(r.noi_dau)}</span> · ${sfEsc(r.ai)}</p><p>${sfEsc(r.concept_mo_ta)}</p><span class="chip good">${sfEsc(r.diem_manh)}</span></div>`;
+      });
+      h += `</div>`;
+    }
+    if (doiChuan && doiChuan.some((k) => k.cach_list.length)) {
+      h += `<h2>④ Đối chuẩn theo từng nhóm điểm mạnh (5 hướng × 3 ngôn ngữ)</h2>`;
+      doiChuan.forEach((k, i) => {
+        if (!k.cach_list.length) return;
+        h += `<div class="card"><div class="grouphead"><span class="idx">NHÓM ${String(i + 1).padStart(2, "0")}</span> ${sfEsc(k.diem_ban)}</div>`;
+        k.cach_list.forEach((cc: any) => {
+          h += `<div class="row"><b>${sfEsc(cc.cach)}</b><p>${sfEsc(cc.goi_y)}</p>`;
+          h += `<div class="kwrow"><span class="lang">VI</span>${(cc.vi || []).map((t: string) => chip(t)).join("")}</div>`;
+          h += `<div class="kwrow"><span class="lang">EN</span>${(cc.en || []).map((t: string) => chip(t, "en")).join("")}</div>`;
+          h += `<div class="kwrow"><span class="lang">中文</span>${(cc.zh || []).map((t: string) => chip(t, "zh")).join("")}</div>`;
+          h += `</div>`;
+        });
+        h += `</div>`;
+      });
+    }
+    if (bench) {
+      h += `<h2>⑤ Kế hoạch test 4 vòng</h2><div class="grid four">`;
+      (bench.ke_hoach_test || []).forEach((v: any, i: number) => {
+        h += `<div class="card round"><div class="lbl" style="color:#9a5a12">VÒNG ${i + 1} · TUẦN ${i + 1}</div><b>${sfEsc(v.ten)}</b><p>${sfEsc(v.muc_tieu)}</p><p><span class="pain"><b>Tiêu chí:</b></span> ${sfEsc(v.tieu_chi)}</p></div>`;
+      });
+      h += `</div>`;
+    }
+    const doc = `<!DOCTYPE html>
+<html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Khung hạt giống — ${sfEsc(form.ten)}</title>
+<style>
+:root{--ink:#2a2016;--muted:#8a7c67;--border:rgba(140,96,40,.25);--bg:#f6f1e7;--amber:#9a5a12;--amberBg:rgba(176,106,22,.1);--red:#8f3232;--redBg:rgba(158,58,58,.1);--green:#2f6b4f;--greenBg:rgba(60,122,94,.12)}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font-family:Georgia,'Times New Roman',serif;font-size:14.5px;line-height:1.65}
+.wrap{max-width:960px;margin:0 auto;padding:36px 20px 80px}
+h1{font-size:26px;margin:0 0 4px}
+h2{font-size:18px;margin:34px 0 12px;padding-bottom:6px;border-bottom:2px solid var(--ink)}
+.sub{color:var(--muted);font-size:13px;margin:0 0 6px}
+.card{background:#fffdf8;border:1px solid var(--border);border-radius:14px;padding:18px 20px;margin-bottom:14px}
+.grouphead{font-weight:700;font-size:15px;margin-bottom:8px}
+.idx{font-size:11px;color:var(--muted);margin-right:8px;font-weight:400;letter-spacing:.08em}
+.desc{background:var(--bg);border-radius:9px;padding:8px 12px;margin-bottom:8px}
+.desc p{margin:3px 0;font-size:13.5px}
+.lbl{font-size:10.5px;color:var(--muted);letter-spacing:.08em;margin-bottom:2px}
+.row{border-top:1px solid var(--border);padding:10px 0}.row:first-of-type{border-top:none}
+.row b{font-size:14px}.row p{margin:4px 0 6px;color:#574a3a}
+.star{font-size:11px;color:var(--green);background:var(--greenBg);padding:2px 8px;border-radius:5px;margin-left:8px}
+table{width:100%;border-collapse:collapse;background:#fffdf8;border:1px solid var(--border);border-radius:12px;overflow:hidden;font-size:13.5px}
+th{background:var(--ink);color:#fffdf8;font-size:11px;letter-spacing:.06em;font-weight:600;text-align:left;padding:9px 12px}
+td{padding:9px 12px;border-top:1px solid var(--border);vertical-align:top}
+tr:nth-child(odd) td{background:var(--bg)}
+.pain{color:var(--red)}.good{color:var(--green)}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px}
+.grid.four{grid-template-columns:repeat(auto-fit,minmax(200px,1fr))}
+.concept .cname{font-weight:700;color:var(--amber);font-size:15.5px}
+.concept .bctx{margin:8px 0 4px}.concept .meta,.meta{font-size:12.5px;color:var(--muted);margin:2px 0 8px}
+.chip{display:inline-block;font-size:12px;padding:3px 9px;border-radius:6px;border:1px solid var(--border);background:var(--bg);margin:0 6px 6px 0}
+.chip.en{background:var(--greenBg);border-color:rgba(60,122,94,.3)}.chip.zh{background:var(--redBg);border-color:rgba(158,58,58,.25)}
+.chip.good{background:var(--greenBg);color:var(--green)}
+.kwrow{margin:6px 0}.lang{display:inline-block;font-size:10.5px;color:var(--muted);width:36px}
+.round b{font-size:14.5px}.round p{margin:4px 0;font-size:12.5px;color:var(--muted)}
+.foot{margin-top:40px;color:var(--muted);font-size:12.5px;border-top:1px solid var(--border);padding-top:12px}
+@media print{body{background:#fff}.card,table{break-inside:avoid}}
+</style></head><body><div class="wrap">
+<h1>Khung hạt giống — ${sfEsc(form.ten)}</h1>
+<p class="sub">${sfEsc(form.nganh)}${form.khach ? " · " + sfEsc(form.khach) : ""} · Sản phẩm ${form.trangThai === "moi" ? "mới ra mắt" : "đang bán"} · Xuất ngày ${today}</p>
+${h}
+<p class="foot">Tạo bởi Nonelab Studio · ${sfEsc(SF_NHIP)}<br>${sfEsc(SF_BUDGET[form.trangThai])}</p>
+</div></body></html>`;
+    const blob = new Blob([doc], { type: "text/html;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const aEl = document.createElement("a");
+    aEl.href = url;
+    aEl.download = `khung-hat-giong-${(form.ten || "san-pham").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")}.html`;
+    document.body.appendChild(aEl);
+    aEl.click();
+    aEl.remove();
+    URL.revokeObjectURL(url);
+  };
+
+  /* ── UI helpers (theo phong cách chung của app) ── */
+  const label = c("font-family:'Space Grotesk',sans-serif;font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:#8a7c67;display:block;margin-bottom:6px");
+  const input = c("width:100%;padding:11px 13px;border:1px solid rgba(140,96,40,.28);border-radius:11px;background:#fdfaf3;font-size:14px;color:#2a2016");
+  const cardBox = "background:#fffdf8;border:1px solid rgba(140,96,40,.2);border-radius:16px";
+  const loaiTone = (g: string): [string, string] => {
+    const s = (g || "").toLowerCase();
+    if (s.includes("demo") || s.includes("chứng minh") || s.includes("so sánh")) return ["rgba(158,58,58,.12)", "#8f3232"];
+    if (s.includes("storytelling") || s.includes("tình huống")) return ["rgba(176,106,22,.14)", "#8a5614"];
+    return ["rgba(60,122,94,.13)", "#2f6b4f"];
+  };
+  const tagChip = (t: string) => { const [bg, fg] = loaiTone(t); return <span style={c(`font-family:'Space Grotesk',sans-serif;font-size:10.5px;font-weight:600;padding:2px 8px;border-radius:99px;background:${bg};color:${fg}`)}>{t}</span>; };
+  const retryRow = (text: string, onRetry: () => void, isBusy?: boolean) => (
+    <div style={c("display:flex;align-items:center;gap:12px;background:#fffdf8;border:1px dashed rgba(158,58,58,.5);border-radius:12px;padding:14px 18px;margin:8px 0")}>
+      <p style={c("font-size:13px;color:#8f3232;margin:0;flex:1")}>{text}</p>
+      <button onClick={onRetry} disabled={isBusy} style={c(`font-family:'Space Grotesk',sans-serif;font-size:13px;font-weight:600;padding:7px 16px;border-radius:8px;border:none;cursor:${isBusy ? "wait" : "pointer"};background:#9e3a3a;color:#fff`)}>{isBusy ? "Đang thử..." : "Thử lại"}</button>
+    </div>
+  );
+  const checkbox = (on: boolean) => (
+    <div style={c(`width:18px;height:18px;border-radius:5px;flex:none;margin-top:2px;border:2px solid ${on ? "#3c7a5e" : "rgba(140,96,40,.35)"};background:${on ? "#3c7a5e" : "transparent"};display:flex;align-items:center;justify-content:center;color:#fff;font-size:12px;font-weight:700`)}>{on ? "✓" : ""}</div>
+  );
+
+  return (
+    <div className="ns-fade" style={c("max-width:1180px;margin:0 auto")}>
+      {/* Bản đồ đã lưu */}
+      {savedList.length > 0 && (
+        <div style={c("display:flex;gap:8px;flex-wrap:wrap;margin-bottom:20px;align-items:center")}>
+          {savedList.map((s) => {
+            const on = s.id === currentId;
+            return (
+              <div key={s.id} onClick={() => openSaved(s.id)} style={c(`cursor:pointer;border:1px solid ${on ? "rgba(176,106,22,.5)" : "rgba(140,96,40,.22)"};background:${on ? "rgba(176,106,22,.1)" : "#fffdf8"};border-radius:12px;padding:9px 13px;display:flex;align-items:center;gap:10px`)}>
+                <div>
+                  <div style={c("font-weight:600;font-size:13px;color:#2a2016")}>🌱 {s.product}</div>
+                  <div style={c("font-size:11px;color:#8a7c67;margin-top:1px")}>{new Date(s.updated || s.created).toLocaleDateString("vi-VN")}{isAdmin && s.owner ? ` · 👤 ${s.owner}` : ""}</div>
+                </div>
+                <span onClick={(e) => removeSaved(s.id, e)} title="Xóa bản đồ" style={c("color:#8a7c67;font-size:13px;padding:2px 4px;cursor:pointer")}>✕</span>
+              </div>
+            );
+          })}
+          {(currentId || dirs) && (
+            <button onClick={resetNew} style={c("border:1px dashed rgba(140,96,40,.4);background:transparent;border-radius:12px;padding:10px 14px;font-family:'Space Grotesk',sans-serif;font-size:12.5px;font-weight:600;color:#9a5a12;cursor:pointer")}>＋ Bản đồ mới</button>
+          )}
+        </div>
+      )}
+
+      <div style={c(`display:grid;grid-template-columns:${isMobile ? "1fr" : "minmax(280px,340px) 1fr"};gap:24px;align-items:start`)}>
+        {/* ── INPUT PANEL ── */}
+        <div style={{ ...c(`${cardBox};padding:20px`), ...(isMobile ? {} : c("position:sticky;top:86px")) }}>
+          <div style={c("font-family:'Fraunces',serif;font-size:17px;font-weight:600;color:#2a2016;margin-bottom:4px")}>Điểm mạnh sản phẩm</div>
+          <div style={c("color:#8a7c67;font-size:12.5px;margin-bottom:16px;line-height:1.55")}>Nhập tên sản phẩm + các nhóm điểm mạnh — hệ thống lập bản đồ content 5 khối theo phương pháp khung hạt giống.</div>
+          <div style={c("margin-bottom:13px")}>
+            <label style={label}>Tên sản phẩm *</label>
+            <input style={input} value={form.ten} onChange={set("ten")} placeholder="VD: Sáp lăn khử mùi Nam" />
+          </div>
+          <div style={c("margin-bottom:13px")}>
+            <label style={label}>Ngành hàng</label>
+            <select style={input} value={form.nganh} onChange={set("nganh")}>
+              {SF_NGANH.map((n) => (<option key={n} value={n}>{n}</option>))}
+            </select>
+          </div>
+          <div style={c("margin-bottom:13px")}>
+            <label style={label}>Nhóm điểm mạnh * (mỗi dòng một nhóm, tối đa 6)</label>
+            <textarea style={{ ...input, minHeight: 120, resize: "vertical" }} value={form.usp} onChange={set("usp")} placeholder={"Càng vận động càng thơm - kích hoạt hương theo thân nhiệt\nNgăn tiết mồ hôi - khô thoáng suốt ngày\nHương nước hoa cao cấp - dùng đa vùng cơ thể"} />
+          </div>
+          <div style={c("margin-bottom:13px")}>
+            <label style={label}>Khách hàng mục tiêu</label>
+            <input style={input} value={form.khach} onChange={set("khach")} placeholder="VD: Nam 18–30, chơi thể thao, dân văn phòng" />
+          </div>
+          <div style={c("margin-bottom:13px")}>
+            <label style={label}>Pain point chính (nếu có)</label>
+            <input style={input} value={form.pain} onChange={set("pain")} placeholder="VD: Xịt sáng, trưa đã có mùi lại" />
+          </div>
+          <div style={c("margin-bottom:18px")}>
+            <label style={label}>Trạng thái sản phẩm</label>
+            <div style={c("display:flex;gap:8px")}>
+              {([["moi", "Mới ra mắt"], ["cu", "Đang bán"]] as [("moi" | "cu"), string][]).map(([v, t]) => (
+                <button key={v} onClick={() => setForm((s) => ({ ...s, trangThai: v }))} style={c(`flex:1;font-size:13px;padding:9px 0;border-radius:9px;cursor:pointer;border:1px solid ${form.trangThai === v ? "#9a5a12" : "rgba(140,96,40,.28)"};background:${form.trangThai === v ? "linear-gradient(150deg,#c07c1e,#9a5a12)" : "#fdfaf3"};color:${form.trangThai === v ? "#fff" : "#8a7c67"};font-weight:${form.trangThai === v ? 600 : 400};font-family:'Space Grotesk',sans-serif`)}>{t}</button>
+              ))}
+            </div>
+            <p style={c("font-size:11.5px;color:#8a7c67;margin:8px 0 0;line-height:1.5")}>{SF_BUDGET[form.trangThai]}</p>
+          </div>
+          <button onClick={generate} disabled={loading} style={c(`width:100%;font-family:'Space Grotesk',sans-serif;font-size:14.5px;font-weight:600;padding:13px 0;border-radius:11px;border:none;cursor:${loading ? "wait" : "pointer"};background:${loading ? "#8a7c67" : "linear-gradient(150deg,#c07c1e,#9a5a12)"};color:#fff;box-shadow:0 6px 16px rgba(154,90,18,.28)`)}>{loading ? "Đang lập bản đồ..." : "🌱 Lập bản đồ content"}</button>
+          {err && <p style={c("font-size:12.5px;color:#8f3232;margin:10px 0 0;line-height:1.5")}>{err}</p>}
+        </div>
+
+        {/* ── KẾT QUẢ ── */}
+        <div style={c("min-width:0")}>
+          {!dirs && !loading && (
+            <div style={c("border:1.5px dashed rgba(140,96,40,.3);border-radius:16px;padding:60px 32px;text-align:center;color:#8a7c67")}>
+              <div style={c("font-size:34px;margin-bottom:12px")}>🌱</div>
+              <p style={c("font-size:13.5px;margin:0;max-width:520px;margin:0 auto;line-height:1.6")}>Kết quả gồm 5 khối: bản đồ điểm mạnh → hướng nội dung · chân dung khách hàng & thời điểm có nhu cầu · tình huống nghịch lý → concept over · đối chuẩn 5 hướng × 3 ngôn ngữ · kế hoạch test 4 vòng.</p>
+            </div>
+          )}
+
+          {loading && (
+            <div style={c(`${cardBox};padding:48px 32px;text-align:center`)}>
+              <div className="ns-pulse" style={c("width:12px;height:12px;border-radius:50%;background:#b06a16;margin:0 auto 14px")} />
+              <style>{`.ns-pulse{animation:nsPulse 1s ease-in-out infinite}@keyframes nsPulse{0%,100%{opacity:1}50%{opacity:.25}}`}</style>
+              <p style={c("font-size:13.5px;color:#8a7c67;margin:0;line-height:1.6")}>{progress || "Đang phân tích..."}</p>
+            </div>
+          )}
+
+          {dirs && (
+            <div style={c("display:flex;flex-direction:column;gap:30px")}>
+              {/* ═══ KHỐI ① ═══ */}
+              <div>
+                <div style={c("display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:8px;margin-bottom:14px")}>
+                  <SectionHead tag="Khối ①" title="Điểm mạnh → hướng nội dung" />
+                  <span style={c(`font-family:'Space Grotesk',sans-serif;font-size:11px;font-weight:600;padding:4px 10px;border-radius:99px;background:${selectedCount >= 3 && selectedCount <= 5 ? "rgba(60,122,94,.13)" : "rgba(140,96,40,.1)"};color:${selectedCount >= 3 && selectedCount <= 5 ? "#2f6b4f" : "#8a7c67"}`)}>đã chọn {selectedCount} · khuyến nghị 3–5 khung/tuần</span>
+                </div>
+                <div style={c("display:flex;flex-direction:column;gap:14px")}>
+                  {dirs.map((d, i) => (
+                    <div key={i} style={c(`${cardBox};padding:18px 18px 12px`)}>
+                      <div style={c("display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap")}>
+                        <h3 style={c("font-family:'Fraunces',serif;font-size:15.5px;font-weight:600;margin:0")}>
+                          <span style={c("font-family:'Space Grotesk',sans-serif;font-size:10.5px;color:#8a7c67;margin-right:8px;letter-spacing:.08em")}>NHÓM {String(i + 1).padStart(2, "0")}</span>
+                          {d.diem_ban}
+                        </h3>
+                        <span style={c("font-family:'Space Grotesk',sans-serif;font-size:11px;color:#8a7c67")}>{(d.huong || []).length} hướng</span>
+                      </div>
+                      {d.failed && retryRow("Nhóm này chưa tạo được (nghẽn tạm thời).", () => retryDir(i), busy["d" + i])}
+                      {(d.mo_ta || []).length > 0 && (
+                        <div style={c("background:#f6f1e7;border-radius:9px;padding:10px 14px;margin:10px 0 4px")}>
+                          <span style={c("font-family:'Space Grotesk',sans-serif;font-size:9.5px;color:#8a7c67;letter-spacing:.12em")}>ĐIỂM MẠNH CỤ THỂ / MÔ TẢ THỰC TẾ</span>
+                          {(d.mo_ta || []).map((m: string, j: number) => (<p key={j} style={c("font-size:13px;color:#2a2016;margin:5px 0 0;line-height:1.55")}>· {m}</p>))}
+                        </div>
+                      )}
+                      {(d.huong || []).map((hh: any, j: number) => {
+                        const key = `d-${i}-${j}`;
+                        const on = !!selected[key];
+                        return (
+                          <div key={j} onClick={() => toggle(key)} style={c(`display:flex;gap:12px;padding:12px 10px;margin-top:8px;border-radius:10px;cursor:pointer;border:1px solid ${on ? "rgba(60,122,94,.5)" : "rgba(140,96,40,.18)"};background:${on ? "rgba(60,122,94,.08)" : "#fdfaf3"}`)}>
+                            {checkbox(on)}
+                            <div style={c("flex:1;min-width:0")}>
+                              <div style={c("margin-bottom:4px")}>
+                                <span style={c("font-family:'Space Grotesk',sans-serif;font-size:12px;color:#8a7c67;margin-right:8px")}>{j + 1}.</span>
+                                {tagChip(hh.loai)}
+                              </div>
+                              <p style={c("font-size:13.5px;color:#2a2016;margin:0;line-height:1.6")}>{hh.mo_ta}</p>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* ═══ KHỐI ② — mỗi nhóm điểm mạnh một bảng bối cảnh riêng ═══ */}
+              <div>
+                <SectionHead tag="Khối ②" title="Thời điểm / bối cảnh có nhu cầu theo từng điểm mạnh" />
+                <div style={c("display:flex;flex-direction:column;gap:14px")}>
+                  {(personas || []).map((p: any, pi: number) => (
+                    <div key={pi} style={c(`${cardBox};padding:18px 18px 14px`)}>
+                      <p style={c("font-family:'Fraunces',serif;font-size:15px;font-weight:600;margin:0 0 10px")}>
+                        <span style={c("font-family:'Space Grotesk',sans-serif;font-size:10.5px;color:#8a7c67;margin-right:8px;letter-spacing:.08em")}>NHÓM {String(pi + 1).padStart(2, "0")}</span>
+                        {p.diem_ban}
+                      </p>
+                      {p.failed ? (
+                        retryRow("Bảng bối cảnh của nhóm này chưa tạo được.", () => retryPersona(pi), busy["p" + pi])
+                      ) : (
+                        <div style={c("border:1px solid rgba(140,96,40,.18);border-radius:10px;overflow:hidden")}>
+                          <div style={c("overflow-x:auto")}>
+                            <table style={c("width:100%;border-collapse:collapse;font-size:13px;min-width:640px")}>
+                              <thead>
+                                <tr style={c("background:#2a2016;color:#fffdf8")}>
+                                  {["Thời điểm, bối cảnh", "Ai tạo ra nhu cầu", "Nỗi đau thật", "Điểm mạnh đưa vào content"].map((t) => (
+                                    <th key={t} style={c("font-family:'Space Grotesk',sans-serif;font-size:10px;letter-spacing:.08em;font-weight:600;text-align:left;padding:10px 12px;white-space:nowrap")}>{t.toUpperCase()}</th>
+                                  ))}
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {(p.rows || []).map((r: any, i: number) => (
+                                  <tr key={i} style={c(`border-top:1px solid rgba(140,96,40,.15);background:${i % 2 ? "#f6f1e7" : "#fffdf8"}`)}>
+                                    <td style={c("padding:10px 12px;font-weight:600;line-height:1.5")}>{r.boi_canh}</td>
+                                    <td style={c("padding:10px 12px;color:#8a7c67;line-height:1.5")}>{r.ai}</td>
+                                    <td style={c("padding:10px 12px;color:#8f3232;line-height:1.5")}>{r.noi_dau}</td>
+                                    <td style={c("padding:10px 12px;font-weight:600;line-height:1.5")}>{r.thong_diep}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* ═══ KHỐI ③ ═══ */}
+              <div>
+                <SectionHead tag="Khối ③" title="Tình huống nghịch lý — concept kịch bản over" />
+                {!concepts && retryRow("Bảng concept nghịch lý chưa tạo được.", retryConcepts, busy.c)}
+                {concepts && (
+                  <div style={c(`display:grid;grid-template-columns:${isMobile ? "1fr" : "repeat(auto-fill,minmax(320px,1fr))"};gap:14px`)}>
+                    {concepts.map((r: any, i: number) => {
+                      const key = `c-${i}`;
+                      const on = !!selected[key];
+                      return (
+                        <div key={i} onClick={() => toggle(key)} style={c(`cursor:pointer;border-radius:16px;padding:18px 18px 14px;border:1px solid ${on ? "rgba(60,122,94,.5)" : "rgba(140,96,40,.2)"};background:${on ? "rgba(60,122,94,.07)" : "#fffdf8"}`)}>
+                          <div style={c("display:flex;justify-content:space-between;gap:8px;align-items:flex-start")}>
+                            <span style={c("font-family:'Fraunces',serif;font-size:15px;font-weight:700;color:#9a5a12")}>"{r.concept_ten}"</span>
+                            {checkbox(on)}
+                          </div>
+                          <p style={c("font-size:13.5px;font-weight:600;margin:8px 0 6px;line-height:1.55")}>{r.boi_canh}</p>
+                          <p style={c("font-size:12.5px;margin:0 0 8px;line-height:1.55;color:#8a7c67")}>
+                            <span style={c("color:#8f3232")}>{r.noi_dau}</span> · {r.ai}
+                          </p>
+                          <p style={c("font-size:13px;margin:0 0 10px;line-height:1.6")}>{r.concept_mo_ta}</p>
+                          <span style={c("font-family:'Space Grotesk',sans-serif;font-size:10.5px;font-weight:600;padding:2px 8px;border-radius:99px;background:rgba(60,122,94,.13);color:#2f6b4f")}>{r.diem_manh}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* ═══ KHỐI ④ ═══ */}
+              <div>
+                <SectionHead tag="Khối ④" title="Đối chuẩn — 5 hướng × 3 ngôn ngữ" />
+                <p style={c("font-size:12.5px;color:#8a7c67;margin:0 0 14px;line-height:1.6")}>Mỗi điểm mạnh được soi theo 5 hướng: đối thủ cùng loại · công dụng tương tự · cùng nhóm khách hàng · kết quả cuối tương tự · viral chéo ngành. VI cho TikTok Việt Nam / Kalodata · EN thuật ngữ chuyên ngành cho TikTok global · 中文 thuật ngữ ngành cho Douyin / Chanmama. Bấm từ khóa để copy.</p>
+                {doiChuan && (
+                  <div style={c("display:flex;flex-direction:column;gap:14px")}>
+                    {doiChuan.map((k, i) => (
+                      <div key={i} style={c(`${cardBox};padding:18px 18px 6px`)}>
+                        <div style={c("display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap;margin-bottom:4px")}>
+                          <p style={c("font-family:'Fraunces',serif;font-size:15px;font-weight:600;margin:0")}>
+                            <span style={c("font-family:'Space Grotesk',sans-serif;font-size:10.5px;color:#8a7c67;margin-right:8px;letter-spacing:.08em")}>NHÓM {String(i + 1).padStart(2, "0")}</span>
+                            {k.diem_ban}
+                          </p>
+                          <span style={c("font-family:'Space Grotesk',sans-serif;font-size:11px;color:#8a7c67")}>{k.cach_list.length}/5 hướng</span>
+                        </div>
+                        {(k.failedA || k.failedB) && retryRow(`Còn thiếu hướng ${[k.failedA ? "①②③" : "", k.failedB ? "④⑤" : ""].filter(Boolean).join(" và ")} của nhóm này.`, () => retryDoiChuan(i), busy["k" + i])}
+                        {k.cach_list.map((cc: any, ci: number) => (
+                          <div key={ci} style={c("border-top:1px solid rgba(140,96,40,.15);padding:12px 0")}>
+                            <p style={c("font-size:13.5px;font-weight:600;margin:0 0 2px;color:#2a2016")}>{cc.cach}</p>
+                            <p style={c("font-size:12.5px;color:#8a7c67;margin:0 0 8px;line-height:1.5")}>{cc.goi_y}</p>
+                            {([["VI", cc.vi, "#f6f1e7", "rgba(140,96,40,.25)", "#2a2016"], ["EN", cc.en, "rgba(60,122,94,.1)", "rgba(60,122,94,.3)", "#245c42"], ["中文", cc.zh, "rgba(158,58,58,.08)", "rgba(158,58,58,.25)", "#7d2c2c"]] as [string, string[], string, string, string][]).map(([lang, arr, bg, bd, fg]) => (
+                              <div key={lang} style={c("display:flex;gap:8px;align-items:flex-start;margin-bottom:6px")}>
+                                <span style={c("font-family:'Space Grotesk',sans-serif;font-size:10px;color:#8a7c67;width:34px;flex:none;padding-top:5px")}>{lang}</span>
+                                <div style={c("display:flex;flex-wrap:wrap;gap:6px;flex:1")}>
+                                  {(arr || []).map((t, j) => (
+                                    <button key={j} onClick={() => { navigator.clipboard.writeText(t); showToast(`Đã copy "${t}"`); }} title="Bấm để copy" style={c(`font-size:12px;padding:4px 9px;border-radius:6px;border:1px solid ${bd};background:${bg};color:${fg};cursor:copy`)}>{t}</button>
+                                  ))}
+                                  {(arr || []).length > 0 && (
+                                    <button onClick={() => { navigator.clipboard.writeText((arr || []).join("\n")); showToast("Đã copy cả hàng"); }} title="Copy cả hàng" style={c("font-family:'Space Grotesk',sans-serif;font-size:11px;font-weight:600;padding:4px 9px;border-radius:6px;border:1px solid #574a3a;background:transparent;color:#574a3a;cursor:copy")}>copy hàng</button>
+                                  )}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        ))}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* ═══ KHỐI ⑤ ═══ */}
+              <div>
+                <SectionHead tag="Khối ⑤" title="Kế hoạch test 4 vòng" />
+                {!bench && retryRow("Kế hoạch test chưa tạo được.", retryBench, busy.b)}
+                {bench && (
+                  <div style={c(`display:grid;grid-template-columns:${isMobile ? "1fr 1fr" : "repeat(auto-fit,minmax(200px,1fr))"};gap:12px`)}>
+                    {(bench.ke_hoach_test || []).map((v: any, i: number) => (
+                      <div key={i} style={c("background:#fffdf8;border:1px solid rgba(140,96,40,.2);border-top:3px solid #b06a16;border-radius:0 0 12px 12px;padding:14px 16px")}>
+                        <span style={c("font-family:'Space Grotesk',sans-serif;font-size:10.5px;color:#9a5a12;letter-spacing:.08em")}>VÒNG {i + 1} · TUẦN {i + 1}</span>
+                        <p style={c("font-size:14px;font-weight:600;margin:5px 0 4px")}>{v.ten}</p>
+                        <p style={c("font-size:12.5px;color:#8a7c67;margin:0 0 6px;line-height:1.5")}>{v.muc_tieu}</p>
+                        <p style={c("font-size:12px;margin:0;line-height:1.5")}>
+                          <span style={c("color:#8f3232;font-weight:600")}>Tiêu chí:</span> <span style={c("color:#8a7c67")}>{v.tieu_chi}</span>
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <div style={c("margin-top:14px;background:#f6f1e7;border:1px solid rgba(140,96,40,.18);border-radius:12px;padding:12px 16px;font-size:12.5px;color:#574a3a;line-height:1.6")}>
+                  <b>Nguyên tắc vận hành:</b> {SF_NHIP}<br />
+                  <b>Ngân sách:</b> {SF_BUDGET[form.trangThai]}
+                </div>
+              </div>
+
+              {/* ═══ XUẤT FILE ═══ */}
+              {canExport && (
+                <div style={c("display:flex;gap:10px;flex-wrap:wrap")}>
+                  <button onClick={exportHtml} style={c("font-family:'Space Grotesk',sans-serif;font-size:14px;font-weight:600;padding:11px 22px;border-radius:11px;border:none;background:linear-gradient(150deg,#c07c1e,#9a5a12);color:#fff;cursor:pointer;box-shadow:0 5px 14px rgba(154,90,18,.26)")}>⬇ Tải báo cáo HTML (gửi cho người khác)</button>
+                  <button onClick={exportMd} style={c(`font-family:'Space Grotesk',sans-serif;font-size:14px;font-weight:600;padding:11px 22px;border-radius:11px;border:1.5px solid #574a3a;background:${copied ? "#574a3a" : "transparent"};color:${copied ? "#fff" : "#574a3a"};cursor:pointer`)}>{copied ? "Đã copy ✓" : "Copy Markdown (dán vào Sheets/Docs)"}</button>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

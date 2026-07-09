@@ -113,7 +113,7 @@ export interface FormState {
   file: string; // tên file hiển thị
 }
 
-export type Screen = "dashboard" | "upload" | "report" | "history" | "admin" | "analyzing" | "error" | "auth" | "ads" | "campaign" | "synthesis";
+export type Screen = "dashboard" | "upload" | "report" | "history" | "admin" | "analyzing" | "error" | "auth" | "ads" | "campaign" | "synthesis" | "seedframe";
 
 export interface HistoryEntry {
   id: string;
