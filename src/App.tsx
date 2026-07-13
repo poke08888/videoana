@@ -884,7 +884,7 @@ export default function App() {
           <div style={c(`padding:${isMobile ? "16px 16px 90px" : "30px 34px 60px"}`)}>
             {screen === "dashboard" && <Dashboard stats={labels.dashboard} recent={history.slice(0, 3)} onOpen={openReport} onAll={() => go("history")} isMobile={isMobile} />}
             {screen === "history" && <HistoryView history={history} onOpen={openReport} onReanalyze={reanalyzeEntry} showToast={showToast} isAdmin={user?.role === "Quản trị"} onSynthesize={synthesizeSelected} synthesizing={synthesizing} onOpenSynthesis={openSynthesis} />}
-            {screen === "synthesis" && synthesisReport && <SynthesisView data={synthesisReport} isMobile={isMobile} onBack={() => go("history")} />}
+            {screen === "synthesis" && synthesisReport && <SynthesisView data={synthesisReport} isMobile={isMobile} onBack={() => go("history")} canExport={!!user?.perms?.export} showToast={showToast} />}
             {screen === "upload" && (
               <UploadView
                 form={form}
@@ -2570,22 +2570,118 @@ function HistoryView({ history, onOpen, onReanalyze, showToast, isAdmin, onSynth
 }
 
 /** Báo cáo TỔNG HỢP lý do thành công — gom điểm chung từ các phiếu đã chọn. */
-function SynthesisView({ data, isMobile, onBack }: { data: any; isMobile: boolean; onBack: () => void }) {
+function SynthesisView({ data, isMobile, onBack, canExport, showToast }: { data: any; isMobile: boolean; onBack: () => void; canExport?: boolean; showToast?: (m: string) => void }) {
   const r = data?.report || {};
   const reasons: any[] = Array.isArray(r.reasons) ? r.reasons : [];
   const actions: string[] = Array.isArray(r.actionChecklist) ? r.actionChecklist : [];
   const created = data?.created ? new Date(data.created).toLocaleString("vi-VN") : "";
+  const title = r.title || data?.title || "Báo cáo tổng hợp";
+  const [copied, setCopied] = useState(false);
   const card = c("background:#fffdf8;border:1px solid rgba(140,96,40,.18);border-radius:15px;padding:18px 20px");
   const tag = c("font-family:'Space Grotesk',sans-serif;font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;color:#a8946f;margin-bottom:6px");
+
+  /* Copy Markdown — dán thẳng vào Google Sheets/Docs. */
+  const exportMd = () => {
+    let md = `# ${title}\n🧩 Tổng hợp từ ${data?.count} video · ${created}\n`;
+    if (r.overview) md += `\n## Tổng quan\n${r.overview}\n`;
+    if (reasons.length) {
+      md += `\n## Lý do thành công chung (${reasons.length})\n`;
+      reasons.forEach((x, i) => {
+        md += `\n${i + 1}. **${x.reason}**${x.share ? ` — ${x.share}` : ""}\n`;
+        if (x.detail) md += `   ${x.detail}\n`;
+        (Array.isArray(x.evidence) ? x.evidence : []).forEach((ev: any) => { md += `   - Bằng chứng: "${String(ev)}"\n`; });
+        if (x.apply) md += `   👉 Áp dụng: ${x.apply}\n`;
+      });
+    }
+    if (r.hookPattern) md += `\n## Khuôn hook chung\n${r.hookPattern}\n`;
+    if (r.formula) md += `\n## Công thức chung\n${r.formula}\n`;
+    if (r.differences) md += `\n## Điểm cao vs điểm thấp\n${r.differences}\n`;
+    if (actions.length) {
+      md += `\n## Checklist hành động cho video tiếp theo\n`;
+      actions.forEach((a) => { md += `- [ ] ${a}\n`; });
+    }
+    navigator.clipboard.writeText(md).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+      showToast?.("Đã copy Markdown — dán vào Sheets/Docs");
+    });
+  };
+
+  /* Tải file HTML tự đứng — gửi cho người khác xem không cần đăng nhập. */
+  const exportHtml = () => {
+    let h = "";
+    if (r.overview) h += `<div class="card"><div class="tag">TỔNG QUAN</div><p>${sfEsc(r.overview)}</p></div>`;
+    if (reasons.length) {
+      h += `<h2>⚡ Lý do thành công chung (${reasons.length})</h2>`;
+      reasons.forEach((x, i) => {
+        h += `<div class="card"><div class="rhead"><b>${i + 1}. ${sfEsc(x.reason)}</b>${x.share ? `<span class="share">${sfEsc(x.share)}</span>` : ""}</div>`;
+        if (x.detail) h += `<p>${sfEsc(x.detail)}</p>`;
+        const evs = Array.isArray(x.evidence) ? x.evidence : [];
+        if (evs.length) h += `<div class="ev">${evs.map((ev: any) => `<p>“${sfEsc(ev)}”</p>`).join("")}</div>`;
+        if (x.apply) h += `<div class="apply"><b>👉 Áp dụng:</b> ${sfEsc(x.apply)}</div>`;
+        h += `</div>`;
+      });
+    }
+    if (r.hookPattern) h += `<div class="card"><div class="tag">KHUÔN HOOK CHUNG</div><p>${sfEsc(r.hookPattern)}</p></div>`;
+    if (r.formula) h += `<div class="card"><div class="tag">CÔNG THỨC CHUNG</div><p class="formula">${sfEsc(r.formula)}</p></div>`;
+    if (r.differences) h += `<div class="card"><div class="tag">ĐIỂM CAO VS ĐIỂM THẤP</div><p>${sfEsc(r.differences)}</p></div>`;
+    if (actions.length) {
+      h += `<div class="card"><div class="tag">CHECKLIST HÀNH ĐỘNG CHO VIDEO TIẾP THEO</div>${actions.map((a) => `<p class="chk">☐ ${sfEsc(a)}</p>`).join("")}</div>`;
+    }
+    const doc = `<!DOCTYPE html>
+<html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${sfEsc(title)}</title>
+<style>
+:root{--ink:#2a2016;--muted:#8a7c67;--border:rgba(140,96,40,.25);--bg:#f6f1e7;--amber:#9a5a12;--green:#2f6b4f}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font-family:Georgia,'Times New Roman',serif;font-size:14.5px;line-height:1.65}
+.wrap{max-width:860px;margin:0 auto;padding:36px 20px 80px}
+h1{font-size:25px;margin:0 0 4px}
+h2{font-size:18px;margin:30px 0 12px;padding-bottom:6px;border-bottom:2px solid var(--ink)}
+.sub{color:var(--muted);font-size:13px;margin:0 0 20px}
+.card{background:#fffdf8;border:1px solid var(--border);border-radius:14px;padding:16px 20px;margin-bottom:13px}
+.card p{margin:6px 0}
+.tag{font-size:10.5px;letter-spacing:.14em;color:var(--muted);margin-bottom:4px}
+.rhead{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:4px}
+.rhead b{font-size:15.5px;color:var(--amber)}
+.share{font-size:11.5px;font-weight:600;padding:3px 10px;border-radius:99px;background:rgba(60,122,94,.12);color:var(--green)}
+.ev{border-left:3px solid rgba(176,106,22,.4);padding:2px 0 2px 12px;margin:8px 0;color:#6b5b44;font-style:italic;font-size:13px}
+.ev p{margin:4px 0}
+.apply{background:rgba(176,106,22,.08);border-radius:10px;padding:9px 13px;font-size:13.5px;color:#6b4a12;margin-top:8px}
+.formula{background:rgba(140,96,40,.06);border-radius:10px;padding:12px 14px}
+.chk{font-size:13.5px}
+.foot{margin-top:36px;color:var(--muted);font-size:12.5px;border-top:1px solid var(--border);padding-top:12px}
+@media print{body{background:#fff}.card{break-inside:avoid}}
+</style></head><body><div class="wrap">
+<h1>${sfEsc(title)}</h1>
+<p class="sub">🧩 Tổng hợp từ ${data?.count} video · ${sfEsc(created)}</p>
+${h}
+<p class="foot">Tạo bởi Nonelab Studio — báo cáo tổng hợp lý do thành công chung của các video đã phân tích.</p>
+</div></body></html>`;
+    const blob = new Blob([doc], { type: "text/html;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const aEl = document.createElement("a");
+    aEl.href = url;
+    aEl.download = `bao-cao-tong-hop-${String(title).toLowerCase().replace(/[^a-z0-9à-ỹ]+/gi, "-").replace(/^-|-$/g, "").slice(0, 60) || "video"}.html`;
+    document.body.appendChild(aEl);
+    aEl.click();
+    aEl.remove();
+    URL.revokeObjectURL(url);
+  };
 
   return (
     <div className="ns-fade ns-rise" style={c(`display:flex;flex-direction:column;gap:14px;max-width:${isMobile ? "100%" : "860px"}`)}>
       <div style={c("display:flex;align-items:center;gap:12px;flex-wrap:wrap")}>
         <button onClick={onBack} style={c("padding:8px 14px;border:1px solid rgba(140,96,40,.3);border-radius:10px;background:#fffdf8;color:#6b5b44;font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:12.5px;cursor:pointer")}>← Lịch sử</button>
         <div style={c("flex:1;min-width:200px")}>
-          <div style={c("font-family:'Fraunces',serif;font-size:20px;font-weight:700;color:#2a2016")}>{r.title || data?.title || "Báo cáo tổng hợp"}</div>
+          <div style={c("font-family:'Fraunces',serif;font-size:20px;font-weight:700;color:#2a2016")}>{title}</div>
           <div style={c("font-size:12px;color:#8a7c67;margin-top:2px")}>🧩 Tổng hợp từ {data?.count} video · {created}</div>
         </div>
+        {canExport && (
+          <div style={c("display:flex;gap:8px;flex-wrap:wrap")}>
+            <button onClick={exportHtml} style={c("padding:9px 15px;border:none;border-radius:10px;background:linear-gradient(150deg,#c07c1e,#9a5a12);color:#fff;font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:12.5px;cursor:pointer;box-shadow:0 5px 14px rgba(154,90,18,.26)")}>⬇ {isMobile ? "HTML" : "Tải HTML"}</button>
+            <button onClick={exportMd} style={c(`padding:9px 15px;border:1.5px solid #574a3a;border-radius:10px;background:${copied ? "#574a3a" : "transparent"};color:${copied ? "#fff" : "#574a3a"};font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:12.5px;cursor:pointer`)}>{copied ? "Đã copy ✓" : isMobile ? "Copy MD" : "Copy Markdown"}</button>
+          </div>
+        )}
       </div>
 
       {r.overview && (
