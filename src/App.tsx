@@ -4,7 +4,7 @@ import { css as c } from "./lib/csx";
 import { decorate, makeEntry, presetPerms, scoreOf, seedUsers, slug } from "./lib/analysis";
 import { buildReportHTML } from "./lib/reportHtml";
 import { buildRaw, seedDates, seedForms } from "./data/sampleAnalysis";
-import { analyzeVideo, analyzeVideoBatch, testGemini, authHeaders, importAds, listCohorts, getCohort, finalizeCohort, getKnowledge, saveKnowledge, getHistoryItem, startCampaignSearch, getCampaignJob, getActiveCampaignJobs, discardCampaignJob, stopCampaignSearch, createCampaign, getMe, synthesizeReports, listSyntheses, getSynthesis, deleteSynthesis, seedFramePart, saveSeedFrame, listSeedFrames, getSeedFrame, deleteSeedFrame } from "./lib/api";
+import { analyzeVideo, analyzeVideoBatch, testGemini, authHeaders, importAds, listCohorts, getCohort, finalizeCohort, getKnowledge, saveKnowledge, getHistoryItem, startCampaignSearch, getCampaignJob, getActiveCampaignJobs, discardCampaignJob, stopCampaignSearch, createCampaign, getMe, synthesizeReports, listSyntheses, getSynthesis, deleteSynthesis, seedFramePart, saveSeedFrame, listSeedFrames, getSeedFrame, deleteSeedFrame, renameHistory, renameSynthesis } from "./lib/api";
 import type { SeedFrameFormInput } from "./lib/api";
 import { embedFrames } from "./lib/frames";
 import type { AdminUser, Analysis, FormState, HistoryEntry, Level, Perms, Screen, User } from "./types";
@@ -883,7 +883,7 @@ export default function App() {
 
           <div style={c(`padding:${isMobile ? "16px 16px 90px" : "30px 34px 60px"}`)}>
             {screen === "dashboard" && <Dashboard stats={labels.dashboard} recent={history.slice(0, 3)} onOpen={openReport} onAll={() => go("history")} isMobile={isMobile} />}
-            {screen === "history" && <HistoryView history={history} onOpen={openReport} onReanalyze={reanalyzeEntry} showToast={showToast} isAdmin={user?.role === "Quản trị"} onSynthesize={synthesizeSelected} synthesizing={synthesizing} onOpenSynthesis={openSynthesis} />}
+            {screen === "history" && <HistoryView history={history} onOpen={openReport} onReanalyze={reanalyzeEntry} showToast={showToast} isAdmin={user?.role === "Quản trị"} onSynthesize={synthesizeSelected} synthesizing={synthesizing} onOpenSynthesis={openSynthesis} onRenamed={(id: string, title: string) => setHistory((xs) => xs.map((x) => (x.id === id ? { ...x, title } : x)))} />}
             {screen === "synthesis" && synthesisReport && <SynthesisView data={synthesisReport} isMobile={isMobile} onBack={() => go("history")} canExport={!!user?.perms?.export} showToast={showToast} />}
             {screen === "upload" && (
               <UploadView
@@ -2412,7 +2412,7 @@ function Dashboard({ stats, recent, onOpen, onAll, isMobile }: { stats: { label:
   );
 }
 
-function HistoryView({ history, onOpen, onReanalyze, showToast, isAdmin, onSynthesize, synthesizing, onOpenSynthesis }: { history: HistoryEntry[]; onOpen: (h: HistoryEntry) => void; onReanalyze: (h: HistoryEntry) => void; showToast: (msg: string) => void; isAdmin?: boolean; onSynthesize: (ids: string[]) => void; synthesizing: boolean; onOpenSynthesis: (id: string) => void }) {
+function HistoryView({ history, onOpen, onReanalyze, showToast, isAdmin, onSynthesize, synthesizing, onOpenSynthesis, onRenamed }: { history: HistoryEntry[]; onOpen: (h: HistoryEntry) => void; onReanalyze: (h: HistoryEntry) => void; showToast: (msg: string) => void; isAdmin?: boolean; onSynthesize: (ids: string[]) => void; synthesizing: boolean; onOpenSynthesis: (id: string) => void; onRenamed: (id: string, title: string) => void }) {
   // Tick chọn các phiếu hoàn tất để "Tổng hợp phân tích" (gom lý do thành công chung).
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [saved, setSaved] = useState<{ id: string; title: string; created: string; count: number; owner?: string }[]>([]);
@@ -2434,6 +2434,22 @@ function HistoryView({ history, onOpen, onReanalyze, showToast, isAdmin, onSynth
     await deleteSynthesis(id);
     setSaved((xs) => xs.filter((x) => x.id !== id));
     showToast("Đã xóa báo cáo tổng hợp");
+  };
+
+  // Đổi tên phiếu phân tích / báo cáo tổng hợp — hỏi tên mới bằng prompt.
+  const renameEntry = async (h: HistoryEntry) => {
+    const title = (window.prompt("Tên mới cho phiếu phân tích:", h.title) || "").trim();
+    if (!title || title === h.title) return;
+    const r = await renameHistory(h.id, title);
+    if (r?.ok) { onRenamed(h.id, r.title || title); showToast("Đã đổi tên phiếu"); }
+    else showToast(r?.message || "Không đổi được tên — thử lại.");
+  };
+  const renameSaved = async (s: { id: string; title: string }) => {
+    const title = (window.prompt("Tên mới cho báo cáo tổng hợp:", s.title) || "").trim();
+    if (!title || title === s.title) return;
+    const r = await renameSynthesis(s.id, title);
+    if (r?.ok) { setSaved((xs) => xs.map((x) => (x.id === s.id ? { ...x, title: r.title || title } : x))); showToast("Đã đổi tên báo cáo"); }
+    else showToast(r?.message || "Không đổi được tên — thử lại.");
   };
 
   const handleClick = (h: HistoryEntry) => {
@@ -2490,6 +2506,11 @@ function HistoryView({ history, onOpen, onReanalyze, showToast, isAdmin, onSynth
                 {isAdmin && s.owner && <span style={c("font-family:'Space Grotesk',sans-serif;font-size:11px;font-weight:600;padding:2px 8px;border-radius:99px;background:rgba(176,106,22,.1);color:#8a5614")}>👤 {s.owner}</span>}
               </div>
             </div>
+            <button
+              onClick={(e) => { e.stopPropagation(); renameSaved(s); }}
+              title="Đổi tên báo cáo"
+              style={c("flex:none;padding:8px 11px;border:1px solid rgba(140,96,40,.3);border-radius:10px;background:#fffdf8;color:#6b5b44;font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:12.5px;cursor:pointer;white-space:nowrap")}
+            >✏️</button>
             <button
               onClick={(e) => { e.stopPropagation(); removeSaved(s.id); }}
               title="Xóa báo cáo"
@@ -2554,6 +2575,11 @@ function HistoryView({ history, onOpen, onReanalyze, showToast, isAdmin, onSynth
               <div style={c("font-family:'Space Grotesk',sans-serif;font-size:18px;font-weight:700;color:#9a5a12")}>{scoreDisplay}</div>
               <div style={c("font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:#8a7c67;white-space:nowrap")}>{scoreSub}</div>
             </div>
+            <button
+              onClick={(e) => { e.stopPropagation(); renameEntry(h); }}
+              title="Đổi tên phiếu"
+              style={c("flex:none;padding:8px 11px;border:1px solid rgba(140,96,40,.3);border-radius:10px;background:#fffdf8;color:#6b5b44;font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:12.5px;cursor:pointer;white-space:nowrap")}
+            >✏️</button>
             {isFailed ? (
               <button
                 onClick={(e) => { e.stopPropagation(); onReanalyze(h); }}

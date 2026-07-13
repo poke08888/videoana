@@ -200,6 +200,22 @@ export async function synthesizeReports(opts: { ids: string[]; apiKey?: string; 
   }
 }
 
+/** Đổi tên phiếu phân tích / báo cáo tổng hợp (chủ sở hữu hoặc admin). */
+async function jrename(url: string, title: string): Promise<any> {
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { ...authHeaders(), "Content-Type": "application/json" },
+      body: JSON.stringify({ title }),
+    });
+    return await res.json().catch(() => ({ ok: false }));
+  } catch {
+    return { ok: false, message: "Không gọi được backend." };
+  }
+}
+export const renameHistory = (id: string, title: string): Promise<any> => jrename(`/api/history/${id}/rename`, title);
+export const renameSynthesis = (id: string, title: string): Promise<any> => jrename(`/api/synthesis/${id}/rename`, title);
+
 export const listSyntheses = (): Promise<any> => jget("/api/syntheses");
 export const getSynthesis = (id: string): Promise<any> => jget(`/api/synthesis/${id}`);
 

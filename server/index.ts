@@ -647,6 +647,48 @@ app.delete("/api/synthesis/:id", requireAuth, async (req, res) => {
   } catch { res.status(500).json({ ok: false }); }
 });
 
+// ── Đổi tên phiếu phân tích / báo cáo tổng hợp ───────────────────────────────
+// Chỉ chủ sở hữu (hoặc admin) đổi được; tên 1-140 ký tự.
+function cleanTitle(raw: any): string | null {
+  const t = String(raw || "").trim().replace(/\s+/g, " ").slice(0, 140);
+  return t.length ? t : null;
+}
+
+app.post("/api/history/:id/rename", requireAuth, async (req, res) => {
+  try {
+    const title = cleanTitle(req.body?.title);
+    if (!title) return res.status(400).json({ ok: false, message: "Tên không được để trống." });
+    const r = await getQuery<any>("SELECT owner FROM history WHERE id = ?", [req.params.id]);
+    if (!r) return res.status(404).json({ ok: false });
+    if (!isAdminReq(req) && String(r.owner || "").toLowerCase().trim() !== ownerEmail(req)) {
+      return res.status(403).json({ ok: false, message: "Không có quyền đổi tên phiếu này." });
+    }
+    await runQuery("UPDATE history SET title = ? WHERE id = ?", [title, req.params.id]);
+    res.json({ ok: true, title });
+  } catch { res.status(500).json({ ok: false }); }
+});
+
+app.post("/api/synthesis/:id/rename", requireAuth, async (req, res) => {
+  try {
+    const title = cleanTitle(req.body?.title);
+    if (!title) return res.status(400).json({ ok: false, message: "Tên không được để trống." });
+    const r = await getQuery<any>("SELECT owner, report FROM syntheses WHERE id = ?", [req.params.id]);
+    if (!r) return res.status(404).json({ ok: false });
+    if (!isAdminReq(req) && String(r.owner || "").toLowerCase().trim() !== ownerEmail(req)) {
+      return res.status(403).json({ ok: false, message: "Không có quyền đổi tên báo cáo này." });
+    }
+    // Tên hiển thị ưu tiên report.title (JSON) → phải đổi cả hai cho khớp.
+    let report = r.report;
+    try {
+      const parsed = JSON.parse(r.report || "{}");
+      parsed.title = title;
+      report = JSON.stringify(parsed);
+    } catch { /* report hỏng thì chỉ đổi cột title */ }
+    await runQuery("UPDATE syntheses SET title = ?, report = ? WHERE id = ?", [title, report, req.params.id]);
+    res.json({ ok: true, title });
+  } catch { res.status(500).json({ ok: false }); }
+});
+
 // ── Khung hạt giống: bản đồ content từ điểm mạnh sản phẩm ────────────────────
 // Chỉ Biên tập + Quản trị (requireEditor). Client gọi từng PHẦN song song
 // (persona/concepts/bench chung + directions/doichuan theo từng nhóm điểm mạnh)
