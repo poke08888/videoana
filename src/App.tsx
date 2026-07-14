@@ -3,6 +3,7 @@ import type { CSSProperties } from "react";
 import { css as c } from "./lib/csx";
 import { decorate, makeEntry, presetPerms, scoreOf, seedUsers, slug } from "./lib/analysis";
 import { buildReportHTML } from "./lib/reportHtml";
+import { buildReportMarkdown } from "./lib/reportMd";
 import { buildRaw, seedDates, seedForms } from "./data/sampleAnalysis";
 import { analyzeVideo, analyzeVideoBatch, testGemini, authHeaders, importAds, listCohorts, getCohort, finalizeCohort, getKnowledge, saveKnowledge, getHistoryItem, startCampaignSearch, getCampaignJob, getActiveCampaignJobs, discardCampaignJob, stopCampaignSearch, createCampaign, getMe, synthesizeReports, listSyntheses, getSynthesis, deleteSynthesis, seedFramePart, saveSeedFrame, listSeedFrames, getSeedFrame, deleteSeedFrame, renameHistory, renameSynthesis } from "./lib/api";
 import type { SeedFrameFormInput } from "./lib/api";
@@ -535,6 +536,16 @@ export default function App() {
     } else showToast("Không mở được báo cáo tổng hợp.");
   };
 
+  // Copy phiếu phân tích dạng Markdown — dán vào Google Sheets/Docs.
+  const copyReportMd = () => {
+    if (!a) return;
+    const entry = history.find((h) => h.id === currentReportId);
+    const md = buildReportMarkdown(a, entry?.title || a.subtitle || "Phiếu phân tích video", { score: entry?.score ?? a.score, date: entry?.date });
+    navigator.clipboard.writeText(md)
+      .then(() => showToast("Đã copy Markdown — dán vào Sheets/Docs"))
+      .catch(() => showToast("Không copy được — thử lại."));
+  };
+
   const shareReport = () => {
     if (!currentReportId) return;
     const shareUrl = `${window.location.protocol}//${window.location.hostname}/share/${currentReportId}`;
@@ -874,6 +885,9 @@ export default function App() {
                   {!isMobile && <button onClick={() => setScreen("upload")} style={c("padding:9px 15px;border:1px solid rgba(140,96,40,.3);border-radius:10px;background:#fffdf8;color:#574a3a;font-family:'Space Grotesk',sans-serif;font-weight:500;font-size:13px;cursor:pointer")}>↻ Phân tích lại</button>}
                   {user?.perms?.export && (
                       <button onClick={() => setExportOpen(true)} style={c("padding:9px 14px;border:none;border-radius:10px;background:linear-gradient(150deg,#c07c1e,#9a5a12);color:#fff;font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:13px;cursor:pointer;box-shadow:0 5px 14px rgba(154,90,18,.26)")}>⬇ {isMobile ? "" : "Xuất HTML"}</button>
+                  )}
+                  {user?.perms?.export && (
+                      <button onClick={copyReportMd} title="Copy Markdown — dán vào Google Sheets/Docs" style={c("padding:9px 14px;border:1px solid rgba(140,96,40,.3);border-radius:10px;background:#fffdf8;color:#574a3a;font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:13px;cursor:pointer")}>📋 {isMobile ? "" : "Copy Markdown"}</button>
                   )}
                   <button onClick={shareReport} style={c("padding:9px 14px;border:1px solid rgba(140,96,40,.3);border-radius:10px;background:#fffdf8;color:#574a3a;font-family:'Space Grotesk',sans-serif;font-weight:500;font-size:13px;cursor:pointer")}>🔗 {isMobile ? "" : "Chia sẻ link"}</button>
                 </>
