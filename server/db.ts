@@ -163,6 +163,7 @@ export async function connectDB() {
   // ALTER trước CREATE sẽ thất bại và cột owner không được thêm).
   await addColumnIfMissing("ads_cohorts", "kind TEXT DEFAULT 'ads'"); // 'ads' | 'campaign'
   await addColumnIfMissing("ads_cohorts", "owner TEXT"); // email người tạo cụm
+  await addColumnIfMissing("ads_cohorts", "synthesis TEXT"); // báo cáo tổng hợp "vì sao tài khoản thành công"
 
   // 2d. Kho kiến thức theo sản phẩm — chắt lọc từ các cụm, bơm vào prompt sau này.
   await runQuery(`
@@ -224,6 +225,12 @@ export async function connectDB() {
     )
   `);
   await addColumnIfMissing("search_jobs", "region TEXT"); // lọc vùng (vd 'VN')
+  // Cột cho tính năng Phân tích tài khoản (job kind='account').
+  await addColumnIfMissing("search_jobs", "kind TEXT DEFAULT 'keyword'");
+  await addColumnIfMissing("search_jobs", "account_url TEXT");
+  await addColumnIfMissing("search_jobs", "account_meta TEXT"); // JSON Account
+  await addColumnIfMissing("search_jobs", "min_er REAL DEFAULT 0");
+  await addColumnIfMissing("search_jobs", "since_days INTEGER DEFAULT 0");
   // Job 'searching' khi backend tắt sẽ được TỰ CHẠY LẠI lúc khởi động (xem
   // resumeSearchJobs trong index.ts) — không đánh dấu failed ở đây.
 
