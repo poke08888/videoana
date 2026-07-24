@@ -507,8 +507,8 @@ app.get("/api/campaign/job/:id", requireEditor, async (req, res) => {
 app.get("/api/campaign/jobs", requireEditor, async (req, res) => {
   try {
     const rows = isAdminReq(req)
-      ? await allQuery<any>("SELECT id, owner, keywords, target, region, status, found, scanned, exhausted, message, created FROM search_jobs WHERE status IN ('searching','ready') ORDER BY created DESC LIMIT 20")
-      : await allQuery<any>("SELECT id, owner, keywords, target, region, status, found, scanned, exhausted, message, created FROM search_jobs WHERE status IN ('searching','ready') AND owner = ? ORDER BY created DESC LIMIT 20", [ownerEmail(req)]);
+      ? await allQuery<any>("SELECT id, owner, keywords, target, region, status, found, scanned, exhausted, message, created FROM search_jobs WHERE status IN ('searching','ready') AND (kind IS NULL OR kind = 'keyword') ORDER BY created DESC LIMIT 20")
+      : await allQuery<any>("SELECT id, owner, keywords, target, region, status, found, scanned, exhausted, message, created FROM search_jobs WHERE status IN ('searching','ready') AND (kind IS NULL OR kind = 'keyword') AND owner = ? ORDER BY created DESC LIMIT 20", [ownerEmail(req)]);
     res.json({ ok: true, jobs: rows.map((j) => ({ jobId: j.id, owner: j.owner || "", status: j.status, keywords: JSON.parse(j.keywords || "[]"), target: j.target, region: j.region || "", found: j.found || 0, scanned: j.scanned || 0, exhausted: !!j.exhausted, message: j.message || "", created: j.created })) });
   } catch (e: any) { res.status(500).json({ ok: false, jobs: [] }); }
 });
