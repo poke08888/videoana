@@ -669,7 +669,7 @@ app.get("/api/ads/cohort/:id", requireEditor, async (req, res) => {
       try { a = JSON.parse(r.analysis); } catch {}
       return { id: r.id, title: r.title, status: r.status, score: r.score, ads: a.ads || null, eng: a.eng || null, hasContent: !!a.checklist };
     });
-    res.json({ ok: true, cohort: { id: c.id, product: c.product, created: c.created, count: c.count, kind: c.kind || "ads", summary: JSON.parse(c.summary || "{}"), insight: c.insight ? JSON.parse(c.insight) : null }, videos });
+    res.json({ ok: true, cohort: { id: c.id, product: c.product, created: c.created, count: c.count, kind: c.kind || "ads", summary: JSON.parse(c.summary || "{}"), insight: c.insight ? JSON.parse(c.insight) : null, synthesis: c.synthesis ? JSON.parse(c.synthesis) : null }, videos });
   } catch (e: any) { console.error("Lỗi lấy cụm:", e); res.status(500).json({ ok: false }); }
 });
 
@@ -684,6 +684,28 @@ app.post("/api/ads/cohort/:id/finalize", requireEditor, async (req, res) => {
     res.json({ ok: true, done: await finalizeCohortIfDone(req.params.id, new Date().toISOString()) });
   }
   catch (e: any) { res.status(500).json({ ok: false, message: e?.message }); }
+});
+
+// Tổng hợp "vì sao tài khoản này thành công" — gom phiếu đã xong của cohort → Gemini.
+app.post("/api/account/cohort/:id/synthesize", requireEditor, async (req, res) => {
+  try {
+    const c = await getQuery<any>("SELECT owner FROM ads_cohorts WHERE id = ?", [req.params.id]);
+    if (!c) return res.status(404).json({ ok: false, message: "Không tìm thấy cụm." });
+    if (!isAdminReq(req) && String(c.owner || "").toLowerCase().trim() !== ownerEmail(req)) return res.status(404).json({ ok: false });
+    const apiKey = resolveKey(req.body?.apiKey);
+    if (!apiKey) return res.status(400).json({ ok: false, error: "no-key", message: "Chưa kết nối Gemini API." });
+    const rows = await allQuery<any>("SELECT id, title, score, analysis FROM history WHERE cohort_id = ? AND status = 'completed'", [req.params.id]);
+    const videos: SourceVideo[] = [];
+    for (const r of rows) { try { const a = JSON.parse(r.analysis); if (a && a.checklist) videos.push({ id: r.id, title: r.title, score: r.score, analysis: a }); } catch {} }
+    if (videos.length < 2) return res.status(400).json({ ok: false, message: "Cần ít nhất 2 phiếu hoàn tất để tổng hợp (đang có " + videos.length + ")." });
+    const report = await generateJSON(apiKey, req.body?.model, buildSynthesisPrompt(videos));
+    if (!report || !Array.isArray(report.reasons)) throw new Error("Báo cáo tổng hợp không đúng định dạng.");
+    await runQuery("UPDATE ads_cohorts SET synthesis = ? WHERE id = ?", [JSON.stringify(report), req.params.id]);
+    res.json({ ok: true, report });
+  } catch (err: any) {
+    console.error("Lỗi synthesize account:", err);
+    res.status(502).json({ ok: false, message: humanizeError(err) });
+  }
 });
 
 // Kho kiến thức theo sản phẩm: liệt kê / xem / sửa.
