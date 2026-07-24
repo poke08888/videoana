@@ -22,3 +22,4 @@ Next: CHECKPOINT B (deploy frontend + E2E).
 CHECKPOINT B: DONE — deployed frontend (App.tsx/types.ts/lib/api.ts) + rebuild. Container Up, HTTP 200, bundle contains account tab. Fixed a deploy bug: rsync mis-placed src/lib/api.ts as src/api.ts → corrected + removed stray + rebuilt.
 Douyin fetch-shape: still to validate via a REAL Douyin account link (UI E2E by user). TikTok fully validated live.
 Next: final whole-branch review.
+FINAL REVIEW (opus, whole-branch): 1 Important (account jobs leak into Campaign job list) — FIXED (commit 24b7be4, kind filter on /api/campaign/jobs) + redeployed. Minors #2-5 accepted non-blocking (logged/pre-existing/UX). Verdict now: clean.
