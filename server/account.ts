@@ -131,7 +131,12 @@ function toAccountVideo(aw: any, account: Account): AccountVideo {
   return { awemeId: id, desc: String(aw?.desc || ""), author: account.handle, nickname: account.nickname, link, createTime: Number(aw?.create_time) || 0, stats };
 }
 
-/** Lấy ≤count video gần nhất của tài khoản, phân trang qua max_cursor. */
+/**
+ * Lấy ≤count video gần nhất của tài khoản, phân trang tới khi đủ/hết trang.
+ * TikTok (tokapi): mỗi call trả ~10 video (param `count` bị cap), phân trang bằng
+ *   `offset` = giá trị `max_cursor` của trang trước (KHÔNG dùng param `max_cursor`).
+ * Douyin (TikHub): phân trang chuẩn bằng `max_cursor`.
+ */
 export async function fetchAccountVideos(
   account: Account,
   opts: { count?: number; key: string; apiGet?: ApiGet; shouldStop?: () => boolean }
@@ -145,7 +150,7 @@ export async function fetchAccountVideos(
   for (let p = 0; p < MAX_PAGES && out.length < want; p++) {
     if (opts.shouldStop?.()) break;
     const raw = account.platform === "tiktok"
-      ? await apiGet(TIKTOK_HOST, `/v1/post/user/${account.secId}/posts`, { count: "20", max_cursor: cursor }, opts.key)
+      ? await apiGet(TIKTOK_HOST, `/v1/post/user/${account.secId}/posts`, { count: "20", offset: cursor }, opts.key)
       : await apiGet(DOUYIN_HOST, "/api/v1/douyin/web/fetch_user_post_videos", { sec_user_id: account.secId, count: "20", max_cursor: cursor }, opts.key);
     const data = account.platform === "douyin" ? (raw?.data || raw) : raw;
     const list: any[] = data?.aweme_list || [];
