@@ -27,6 +27,7 @@ import { embedFramesServer } from "./frames.js";
 import { readXlsxGrid } from "./xlsx.js";
 import { parseAdsGrid, buildCohort, type ScoredVideo } from "./adsAnalytics.js";
 import { searchVideos, rankEngagement, parseKeywords } from "./tiktokSearch.js";
+import { resolveAccount, normalizeAccountInput, fetchAccountVideos, filterAccountVideos, type Account, type AccountFilter } from "./account.js";
 import { getProductKnowledge, saveProductKnowledge, finalizeCohortIfDone, productSlug } from "./cohort.js";
 import { buildSynthesisPrompt, type SourceVideo } from "./synthesize.js";
 import { buildSeedFramePrompt, isValidSeedPart, normalizeSeedForm, SEED_FRAME_PARTS, type SeedFramePart } from "./seedFrame.js";
@@ -383,6 +384,31 @@ async function runSearchJob(jobId: string, keywords: string[], tokapiKey: string
   }
 }
 
+// Chạy NỀN job lấy video theo tài khoản: lấy ≤count → lọc → xếp hạng tương tác →
+// lưu vào search_jobs. Cùng khuôn với runSearchJob (dừng được, sống sót restart).
+async function runAccountJob(jobId: string, account: Account, key: string, filter: AccountFilter, count: number) {
+  try {
+    const all = await fetchAccountVideos(account, { count, key, shouldStop: () => cancelSearch.has(jobId) });
+    const matched = filterAccountVideos(all, filter, Math.floor(Date.now() / 1000));
+    const engs = rankEngagement(matched as any); // cùng thứ tự với matched
+    const videos = matched.map((v, i) => ({ ...v, eng: engs[i] }));
+    const wasStopped = cancelSearch.has(jobId);
+    cancelSearch.delete(jobId);
+    const nowIso = new Date().toISOString();
+    if (!videos.length) {
+      await runQuery("UPDATE search_jobs SET status='failed', found=0, scanned=?, message=?, updated=? WHERE id=?",
+        [all.length, all.length ? `Lấy được ${all.length} video nhưng không video nào đạt bộ lọc.` : "Không lấy được video nào (tài khoản riêng tư/không có video?).", nowIso, jobId]);
+      return;
+    }
+    await runQuery("UPDATE search_jobs SET status='ready', found=?, scanned=?, videos=?, message=?, updated=? WHERE id=?",
+      [videos.length, all.length, JSON.stringify(videos), wasStopped ? "Đã dừng — giữ lại phần đã lấy." : "", nowIso, jobId]);
+  } catch (err: any) {
+    console.error("Lỗi runAccountJob:", err);
+    cancelSearch.delete(jobId);
+    await runQuery("UPDATE search_jobs SET status='failed', message=?, updated=? WHERE id=?", [humanizeError(err), new Date().toISOString(), jobId]).catch(() => {});
+  }
+}
+
 // BƯỚC 1 — TẠO JOB tìm video chạy nền, trả jobId NGAY. Client poll /job/:id.
 app.post("/api/campaign/search", requireEditor, async (req, res) => {
   try {
@@ -408,6 +434,55 @@ app.post("/api/campaign/search", requireEditor, async (req, res) => {
     console.error("Lỗi tạo job search:", err);
     res.status(500).json({ ok: false, message: "Lỗi hệ thống khi khởi tạo tìm kiếm." });
   }
+});
+
+// Phân tích tài khoản — BƯỚC 1: resolve tài khoản + tạo job nền lấy+lọc video.
+app.post("/api/account/search", requireEditor, async (req, res) => {
+  try {
+    const url = String(req.body?.url || "").trim();
+    if (!url) return res.status(400).json({ ok: false, message: "Vui lòng nhập link tài khoản." });
+    const norm = normalizeAccountInput(url);
+    if (!norm) return res.status(400).json({ ok: false, message: "Link tài khoản không hợp lệ (TikTok tiktok.com/@ten hoặc Douyin douyin.com/user/...)." });
+    const key = norm.platform === "douyin" ? resolveDouyinKey(req.body?.tokapiKey) : resolveTokapiKey(req.body?.tokapiKey);
+    if (!key) return res.status(400).json({ ok: false, error: "no-tokapi-key", message: "Chưa cấu hình RapidAPI key (TOKAPI_RAPIDAPI_KEY)." });
+    let account: Account;
+    try { account = await resolveAccount(url, key); }
+    catch (e: any) { return res.status(400).json({ ok: false, message: e?.message || "Không resolve được tài khoản." }); }
+    const filter: AccountFilter = {
+      minLikes: Math.max(0, Number(req.body?.minLikes) || 0),
+      minViews: Math.max(0, Number(req.body?.minViews) || 0),
+      minER: Math.max(0, Number(req.body?.minER) || 0),
+      sinceDays: Math.max(0, Number(req.body?.sinceDays) || 0),
+    };
+    const count = Math.min(Math.max(1, Number(req.body?.count) || 100), 100);
+    const owner = ownerEmail(req);
+    const jobId = "a" + Math.random().toString(36).slice(2, 10);
+    const now = new Date().toISOString();
+    await runQuery(
+      "INSERT INTO search_jobs (id, owner, kind, account_url, account_meta, keywords, min_likes, min_views, min_er, since_days, target, status, created, updated) VALUES (?,?,'account',?,?,?,?,?,?,?,?,'searching',?,?)",
+      [jobId, owner, url, JSON.stringify(account), JSON.stringify([account.nickname]), filter.minLikes, filter.minViews, filter.minER, filter.sinceDays, count, now, now]
+    );
+    runAccountJob(jobId, account, key, filter, count); // không await
+    res.json({ ok: true, jobId, account });
+  } catch (err: any) {
+    console.error("Lỗi account search:", err);
+    res.status(500).json({ ok: false, message: "Lỗi hệ thống khi khởi tạo phân tích tài khoản." });
+  }
+});
+
+// Poll job tài khoản — trả account_meta + videos khi ready.
+app.get("/api/account/job/:id", requireEditor, async (req, res) => {
+  try {
+    const j = await getQuery<any>("SELECT * FROM search_jobs WHERE id = ?", [req.params.id]);
+    if (!j) return res.status(404).json({ ok: false, message: "Không tìm thấy job." });
+    if (!isAdminReq(req) && String(j.owner || "").toLowerCase().trim() !== ownerEmail(req)) return res.status(404).json({ ok: false });
+    let account: any = null; try { account = JSON.parse(j.account_meta || "null"); } catch {}
+    res.json({
+      ok: true, jobId: j.id, status: j.status, account,
+      found: j.found || 0, scanned: j.scanned || 0, message: j.message || "",
+      videos: j.status === "ready" && j.videos ? JSON.parse(j.videos) : undefined,
+    });
+  } catch (e: any) { res.status(500).json({ ok: false }); }
 });
 
 // Poll 1 job (chủ sở hữu hoặc admin). Trả videos khi status='ready'.
@@ -510,6 +585,57 @@ app.post("/api/campaign/create", requireEditor, async (req, res) => {
   } catch (err: any) {
     console.error("Lỗi campaign create:", err);
     res.status(500).json({ ok: false, message: "Lỗi hệ thống khi tạo campaign." });
+  }
+});
+
+// Phân tích tài khoản — BƯỚC 2: nhận video đã chọn (top-cap) → tạo cohort kind='account' + xếp hàng Gemini.
+app.post("/api/account/create", requireEditor, async (req, res) => {
+  try {
+    const account = req.body?.account;
+    if (!account || !account.platform) return res.status(400).json({ ok: false, message: "Thiếu thông tin tài khoản." });
+    const apiKey = resolveKey(req.body?.apiKey);
+    if (!apiKey) return res.status(400).json({ ok: false, error: "no-key", message: "Chưa kết nối Gemini API." });
+    const tokapiKey = resolveTokapiKey(req.body?.tokapiKey);
+    const douyinKey = resolveDouyinKey(req.body?.tokapiKey);
+    const model = req.body?.model || DEFAULT_MODEL;
+    const email = req.user?.email;
+    const cap = Math.min(Math.max(1, Number(req.body?.cap) || 100), 100);
+    const label = String(account.nickname || account.handle || "Tài khoản").slice(0, 80);
+    const platLabel = account.platform === "douyin" ? "Douyin" : "TikTok";
+
+    const incoming: any[] = Array.isArray(req.body?.videos) ? req.body.videos : [];
+    const videos = incoming
+      .filter((v) => v && v.link && v.stats)
+      .map((v) => ({ awemeId: String(v.awemeId || ""), desc: String(v.desc || ""), author: String(v.author || ""), nickname: String(v.nickname || ""), link: String(v.link), stats: v.stats }))
+      .slice(0, cap);
+    if (!videos.length) return res.status(400).json({ ok: false, message: "Chưa có video nào để phân tích." });
+
+    const engs = rankEngagement(videos as any);
+    const med = (xs: number[]) => { const s = [...xs].sort((a, b) => a - b); return s[Math.floor(s.length / 2)] || 0; };
+    const summary = {
+      count: videos.length, keyword: label, account, platform: account.platform,
+      summary: { tot: engs.filter((e) => e.tier === "tốt").length, kha: engs.filter((e) => e.tier === "khá").length, thap: engs.filter((e) => e.tier === "thấp").length, medianLikes: med(engs.map((e) => e.likes)), medianRate: med(engs.map((e) => e.engagementRate)) },
+    };
+    const cohortId = "c" + Math.random().toString(36).slice(2, 10);
+    const owner = String(email || "").toLowerCase().trim();
+    await runQuery(
+      "INSERT INTO ads_cohorts (id, product, product_slug, created, count, summary, insight, kind, owner) VALUES (?, ?, ?, ?, ?, ?, NULL, 'account', ?)",
+      [cohortId, label, productSlug(label), new Date().toISOString(), videos.length, JSON.stringify(summary), owner]
+    );
+    const av = ["linear-gradient(150deg,#3c7a5e,#2a5a44)", "linear-gradient(150deg,#b06a16,#7a4a10)", "linear-gradient(150deg,#9e3a3a,#6a2424)", "linear-gradient(150deg,#3a2a16,#5a4326)", "linear-gradient(150deg,#2f6b8a,#1e4a60)"];
+    for (let i = 0; i < videos.length; i++) {
+      const v = videos[i];
+      const id = "e" + Math.random().toString(36).slice(2, 8);
+      const meta = { apiKey, model, form: { product: label, platform: platLabel }, tiktokUrl: v.link, tokapiKey, douyinKey, email, eng: engs[i], cohortId };
+      await runQuery(
+        "INSERT INTO history (id, title, platform, product, date, score, analysis, thumb, status, queue_meta, cohort_id, owner) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        [id, (v.desc || ("Video " + platLabel)).slice(0, 80), platLabel, label, "Hôm nay", engs[i].score, "{}", av[i % av.length], "pending", JSON.stringify(meta), cohortId, owner]
+      );
+    }
+    res.json({ ok: true, cohortId, count: videos.length });
+  } catch (err: any) {
+    console.error("Lỗi account create:", err);
+    res.status(500).json({ ok: false, message: "Lỗi hệ thống khi tạo phân tích tài khoản." });
   }
 });
 
