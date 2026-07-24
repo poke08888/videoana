@@ -19,3 +19,6 @@ Task 9: complete (frontend types + client API) — commit 92ca7b3, review clean
 Task 10: complete (AccountView tab in App.tsx) — commit 303363e, review SPEC ✅ Approved, vite+tsc clean.
   MINOR (for final review triage): (a) AccountView doesn't persist searching job across reload like CampaignView (localStorage); (b) count/cap not clamped client-side (server clamps). Non-blocking.
 Next: CHECKPOINT B (deploy frontend + E2E).
+CHECKPOINT B: DONE — deployed frontend (App.tsx/types.ts/lib/api.ts) + rebuild. Container Up, HTTP 200, bundle contains account tab. Fixed a deploy bug: rsync mis-placed src/lib/api.ts as src/api.ts → corrected + removed stray + rebuilt.
+Douyin fetch-shape: still to validate via a REAL Douyin account link (UI E2E by user). TikTok fully validated live.
+Next: final whole-branch review.
