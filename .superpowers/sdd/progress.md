@@ -15,3 +15,4 @@ Task 7: complete (finalize account + synthesize route + cohort GET synthesis) �
 Task 8: complete (resumeSearchJobs account branch) — commit d68d7e5, review clean. BACKEND COMPLETE (5-8).
 Next: CHECKPOINT A (deploy backend + verify).
 CHECKPOINT A: DONE — deployed backend (rsync 4 files + docker rebuild). Migration applied (5 cols + synthesis). Startup clean. TikTok resolve+fetch+filter validated LIVE in container. Douyin fetch-shape to validate at Checkpoint B (real link). DB backed up: db.sqlite.bak-preaccount-20260724-175443.
+Task 9: complete (frontend types + client API) — commit 92ca7b3, review clean
