@@ -12,3 +12,5 @@ Task 4: complete (fetchAccountVideos) — commit 4589442, review clean. MODULE a
 Task 5: complete (db.ts migration cột account) — controller edit, verify at Checkpoint A (PRAGMA)
 Task 6: complete (runAccountJob + routes search/job/create) — commit 9a66705, review clean, tsc clean
 Task 7: complete (finalize account + synthesize route + cohort GET synthesis) — commit 8c6b40e, review clean, no campaign/ads regression
+Task 8: complete (resumeSearchJobs account branch) — commit d68d7e5, review clean. BACKEND COMPLETE (5-8).
+Next: CHECKPOINT A (deploy backend + verify).
