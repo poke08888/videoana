@@ -1280,17 +1280,29 @@ const PORT = Number(process.env.PORT || 8787);
 // còn dở (status='searching') để search không mất — dùng tokapi key từ .env.
 async function resumeSearchJobs() {
   try {
-    const jobs = await allQuery<any>("SELECT id, keywords, min_likes, min_views, target, region FROM search_jobs WHERE status='searching'");
+    const jobs = await allQuery<any>("SELECT id, kind, keywords, account_meta, min_likes, min_views, min_er, since_days, target, region FROM search_jobs WHERE status='searching'");
     if (!jobs.length) return;
-    const tokapiKey = resolveTokapiKey(undefined);
     for (const j of jobs) {
+      if (j.kind === "account") {
+        let account: any = null; try { account = JSON.parse(j.account_meta || "null"); } catch {}
+        const key = account?.platform === "douyin" ? resolveDouyinKey(undefined) : resolveTokapiKey(undefined);
+        if (!account || !key) {
+          await runQuery("UPDATE search_jobs SET status='failed', message='Không tự chạy lại được sau khởi động — vui lòng phân tích lại.', updated=? WHERE id=?", [new Date().toISOString(), j.id]).catch(() => {});
+          continue;
+        }
+        await runQuery("UPDATE search_jobs SET found=0, scanned=0, updated=? WHERE id=?", [new Date().toISOString(), j.id]).catch(() => {});
+        console.log(`[nonelab] Tự chạy lại job tài khoản sau khởi động: ${j.id} (${account.nickname})`);
+        runAccountJob(j.id, account, key, { minLikes: j.min_likes || 0, minViews: j.min_views || 0, minER: j.min_er || 0, sinceDays: j.since_days || 0 }, j.target || 100);
+        continue;
+      }
+      // ── job keyword (giữ nguyên logic cũ) ──
       let keywords: string[] = [];
       try { keywords = JSON.parse(j.keywords || "[]"); } catch {}
+      const tokapiKey = resolveTokapiKey(undefined);
       if (!keywords.length || !tokapiKey) {
         await runQuery("UPDATE search_jobs SET status='failed', message='Không tự chạy lại được sau khi máy chủ khởi động — vui lòng tìm lại.', updated=? WHERE id=?", [new Date().toISOString(), j.id]).catch(() => {});
         continue;
       }
-      // Reset tiến trình rồi chạy lại từ đầu (không await — chạy nền).
       await runQuery("UPDATE search_jobs SET found=0, scanned=0, pages=0, updated=? WHERE id=?", [new Date().toISOString(), j.id]).catch(() => {});
       console.log(`[nonelab] Tự chạy lại job tìm video sau khởi động: ${j.id} (${keywords.join(", ")})`);
       runSearchJob(j.id, keywords, tokapiKey, j.min_likes || 0, j.min_views || 0, j.target || 50, j.region || "");
