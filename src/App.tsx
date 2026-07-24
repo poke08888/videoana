@@ -1560,6 +1560,10 @@ function AccountView({ isMobile, integration, showToast, onOpenReport, isAdmin }
   const synthesis = sel?.cohort?.synthesis;
   const doneCount = sel ? sel.videos.filter((v: any) => v.status === "completed").length : 0;
   const totalCount = sel ? sel.videos.length : 0;
+  // "Settled" = không còn video pending/processing (đã xong hoặc lỗi). Video lỗi
+  // KHÔNG chặn tổng hợp — chỉ cần ≥2 phiếu hoàn tất là tổng hợp được.
+  const settled = sel ? sel.videos.every((v: any) => v.status === "completed" || v.status === "failed") : false;
+  const failedCount = totalCount - doneCount;
   const card = (label: string, val: string) => (
     <div style={c("background:linear-gradient(160deg,#f7f0e2,#fffdf8);border:1px solid rgba(140,96,40,.22);border-radius:14px;padding:14px")}>
       <div style={c("font-family:'Space Grotesk',sans-serif;font-size:9.5px;letter-spacing:.16em;text-transform:uppercase;color:#8a7c67;margin-bottom:6px")}>{label}</div>
@@ -1722,13 +1726,15 @@ function AccountView({ isMobile, integration, showToast, onOpenReport, isAdmin }
             </div>
           ) : (
             <div style={c("background:#fffdf8;border:1px dashed rgba(140,96,40,.3);border-radius:14px;padding:18px;margin-bottom:28px;color:#8a7c67;font-size:13.5px")}>
-              {totalCount > 0 && doneCount === totalCount ? (
+              {settled && doneCount >= 2 ? (
                 <>
-                  Đã mổ xẻ xong {doneCount}/{totalCount} video.{" "}
+                  Đã mổ xẻ xong {doneCount}/{totalCount} video{failedCount > 0 ? ` (${failedCount} lỗi, bỏ qua)` : ""}.{" "}
                   <button onClick={doSynthesize} disabled={synthesizing} style={c(`padding:9px 16px;border:none;border-radius:10px;background:linear-gradient(150deg,#c07c1e,#9a5a12);color:#fff;font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:13px;cursor:${synthesizing ? "default" : "pointer"};opacity:${synthesizing ? .6 : 1};margin-left:6px`)}>{synthesizing ? "Đang tổng hợp…" : "Tổng hợp vì sao tài khoản thành công"}</button>
                 </>
+              ) : settled ? (
+                `Chưa đủ phiếu hoàn tất để tổng hợp (chỉ ${doneCount} video xong${failedCount > 0 ? `, ${failedCount} lỗi` : ""}).`
               ) : (
-                `Đang mổ xẻ nội dung… (${doneCount}/${totalCount}) — bấm tổng hợp khi mọi video đã xong.`
+                `Đang mổ xẻ nội dung… (${doneCount}/${totalCount}) — nút tổng hợp hiện khi các video đã xử lý xong.`
               )}
             </div>
           )}
