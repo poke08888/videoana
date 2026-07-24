@@ -7,3 +7,4 @@ Task 0: complete (env setup, test script) — commit cb6fad8
 Task 1: complete (engagementRate + filterAccountVideos) — commits cb6fad8..7008cd9, review clean (1 Important fixed: keep video when createTime unknown)
 Task 2: next
 Task 2: complete (normalizeAccountInput) — commit b0a18fe, review clean (nits only)
+Task 3: complete (resolveAccount + ApiGet) — commit ca304c3, review clean (minors only)
