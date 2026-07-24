@@ -11,7 +11,8 @@
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "server": "tsx server/index.ts",
-    "start": "cross-env NODE_ENV=production tsx server/index.ts"
+    "start": "cross-env NODE_ENV=production tsx server/index.ts",
+    "test": "tsx --test server/*.test.ts"
   },
   "dependencies": {
     "@google/genai": "^1.9.0",
