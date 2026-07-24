@@ -30,7 +30,7 @@ test("filter minER (%)", () => {
 });
 
 test("filter sinceDays: bỏ video cũ hơn cutoff", () => {
-  const now = 1_000_000; // giây
+  const now = 1_700_000_000; // giây
   const vids = [V({ createTime: now - 5 * 86400, likes: 1, views: 1 }), V({ awemeId: "2", createTime: now - 40 * 86400, likes: 1, views: 1 })];
   const out = filterAccountVideos(vids, { sinceDays: 30 }, now);
   assert.deepEqual(out.map((v) => v.awemeId), ["1"]);
@@ -44,4 +44,10 @@ test("filter sinceDays=0: không lọc theo ngày", () => {
 test("filter rỗng: giữ nguyên", () => {
   const vids = [V({ likes: 0, views: 0 }), V({ awemeId: "2", likes: 5, views: 9 })];
   assert.equal(filterAccountVideos(vids, {}, 0).length, 2);
+});
+
+test("filter sinceDays: video createTime=0 (không rõ ngày) -> GIỮ", () => {
+  const now = 1_700_000_000;
+  const vids = [V({ createTime: 0, likes: 1, views: 1 })];
+  assert.equal(filterAccountVideos(vids, { sinceDays: 30 }, now).length, 1);
 });

@@ -39,7 +39,7 @@ export function filterAccountVideos(videos: AccountVideo[], filter: AccountFilte
     if (v.stats.likes < minLikes) return false;
     if (v.stats.views < minViews) return false;
     if (minER > 0 && engagementRate(v.stats) < minER) return false;
-    if (sinceDays > 0 && v.createTime < cutoff) return false;
+    if (sinceDays > 0 && v.createTime > 0 && v.createTime < cutoff) return false;
     return true;
   });
 }
