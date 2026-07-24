@@ -78,3 +78,34 @@ test("normalize: rác -> null", () => {
   assert.equal(normalizeAccountInput("   "), null);
   assert.equal(normalizeAccountInput("has space"), null);
 });
+
+// Task 3: resolveAccount tests
+import { resolveAccount, type ApiGet } from "./account.js";
+
+const fakeTikTok: ApiGet = async (_h, path) => {
+  if (path === "/v1/user/@nerman") return { user: { sec_uid: "MS4wSEC", nickname: "Nerman", avatar_168x168: { url_list: ["http://a/av.webp"] } } };
+  throw new Error("unexpected " + path);
+};
+const fakeDouyin: ApiGet = async (_h, path, params) => {
+  if (path === "/api/v1/douyin/web/get_sec_user_id") return { data: "MS4wDYSEC" };
+  if (path === "/api/v1/douyin/web/handler_user_profile") { assert.equal(params.sec_user_id, "MS4wDYSEC"); return { data: { user: { nickname: "抖音号", avatar_larger: { url_list: ["http://a/dy.webp"] } } } }; }
+  throw new Error("unexpected " + path);
+};
+
+test("resolveAccount TikTok -> sec_uid + nickname", async () => {
+  const acc = await resolveAccount("https://www.tiktok.com/@nerman", "K", fakeTikTok);
+  assert.deepEqual({ p: acc.platform, s: acc.secId, h: acc.handle, n: acc.nickname }, { p: "tiktok", s: "MS4wSEC", h: "nerman", n: "Nerman" });
+});
+test("resolveAccount Douyin -> sec_user_id + nickname từ profile", async () => {
+  const acc = await resolveAccount("https://www.douyin.com/user/xyz", "K", fakeDouyin);
+  assert.equal(acc.platform, "douyin");
+  assert.equal(acc.secId, "MS4wDYSEC");
+  assert.equal(acc.nickname, "抖音号");
+});
+test("resolveAccount TikTok không tồn tại -> ném lỗi", async () => {
+  const empty: ApiGet = async () => ({ user: {} });
+  await assert.rejects(() => resolveAccount("@ghost", "K", empty), /Không tìm thấy/);
+});
+test("resolveAccount input rác -> ném lỗi", async () => {
+  await assert.rejects(() => resolveAccount("has space", "K", fakeTikTok), /không hợp lệ/i);
+});

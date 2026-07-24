@@ -7,6 +7,31 @@ import { computeEngagement, type EngagementStats } from "./tiktok.js";
 
 export type Platform = "tiktok" | "douyin";
 
+export const TIKTOK_HOST = "tokapi-mobile-version.p.rapidapi.com";
+export const DOUYIN_HOST = "douyin-api6.p.rapidapi.com";
+
+export type ApiGet = (host: string, pathname: string, params: Record<string, string>, key: string) => Promise<any>;
+
+/** HTTP GET JSON qua RapidAPI (mặc định). Thay bằng stub trong test. */
+export const defaultApiGet: ApiGet = async (host, pathname, params, key) => {
+  const u = new URL(`https://${host}${pathname}`);
+  for (const [k, v] of Object.entries(params)) if (v != null && v !== "") u.searchParams.set(k, v);
+  const res = await fetch(u.toString(), { headers: { "x-rapidapi-key": key, "x-rapidapi-host": host } });
+  if (!res.ok) {
+    const b = await res.text().catch(() => "");
+    throw new Error(`RapidAPI ${host} HTTP ${res.status}: ${b.slice(0, 160)}`);
+  }
+  return res.json();
+};
+
+export interface Account {
+  platform: Platform;
+  secId: string;
+  handle: string;
+  nickname: string;
+  avatar: string;
+}
+
 /** Chuẩn hoá input người dùng thành {platform, ref}. TikTok ref=handle; Douyin ref=url. */
 export function normalizeAccountInput(input: string): { platform: Platform; ref: string } | null {
   const s = String(input || "").trim();
@@ -61,4 +86,38 @@ export function filterAccountVideos(videos: AccountVideo[], filter: AccountFilte
     if (sinceDays > 0 && v.createTime > 0 && v.createTime < cutoff) return false;
     return true;
   });
+}
+
+function firstAvatar(u: any): string {
+  for (const f of [u?.avatar_168x168, u?.avatar_larger, u?.avatar_medium, u?.avatar_thumb]) {
+    const url = f?.url_list?.[0];
+    if (typeof url === "string" && url) return url;
+  }
+  return "";
+}
+
+/** Resolve link/@handle → Account (sec_id + nickname + avatar). */
+export async function resolveAccount(input: string, key: string, apiGet: ApiGet = defaultApiGet): Promise<Account> {
+  const norm = normalizeAccountInput(input);
+  if (!norm) throw new Error("Link tài khoản không hợp lệ. Dán link TikTok (tiktok.com/@ten) hoặc Douyin (douyin.com/user/...).");
+  if (norm.platform === "tiktok") {
+    const j = await apiGet(TIKTOK_HOST, `/v1/user/@${norm.ref}`, {}, key);
+    const u = j?.user;
+    const secId = String(u?.sec_uid || "");
+    if (!secId) throw new Error(`Không tìm thấy tài khoản TikTok @${norm.ref}.`);
+    return { platform: "tiktok", secId, handle: norm.ref, nickname: String(u?.nickname || norm.ref), avatar: firstAvatar(u) };
+  }
+  const sj = await apiGet(DOUYIN_HOST, "/api/v1/douyin/web/get_sec_user_id", { url: norm.ref }, key);
+  const secId = String(sj?.data || "");
+  if (!secId) throw new Error("Không resolve được tài khoản Douyin từ link (kiểm tra lại link hoặc RapidAPI key).");
+  let nickname = "";
+  let avatar = "";
+  try {
+    const pj = await apiGet(DOUYIN_HOST, "/api/v1/douyin/web/handler_user_profile", { sec_user_id: secId }, key);
+    nickname = String(pj?.data?.user?.nickname || "");
+    avatar = firstAvatar(pj?.data?.user);
+  } catch {
+    /* nickname là tuỳ chọn — bỏ qua nếu lỗi */
+  }
+  return { platform: "douyin", secId, handle: nickname || secId.slice(0, 12), nickname: nickname || "Tài khoản Douyin", avatar };
 }
