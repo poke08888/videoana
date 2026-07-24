@@ -109,3 +109,56 @@ test("resolveAccount TikTok không tồn tại -> ném lỗi", async () => {
 test("resolveAccount input rác -> ném lỗi", async () => {
   await assert.rejects(() => resolveAccount("has space", "K", fakeTikTok), /không hợp lệ/i);
 });
+
+// Task 4: fetchAccountVideos tests
+import { fetchAccountVideos, type Account } from "./account.js";
+
+const AW = (id: string, ct: number, likes: number) => ({ aweme_id: id, desc: "v" + id, create_time: ct, statistics: { play_count: likes * 10, digg_count: likes, comment_count: 0, share_count: 0, collect_count: 0 } });
+
+test("fetchAccountVideos TikTok: gộp 2 trang, dừng khi hết has_more", async () => {
+  const acc: Account = { platform: "tiktok", secId: "SEC", handle: "nerman", nickname: "Nerman", avatar: "" };
+  const pages: Record<string, any> = {
+    "0": { aweme_list: [AW("1", 100, 10), AW("2", 90, 20)], has_more: 1, max_cursor: "50" },
+    "50": { aweme_list: [AW("3", 80, 30)], has_more: 0, max_cursor: "0" },
+  };
+  const apiGet: ApiGet = async (host, path, params) => {
+    assert.equal(host, "tokapi-mobile-version.p.rapidapi.com");
+    assert.equal(path, "/v1/post/user/SEC/posts");
+    return pages[params.max_cursor];
+  };
+  const out = await fetchAccountVideos(acc, { count: 100, key: "K", apiGet });
+  assert.deepEqual(out.map((v) => v.awemeId), ["1", "2", "3"]);
+  assert.equal(out[0].link, "https://www.tiktok.com/@nerman/video/1");
+  assert.equal(out[0].createTime, 100);
+  assert.equal(out[0].stats.likes, 10);
+});
+
+test("fetchAccountVideos: tôn trọng count (cắt sớm)", async () => {
+  const acc: Account = { platform: "tiktok", secId: "SEC", handle: "n", nickname: "N", avatar: "" };
+  const apiGet: ApiGet = async () => ({ aweme_list: [AW("1", 1, 1), AW("2", 1, 1), AW("3", 1, 1)], has_more: 1, max_cursor: "9" });
+  const out = await fetchAccountVideos(acc, { count: 2, key: "K", apiGet });
+  assert.equal(out.length, 2);
+});
+
+test("fetchAccountVideos Douyin: đọc data.aweme_list + link douyin", async () => {
+  const acc: Account = { platform: "douyin", secId: "DSEC", handle: "dy", nickname: "DY", avatar: "" };
+  const apiGet: ApiGet = async (host, path, params) => {
+    assert.equal(host, "douyin-api6.p.rapidapi.com");
+    assert.equal(path, "/api/v1/douyin/web/fetch_user_post_videos");
+    assert.equal(params.sec_user_id, "DSEC");
+    return { data: { aweme_list: [AW("11", 5, 5)], has_more: 0, max_cursor: "0" } };
+  };
+  const out = await fetchAccountVideos(acc, { count: 100, key: "K", apiGet });
+  assert.equal(out[0].link, "https://www.douyin.com/video/11");
+  assert.equal(out[0].stats.source, "Douyin");
+});
+
+test("fetchAccountVideos: dedup theo aweme_id", async () => {
+  const acc: Account = { platform: "tiktok", secId: "S", handle: "n", nickname: "N", avatar: "" };
+  let call = 0;
+  const apiGet: ApiGet = async () => (call++ === 0
+    ? { aweme_list: [AW("1", 1, 1)], has_more: 1, max_cursor: "7" }
+    : { aweme_list: [AW("1", 1, 1), AW("2", 1, 1)], has_more: 0, max_cursor: "0" });
+  const out = await fetchAccountVideos(acc, { count: 100, key: "K", apiGet });
+  assert.deepEqual(out.map((v) => v.awemeId), ["1", "2"]);
+});

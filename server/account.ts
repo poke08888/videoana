@@ -121,3 +121,45 @@ export async function resolveAccount(input: string, key: string, apiGet: ApiGet 
   }
   return { platform: "douyin", secId, handle: nickname || secId.slice(0, 12), nickname: nickname || "Tài khoản Douyin", avatar };
 }
+
+function toAccountVideo(aw: any, account: Account): AccountVideo {
+  const id = String(aw?.aweme_id || "");
+  const stats: EngagementStats = { ...computeEngagement(aw?.statistics, id), source: account.platform === "douyin" ? "Douyin" : "TikTok" };
+  const link = account.platform === "douyin"
+    ? `https://www.douyin.com/video/${id}`
+    : `https://www.tiktok.com/@${account.handle}/video/${id}`;
+  return { awemeId: id, desc: String(aw?.desc || ""), author: account.handle, nickname: account.nickname, link, createTime: Number(aw?.create_time) || 0, stats };
+}
+
+/** Lấy ≤count video gần nhất của tài khoản, phân trang qua max_cursor. */
+export async function fetchAccountVideos(
+  account: Account,
+  opts: { count?: number; key: string; apiGet?: ApiGet; shouldStop?: () => boolean }
+): Promise<AccountVideo[]> {
+  const apiGet = opts.apiGet || defaultApiGet;
+  const want = Math.min(Math.max(1, opts.count || 100), 100);
+  const out: AccountVideo[] = [];
+  const seen = new Set<string>();
+  let cursor = "0";
+  const MAX_PAGES = 20;
+  for (let p = 0; p < MAX_PAGES && out.length < want; p++) {
+    if (opts.shouldStop?.()) break;
+    const raw = account.platform === "tiktok"
+      ? await apiGet(TIKTOK_HOST, `/v1/post/user/${account.secId}/posts`, { count: "20", max_cursor: cursor }, opts.key)
+      : await apiGet(DOUYIN_HOST, "/api/v1/douyin/web/fetch_user_post_videos", { sec_user_id: account.secId, count: "20", max_cursor: cursor }, opts.key);
+    const data = account.platform === "douyin" ? (raw?.data || raw) : raw;
+    const list: any[] = data?.aweme_list || [];
+    for (const aw of list) {
+      const id = String(aw?.aweme_id || "");
+      if (!id || seen.has(id)) continue;
+      seen.add(id);
+      out.push(toAccountVideo(aw, account));
+      if (out.length >= want) break;
+    }
+    const hasMore = Number(data?.has_more) === 1 || data?.has_more === true;
+    const next = String(data?.max_cursor ?? "");
+    if (!list.length || !hasMore || !next || next === cursor) break;
+    cursor = next;
+  }
+  return out;
+}
