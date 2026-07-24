@@ -6,3 +6,4 @@ Execution: subagent-driven, LOCAL edit+test+commit only; controller deploys at 2
 Task 0: complete (env setup, test script) — commit cb6fad8
 Task 1: complete (engagementRate + filterAccountVideos) — commits cb6fad8..7008cd9, review clean (1 Important fixed: keep video when createTime unknown)
 Task 2: next
+Task 2: complete (normalizeAccountInput) — commit b0a18fe, review clean (nits only)
