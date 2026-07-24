@@ -9,3 +9,4 @@ Task 2: next
 Task 2: complete (normalizeAccountInput) — commit b0a18fe, review clean (nits only)
 Task 3: complete (resolveAccount + ApiGet) — commit ca304c3, review clean (minors only)
 Task 4: complete (fetchAccountVideos) — commit 4589442, review clean. MODULE account.ts DONE (23/23 tests).
+Task 5: complete (db.ts migration cột account) — controller edit, verify at Checkpoint A (PRAGMA)
