@@ -50,7 +50,9 @@ export async function finalizeCohortIfDone(cohortId: string, dateISO: string): P
     [cohortId]
   );
   if (!cohort) return false;
-  const isCampaign = cohort.kind === "campaign";
+  // Account dùng cùng đường "eng" như campaign (đối chiếu nội dung↔tương tác).
+  const useEng = cohort.kind === "campaign" || cohort.kind === "account";
+  const isAccount = cohort.kind === "account";
 
   const rows = await allQuery<{ title: string; analysis: string }>(
     "SELECT title, analysis FROM history WHERE cohort_id = ? AND status = 'completed'",
@@ -65,30 +67,32 @@ export async function finalizeCohortIfDone(cohortId: string, dateISO: string): P
       continue;
     }
     if (!a || !a.checklist) continue;
-    if (isCampaign && a.eng) videos.push({ eng: a.eng, analysis: a, title: r.title });
-    else if (!isCampaign && a.ads) videos.push({ ads: a.ads, analysis: a, title: r.title });
+    if (useEng && a.eng) videos.push({ eng: a.eng, analysis: a, title: r.title });
+    else if (!useEng && a.ads) videos.push({ ads: a.ads, analysis: a, title: r.title });
   }
   if (videos.length < 3) return false; // chưa đủ để kết luận
 
-  const insight = isCampaign ? buildCampaignInsight(videos) : buildCohortInsight(videos);
+  const insight = useEng ? buildCampaignInsight(videos) : buildCohortInsight(videos);
   await runQuery("UPDATE ads_cohorts SET insight = ? WHERE id = ?", [JSON.stringify(insight), cohortId]);
 
-  let summary: any = {};
-  try {
-    summary = JSON.parse(cohort.summary || "{}");
-  } catch {
-    /* ignore */
+  if (!isAccount) {
+    let summary: any = {};
+    try {
+      summary = JSON.parse(cohort.summary || "{}");
+    } catch {
+      /* ignore */
+    }
+    const doc = buildKnowledgeDoc(
+      cohort.product,
+      {
+        count: summary.count || videos.length,
+        medianRoas: summary.summary?.medianRoas ?? 0,
+        medianCtr: summary.summary?.medianCtr ?? 0,
+        medianCvr: summary.summary?.medianCvr ?? 0,
+      },
+      insight
+    );
+    await saveProductKnowledge(cohort.product, doc, dateISO);
   }
-  const doc = buildKnowledgeDoc(
-    cohort.product,
-    {
-      count: summary.count || videos.length,
-      medianRoas: summary.summary?.medianRoas ?? 0,
-      medianCtr: summary.summary?.medianCtr ?? 0,
-      medianCvr: summary.summary?.medianCvr ?? 0,
-    },
-    insight
-  );
-  await saveProductKnowledge(cohort.product, doc, dateISO);
   return true;
 }

@@ -167,6 +167,39 @@ export async function createCampaign(opts: { keywords: string[]; videos: any[]; 
   }
 }
 
+// ── Phân tích tài khoản ──────────────────────────────────────────────────────
+// Bước 1: resolve tài khoản + job nền lấy/lọc video. Trả { jobId, account }.
+export async function startAccountAnalysis(opts: { url: string; count?: number; minLikes?: number; minViews?: number; minER?: number; sinceDays?: number }): Promise<any> {
+  try {
+    const res = await fetch("/api/account/search", { method: "POST", headers: { ...authHeaders(), "Content-Type": "application/json" }, body: JSON.stringify(opts) });
+    return await res.json().catch(() => ({ ok: false, message: "Phản hồi không hợp lệ." }));
+  } catch { return { ok: false, message: "Không gọi được backend." }; }
+}
+
+// Poll job tài khoản (searching/ready/failed). Khi ready có .videos + .account.
+export async function getAccountJob(jobId: string): Promise<any> {
+  try {
+    const res = await fetch(`/api/account/job/${jobId}`, { headers: authHeaders() });
+    return await res.json().catch(() => ({ ok: false }));
+  } catch { return { ok: false }; }
+}
+
+// Bước 2: gửi video đã chọn (top-cap) → tạo cohort kind='account'. Trả { cohortId }.
+export async function createAccountAnalysis(opts: { account: any; videos: any[]; cap?: number; apiKey?: string; model?: string }): Promise<any> {
+  try {
+    const res = await fetch("/api/account/create", { method: "POST", headers: { ...authHeaders(), "Content-Type": "application/json" }, body: JSON.stringify(opts) });
+    return await res.json().catch(() => ({ ok: false, message: "Phản hồi không hợp lệ." }));
+  } catch { return { ok: false, message: "Không gọi được backend." }; }
+}
+
+// Tổng hợp "vì sao tài khoản thành công" cho cohort đã phân tích xong.
+export async function synthesizeAccountCohort(cohortId: string, opts?: { apiKey?: string; model?: string }): Promise<any> {
+  try {
+    const res = await fetch(`/api/account/cohort/${cohortId}/synthesize`, { method: "POST", headers: { ...authHeaders(), "Content-Type": "application/json" }, body: JSON.stringify(opts || {}) });
+    return await res.json().catch(() => ({ ok: false, message: "Phản hồi không hợp lệ." }));
+  } catch { return { ok: false, message: "Không gọi được backend." }; }
+}
+
 export const listCohorts = (): Promise<any[]> => jget("/api/ads/cohorts");
 export const getCohort = (id: string): Promise<any> => jget(`/api/ads/cohort/${id}`);
 export const listKnowledge = (): Promise<any[]> => jget("/api/knowledge");
