@@ -145,3 +145,22 @@ export interface User {
   role: string;
   perms: Perms;
 }
+
+export interface Account {
+  platform: "tiktok" | "douyin";
+  secId: string;
+  handle: string;
+  nickname: string;
+  avatar: string;
+}
+
+export interface AccountVideo {
+  awemeId: string;
+  desc: string;
+  author: string;
+  nickname: string;
+  link: string;
+  createTime: number;
+  stats: { source: string; views: number; likes: number; comments: number; shares: number; saves: number };
+  eng?: { score: number; tier: string; likes: number; views: number; engagementRate: number };
+}
