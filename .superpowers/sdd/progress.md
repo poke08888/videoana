@@ -24,3 +24,4 @@ Douyin fetch-shape: still to validate via a REAL Douyin account link (UI E2E by 
 Next: final whole-branch review.
 FINAL REVIEW (opus, whole-branch): 1 Important (account jobs leak into Campaign job list) — FIXED (commit 24b7be4, kind filter on /api/campaign/jobs) + redeployed. Minors #2-5 accepted non-blocking (logged/pre-existing/UX). Verdict now: clean.
 BUGFIX (E2E, systematic-debugging): fetchAccountVideos chỉ lấy 10 video. Root cause: tokapi TikTok posts phân trang qua offset=<max_cursor trước>, không phải param max_cursor. Fix TikTok path dùng offset (Douyin giữ max_cursor). Test cập nhật 23/23. Live verify: @tintinunin → 100 video. Commit ab4a2ad, deployed.
+BUGFIX 2 (E2E): "Vì sao tài khoản thành công" kẹt 52/55. Root cause: nút synthesis gated doneCount===totalCount, nhưng 3 video failed → completed(52)<total(55) mãi mãi. Fix: gating theo settled (no pending/processing) + ≥2 completed; failed bỏ qua. Commit 24500cc local / 5a09681 server, deployed.
