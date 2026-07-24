@@ -21,6 +21,8 @@ Tính năng về bản chất là **"Campaign nhưng nguồn = 1 tài khoản th
 | Đầu ra | **Cả hai**: tổng hợp điểm chung (synthesis) + đối chiếu nội dung↔chỉ số (contentInsight) |
 | Kiến trúc | **Phương án C** — job nền như Campaign, tái dùng `search_jobs` (kind='account') + polling |
 | ER Douyin | Chấp nhận **không tính save** (`fetch_user_post_videos` có thể thiếu `collect_count`) |
+| Nickname Douyin | Chấp nhận thêm 1 lời gọi `handler_user_profile?sec_user_id=` để lấy tên hiển thị |
+| Nơi phát triển | **Trực tiếp trên server** `/var/www/videoana`; deploy `docker compose up -d --build` |
 
 ## 3. Phạm vi quyền
 
@@ -32,7 +34,7 @@ Dùng `requireEditor` (Biên tập + Quản trị) — đồng nhất với Camp
 - **`server/account.ts`**
   - `resolveAccount(input: string): Promise<Account>` — nhận link hoặc `@handle`, tự nhận nền tảng theo domain (`isTikTokUrl`/`isDouyinUrl`, mặc định coi `@handle` trơn là TikTok), gọi API resolve → `{platform: 'tiktok'|'douyin', secId, handle, nickname, avatar}`.
     - TikTok: `GET /v1/user/@handle` (tokapi) → `user.sec_uid`, `nickname`, avatar.
-    - Douyin: `GET /api/v1/douyin/web/get_sec_user_id?url=<profileUrl>` (douyin-api6) → `sec_user_id`; profile meta qua `handler_user_profile?sec_user_id=` nếu cần nickname.
+    - Douyin: `GET /api/v1/douyin/web/get_sec_user_id?url=<profileUrl>` (douyin-api6) → `sec_user_id`; nickname/avatar qua `GET /api/v1/douyin/web/handler_user_profile?sec_user_id=` (thêm 1 lời gọi — đã chấp nhận).
   - `fetchAccountVideos(account, opts): Promise<AccountVideo[]>` — phân trang lấy ≤`count` video.
     - TikTok: `GET /v1/post/user/{sec_uid}/posts?count=&offset=|max_cursor=` → `aweme_list[]`, dùng `has_more`/`max_cursor` để lật trang.
     - Douyin: `GET /api/v1/douyin/web/fetch_user_post_videos?sec_user_id=&max_cursor=&count=` → `data.aweme_list[]` (**hình dạng cần validate + fixture ở task code đầu tiên**).
