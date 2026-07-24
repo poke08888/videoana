@@ -5,7 +5,7 @@ import { decorate, makeEntry, presetPerms, scoreOf, seedUsers, slug } from "./li
 import { buildReportHTML } from "./lib/reportHtml";
 import { buildReportMarkdown } from "./lib/reportMd";
 import { buildRaw, seedDates, seedForms } from "./data/sampleAnalysis";
-import { analyzeVideo, analyzeVideoBatch, testGemini, authHeaders, importAds, listCohorts, getCohort, finalizeCohort, getKnowledge, saveKnowledge, getHistoryItem, startCampaignSearch, getCampaignJob, getActiveCampaignJobs, discardCampaignJob, stopCampaignSearch, createCampaign, getMe, synthesizeReports, listSyntheses, getSynthesis, deleteSynthesis, seedFramePart, saveSeedFrame, listSeedFrames, getSeedFrame, deleteSeedFrame, renameHistory, renameSynthesis } from "./lib/api";
+import { analyzeVideo, analyzeVideoBatch, testGemini, authHeaders, importAds, listCohorts, getCohort, finalizeCohort, getKnowledge, saveKnowledge, getHistoryItem, startCampaignSearch, getCampaignJob, getActiveCampaignJobs, discardCampaignJob, stopCampaignSearch, createCampaign, getMe, synthesizeReports, listSyntheses, getSynthesis, deleteSynthesis, seedFramePart, saveSeedFrame, listSeedFrames, getSeedFrame, deleteSeedFrame, renameHistory, renameSynthesis, startAccountAnalysis, getAccountJob, createAccountAnalysis, synthesizeAccountCohort } from "./lib/api";
 import type { SeedFrameFormInput } from "./lib/api";
 import { embedFrames } from "./lib/frames";
 import type { AdminUser, Analysis, FormState, HistoryEntry, Level, Perms, Screen, User } from "./types";
@@ -101,7 +101,7 @@ function VideoFrame({ file, ts, frame, width = 86, height = 150 }: { file: File 
 }
 
 export default function App() {
-  const [screen, setScreen] = useState<Screen>("auth");
+  const [screen, setScreen] = useState<Screen | "account">("auth");
   const [authMode, setAuthMode] = useState<"login" | "signup">("login");
   const [user, setUser] = useState<User | null>(null);
   const [auth, setAuth] = useState({ email: "", pass: "", name: "" });
@@ -205,7 +205,7 @@ export default function App() {
     if (toastTimer.current) clearTimeout(toastTimer.current);
     toastTimer.current = setTimeout(() => setToast(""), 2800);
   }
-  const go = (s: Screen) => {
+  const go = (s: Screen | "account") => {
     setScreen(s);
   };
   const setFormPatch = (patch: Partial<FormState>) => setForm((s) => ({ ...s, ...patch }));
@@ -425,11 +425,12 @@ export default function App() {
   const isSignup = authMode === "signup";
   const a = analysis;
 
-  const navDef: { key: Screen; label: string; sub: string }[] = [
+  const navDef: { key: Screen | "account"; label: string; sub: string }[] = [
     { key: "dashboard", label: "Bảng điều khiển", sub: "Tổng quan hoạt động phân tích video" },
     { key: "upload", label: "Phân tích video mới", sub: "Tải video & nhập thông tin để AI phân tích" },
     { key: "ads", label: "Phân tích chỉ số", sub: "Import Excel chỉ số ads & rút kết luận content" },
     { key: "campaign", label: "Campaign từ khóa", sub: "Tìm video TikTok theo từ khóa + tương tác → điểm chung video viral" },
+    { key: "account", label: "Phân tích tài khoản", sub: "Phân tích 1 tài khoản TikTok/Douyin: lọc video mạnh + tổng hợp vì sao thành công" },
     { key: "seedframe", label: "Khung hạt giống", sub: "Bản đồ content từ điểm mạnh sản phẩm — 5 khối theo phương pháp hạt giống" },
     { key: "history", label: "Lịch sử phân tích", sub: "Tất cả phiếu phân tích đã tạo" },
     { key: "admin", label: "Quản trị", sub: "Quản lý tài khoản & Cài đặt API key" },
@@ -439,6 +440,7 @@ export default function App() {
     upload: ["Phân tích video mới", "Tải video & nhập thông tin để AI phân tích"],
     ads: ["Phân tích chỉ số", "Import Excel chỉ số ads → kết luận content nào có chỉ số tốt"],
     campaign: ["Campaign từ khóa", "Tìm video TikTok theo từ khóa + tương tác → điểm chung video viral"],
+    account: ["Phân tích tài khoản", "Phân tích 1 tài khoản TikTok/Douyin: lọc video mạnh + tổng hợp vì sao thành công"],
     seedframe: ["Khung hạt giống", "Điểm mạnh sản phẩm → bản đồ content 5 khối + đối chuẩn 3 ngôn ngữ + kế hoạch test"],
     report: ["Phiếu phân tích", "Kết quả phân tích theo khung Năm Lực"],
     history: ["Lịch sử phân tích", "Tất cả phiếu phân tích đã tạo"],
@@ -826,14 +828,15 @@ export default function App() {
             {navDef.map((it) => {
               if (it.key === "history" && !user?.perms?.history) return null;
               if (it.key === "admin" && !user?.perms?.manage) return null;
-              // Phân tích chỉ số, Campaign từ khóa & Khung hạt giống: chỉ Biên tập và Quản trị.
-              if ((it.key === "ads" || it.key === "campaign" || it.key === "seedframe") && !(user?.role === "Quản trị" || user?.role === "Biên tập")) return null;
+              // Phân tích chỉ số, Campaign từ khóa, Phân tích tài khoản & Khung hạt giống: chỉ Biên tập và Quản trị.
+              if ((it.key === "ads" || it.key === "campaign" || it.key === "account" || it.key === "seedframe") && !(user?.role === "Quản trị" || user?.role === "Biên tập")) return null;
               const on = screen === it.key;
               const icons: Record<string, string> = {
                 dashboard: "◇",
                 upload: "＋",
                 ads: "📈",
                 campaign: "🔍",
+                account: "👤",
                 seedframe: "🌱",
                 report: "📊",
                 history: "≡",
@@ -921,6 +924,7 @@ export default function App() {
             )}
             {screen === "ads" && <AdsView isMobile={isMobile} integration={integration} showToast={showToast} onOpenReport={openReport} isAdmin={user?.role === "Quản trị"} />}
             {screen === "campaign" && <CampaignView isMobile={isMobile} integration={integration} showToast={showToast} onOpenReport={openReport} isAdmin={user?.role === "Quản trị"} />}
+            {screen === "account" && <AccountView isMobile={isMobile} integration={integration} showToast={showToast} onOpenReport={openReport} isAdmin={user?.role === "Quản trị"} />}
             {screen === "seedframe" && <SeedFrameView isMobile={isMobile} integration={integration} showToast={showToast} isAdmin={user?.role === "Quản trị"} canExport={!!user?.perms?.export} />}
             {screen === "report" && a && <ReportView a={a} metaList={metaList} videoFile={selectedFiles[0] || null} isMobile={isMobile} />}
             {screen === "admin" && (
@@ -1440,6 +1444,323 @@ function CampaignView({ isMobile, integration, showToast, onOpenReport, isAdmin 
 
       {!cohorts.length && !sel && (
         <div style={c("text-align:center;color:#8a7c67;font-size:14px;padding:30px 0")}>Chưa có campaign nào. Nhập từ khóa ở trên để bắt đầu.</div>
+      )}
+    </div>
+  );
+}
+
+/* ════════════════════════ PHÂN TÍCH TÀI KHOẢN ════════════════════════
+ * CLONE của CampaignView: thay tìm-theo-từ-khóa bằng resolve 1 tài khoản
+ * TikTok/Douyin → lấy + lọc video (4 tiêu chí) → chọn top theo điểm tương
+ * tác (trần accCap) → mổ xẻ nền → cohort kind='account'. Khi mọi video mổ
+ * xẻ xong, tổng hợp thêm "vì sao tài khoản thành công" (SynthesisView tái dùng). */
+function AccountView({ isMobile, integration, showToast, onOpenReport, isAdmin }: { isMobile: boolean; integration: { key: string; model: string }; showToast: (m: string) => void; onOpenReport: (h: HistoryEntry) => void; isAdmin?: boolean }) {
+  const [cohorts, setCohorts] = useState<any[]>([]);
+  const [sel, setSel] = useState<any | null>(null);
+  const [accUrl, setAccUrl] = useState("");
+  const [accCount, setAccCount] = useState("100");
+  const [accMinLikes, setAccMinLikes] = useState("0");
+  const [accMinViews, setAccMinViews] = useState("0");
+  const [accMinER, setAccMinER] = useState("0");
+  const [accSinceDays, setAccSinceDays] = useState("0");
+  const [accCap, setAccCap] = useState("100");
+  const [accJobId, setAccJobId] = useState<string | null>(null);
+  const [accJob, setAccJob] = useState<any>(null); // {status, account, videos, found, scanned, message}
+  const [busy, setBusy] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [synthesizing, setSynthesizing] = useState(false);
+
+  const reload = async () => { const cs = await listCohorts(); setCohorts((Array.isArray(cs) ? cs : []).filter((c: any) => c.kind === "account")); };
+  useEffect(() => { reload(); }, []);
+  const openCohort = async (id: string) => { const d = await getCohort(id); if (d?.ok) setSel(d); };
+
+  useEffect(() => {
+    if (!sel) return;
+    if (sel.videos.every((v: any) => v.status === "completed" || v.status === "failed")) return;
+    const t = setInterval(async () => { const d = await getCohort(sel.cohort.id); if (d?.ok) setSel(d); }, 6000);
+    return () => clearInterval(t);
+  }, [sel?.cohort.id, sel?.videos]);
+
+  const doSearch = async () => {
+    if (!accUrl.trim()) return showToast("Nhập link tài khoản TikTok/Douyin cần phân tích");
+    setSel(null); setAccJob(null); setAccJobId(null);
+    const r = await startAccountAnalysis({
+      url: accUrl.trim(),
+      count: Number(accCount) || 100,
+      minLikes: Number(accMinLikes) || 0,
+      minViews: Number(accMinViews) || 0,
+      minER: Number(accMinER) || 0,
+      sinceDays: Number(accSinceDays) || 0,
+    });
+    if (!r?.ok) return showToast(r?.message || "Không khởi tạo được phân tích tài khoản");
+    setBusy(true);
+    setAccJobId(r.jobId);
+    setAccJob({ status: "searching", account: r.account });
+  };
+  const stopSearch = async () => { if (!accJobId) return; await stopCampaignSearch(accJobId); showToast("Đang dừng… sẽ giữ lại video đã lấy được."); };
+
+  // Poll job tài khoản đang theo dõi (tiến trình + kết quả).
+  useEffect(() => {
+    if (!accJobId) return;
+    if (accJob && (accJob.status === "ready" || accJob.status === "failed")) return;
+    let stop = false;
+    const tick = async () => {
+      const j = await getAccountJob(accJobId);
+      if (stop || !j?.ok) return;
+      setAccJob(j);
+      if (j.status === "ready" || j.status === "failed") setBusy(false);
+    };
+    tick();
+    const iv = setInterval(tick, 2500);
+    return () => { stop = true; clearInterval(iv); };
+  }, [accJobId, accJob?.status]);
+
+  // Video đã lọc + xếp hạng ở server (accJob.videos); lọc lại client-side theo
+  // đúng 4 tiêu chí (dùng cùng state ô lọc) để siết thêm không cần gọi lại API.
+  const accMatched = (accJob?.videos || []).filter((v: any) => {
+    const minLikes = Number(accMinLikes) || 0, minViews = Number(accMinViews) || 0, minER = Number(accMinER) || 0, sinceDays = Number(accSinceDays) || 0;
+    return v.stats.likes >= minLikes && v.stats.views >= minViews &&
+      (minER <= 0 || (v.stats.views > 0 && ((v.stats.likes + v.stats.comments + v.stats.shares + v.stats.saves) / v.stats.views) * 100 >= minER)) &&
+      (sinceDays <= 0 || v.createTime <= 0 || v.createTime >= Math.floor(Date.now() / 1000) - sinceDays * 86400);
+  });
+  const accToAnalyze = [...accMatched].sort((a: any, b: any) => (b.eng?.score || 0) - (a.eng?.score || 0)).slice(0, Number(accCap) || 100);
+  const toAnalyzeIds = new Set(accToAnalyze.map((v: any) => v.awemeId));
+
+  const doAnalyze = async () => {
+    if (!accJob?.account || !accToAnalyze.length) return showToast("Không có video nào đạt lọc để phân tích");
+    setCreating(true);
+    const r = await createAccountAnalysis({ account: accJob.account, videos: accToAnalyze, cap: Number(accCap) || 100, apiKey: integration.key, model: integration.model });
+    setCreating(false);
+    if (!r?.ok) return showToast(r?.message || "Tạo phân tích thất bại");
+    showToast(`Đã đưa ${r.count} video vào mổ xẻ nền…`);
+    if (accJobId) discardCampaignJob(accJobId).catch(() => {}); // dọn job tạm
+    setAccJobId(null); setAccJob(null);
+    await reload(); openCohort(r.cohortId);
+  };
+
+  const doSynthesize = async () => {
+    if (!sel) return;
+    setSynthesizing(true);
+    const r = await synthesizeAccountCohort(sel.cohort.id, { apiKey: integration.key, model: integration.model });
+    setSynthesizing(false);
+    if (!r?.ok) return showToast(r?.message || "Tổng hợp thất bại");
+    showToast("Đã tổng hợp xong — xem báo cáo bên dưới");
+    openCohort(sel.cohort.id);
+  };
+
+  const tcol = (t: string) => (t === "tốt" ? ["rgba(60,122,94,.13)", "#2f6b4f"] : t === "thấp" ? ["rgba(158,58,58,.12)", "#8f3232"] : ["rgba(176,106,22,.14)", "#8a5614"]);
+  const chip = (t: string) => { const [bg, fg] = tcol(t); return <span style={c(`font-family:'Space Grotesk',sans-serif;font-size:10.5px;font-weight:600;padding:2px 8px;border-radius:99px;background:${bg};color:${fg}`)}>{t}</span>; };
+  const nf = (n: number) => Number(n || 0).toLocaleString("vi-VN");
+  const stIcon = (s: string) => (s === "completed" ? "✓" : s === "processing" ? "⚙" : s === "failed" ? "✕" : "⏳");
+  const openVideo = async (id: string, hasContent: boolean) => { if (!hasContent) return showToast("Video này chưa mổ xẻ xong"); const r = await getHistoryItem(id); if (r?.analysis?.checklist) onOpenReport({ id: r.id, title: r.title, platform: r.platform, product: r.product, date: r.date, score: r.score, analysis: r.analysis, thumb: r.thumb } as HistoryEntry); };
+
+  const meta = sel?.cohort?.summary;
+  const sum = meta?.summary;
+  const insight = sel?.cohort?.insight;
+  const synthesis = sel?.cohort?.synthesis;
+  const doneCount = sel ? sel.videos.filter((v: any) => v.status === "completed").length : 0;
+  const totalCount = sel ? sel.videos.length : 0;
+  const card = (label: string, val: string) => (
+    <div style={c("background:linear-gradient(160deg,#f7f0e2,#fffdf8);border:1px solid rgba(140,96,40,.22);border-radius:14px;padding:14px")}>
+      <div style={c("font-family:'Space Grotesk',sans-serif;font-size:9.5px;letter-spacing:.16em;text-transform:uppercase;color:#8a7c67;margin-bottom:6px")}>{label}</div>
+      <div style={c("font-family:'Fraunces',serif;font-size:21px;font-weight:600;color:#9a5a12;line-height:1")}>{val}</div>
+    </div>
+  );
+
+  const acc = accJob?.account;
+
+  return (
+    <div className="ns-fade" style={c("max-width:1100px;margin:0 auto")}>
+      <div style={c(`background:#fffdf8;border:1px solid rgba(140,96,40,.2);border-radius:18px;padding:${isMobile ? "18px" : "22px 24px"};margin-bottom:22px`)}>
+        <div style={c("font-family:'Fraunces',serif;font-size:18px;font-weight:600;color:#2a2016;margin-bottom:4px")}>Phân tích 1 tài khoản TikTok/Douyin</div>
+        <div style={c("color:#8a7c67;font-size:13px;margin-bottom:16px")}>Dán link tài khoản, hệ thống lấy video gần nhất, lọc theo 4 tiêu chí, xếp hạng theo điểm tương tác rồi tự mổ xẻ nội dung để tìm ra vì sao tài khoản này thành công.</div>
+        <div style={c(`display:grid;grid-template-columns:${isMobile ? "1fr" : "2fr 1fr auto"};gap:12px;align-items:end`)}>
+          <div>
+            <label style={c("font-family:'Space Grotesk',sans-serif;font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:#8a7c67;display:block;margin-bottom:6px")}>Link tài khoản (TikTok @handle hoặc Douyin)</label>
+            <input value={accUrl} onChange={(e: any) => setAccUrl(e.target.value)} placeholder="vd: https://www.tiktok.com/@tiktok" style={c("width:100%;padding:11px 13px;border:1px solid rgba(140,96,40,.28);border-radius:11px;background:#fdfaf3;font-size:14px")} />
+          </div>
+          <div>
+            <label style={c("font-family:'Space Grotesk',sans-serif;font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:#8a7c67;display:block;margin-bottom:6px")}>Số video lấy (≤100)</label>
+            <input value={accCount} onChange={(e: any) => setAccCount(e.target.value.replace(/[^0-9]/g, ""))} inputMode="numeric" style={c("width:100%;padding:11px 13px;border:1px solid rgba(140,96,40,.28);border-radius:11px;background:#fdfaf3;font-size:14px")} />
+          </div>
+          <button onClick={doSearch} disabled={busy} style={c(`padding:12px 22px;border:none;border-radius:11px;background:linear-gradient(150deg,#c07c1e,#9a5a12);color:#fff;font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:14px;cursor:${busy ? "default" : "pointer"};opacity:${busy ? .6 : 1};white-space:nowrap`)}>{busy ? "Đang lấy…" : "🔍 Lấy video"}</button>
+        </div>
+        <div style={c(`display:grid;grid-template-columns:${isMobile ? "1fr 1fr" : "repeat(4,1fr)"};gap:12px;margin-top:12px`)}>
+          <div>
+            <label style={c("font-family:'Space Grotesk',sans-serif;font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:#8a7c67;display:block;margin-bottom:6px")}>Like tối thiểu</label>
+            <input value={accMinLikes} onChange={(e: any) => setAccMinLikes(e.target.value.replace(/[^0-9]/g, ""))} inputMode="numeric" style={c("width:100%;padding:11px 13px;border:1px solid rgba(140,96,40,.28);border-radius:11px;background:#fdfaf3;font-size:14px")} />
+          </div>
+          <div>
+            <label style={c("font-family:'Space Grotesk',sans-serif;font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:#8a7c67;display:block;margin-bottom:6px")}>View tối thiểu</label>
+            <input value={accMinViews} onChange={(e: any) => setAccMinViews(e.target.value.replace(/[^0-9]/g, ""))} inputMode="numeric" style={c("width:100%;padding:11px 13px;border:1px solid rgba(140,96,40,.28);border-radius:11px;background:#fdfaf3;font-size:14px")} />
+          </div>
+          <div>
+            <label style={c("font-family:'Space Grotesk',sans-serif;font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:#8a7c67;display:block;margin-bottom:6px")}>ER tối thiểu (%)</label>
+            <input value={accMinER} onChange={(e: any) => setAccMinER(e.target.value.replace(/[^0-9.]/g, ""))} inputMode="decimal" style={c("width:100%;padding:11px 13px;border:1px solid rgba(140,96,40,.28);border-radius:11px;background:#fdfaf3;font-size:14px")} />
+          </div>
+          <div>
+            <label style={c("font-family:'Space Grotesk',sans-serif;font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:#8a7c67;display:block;margin-bottom:6px")}>Đăng trong (ngày, 0=không giới hạn)</label>
+            <input value={accSinceDays} onChange={(e: any) => setAccSinceDays(e.target.value.replace(/[^0-9]/g, ""))} inputMode="numeric" style={c("width:100%;padding:11px 13px;border:1px solid rgba(140,96,40,.28);border-radius:11px;background:#fdfaf3;font-size:14px")} />
+          </div>
+        </div>
+        {busy && (
+          <div style={c("margin-top:10px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;color:#9a5a12;font-size:12.5px;font-family:'Space Grotesk',sans-serif")}>
+            <span style={c("width:13px;height:13px;border:2px solid rgba(154,90,18,.3);border-top-color:#9a5a12;border-radius:50%;display:inline-block;animation:ns-spin 1s linear infinite")} />
+            <span>{acc ? `Đang lấy video của @${acc.handle || acc.nickname}… (đổi tab/F5 vẫn chạy)` : "Đang khởi tạo…"}</span>
+            {accJobId && <button onClick={stopSearch} style={c("padding:5px 12px;border:1px solid rgba(158,58,58,.45);border-radius:8px;background:#fff6f4;color:#8f3232;font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:12px;cursor:pointer")}>■ Dừng (giữ video đã lấy)</button>}
+          </div>
+        )}
+        {accJob?.status === "failed" && (
+          <div style={c("margin-top:10px;padding:10px 14px;border-radius:10px;background:rgba(158,58,58,.08);border:1px solid rgba(158,58,58,.28);color:#8f3232;font-size:13px")}>{accJob.message || "Không lấy được video cho tài khoản này."}</div>
+        )}
+      </div>
+
+      {accJob?.status === "ready" && (
+        <div style={c(`background:#fffdf8;border:1px solid rgba(176,106,22,.34);border-radius:18px;padding:${isMobile ? "16px" : "20px 22px"};margin-bottom:22px`)}>
+          <div style={c(`display:flex;${isMobile ? "flex-direction:column;gap:10px" : "align-items:center;justify-content:space-between"};margin-bottom:12px`)}>
+            <div>
+              <div style={c("font-family:'Fraunces',serif;font-size:17px;font-weight:600;color:#2a2016")}>@{acc?.handle || acc?.nickname} {acc?.platform === "douyin" ? "· Douyin" : "· TikTok"}</div>
+              <div style={c("color:#8a7c67;font-size:12.5px;margin-top:3px")}>
+                Lấy được <b>{accJob.found ?? (accJob.videos || []).length}</b> · đã quét <b>{accJob.scanned ?? "—"}</b> · <b style={c("color:#9a5a12")}>{accMatched.length}</b> video đạt lọc — sẽ phân tích <b style={c("color:#2f6b4f")}>{accToAnalyze.length}</b> (trần {Number(accCap) || 100})
+              </div>
+              {accJob.message ? <div style={c("color:#a8946f;font-size:11.5px;margin-top:3px")}>{accJob.message}</div> : null}
+            </div>
+            <div style={c("display:flex;gap:8px;align-items:center;flex-wrap:wrap")}>
+              <div>
+                <label style={c("font-family:'Space Grotesk',sans-serif;font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;color:#8a7c67;display:block;margin-bottom:4px")}>Trần phân tích</label>
+                <input value={accCap} onChange={(e: any) => setAccCap(e.target.value.replace(/[^0-9]/g, ""))} inputMode="numeric" style={c("width:90px;padding:9px 11px;border:1px solid rgba(140,96,40,.28);border-radius:9px;background:#fdfaf3;font-size:13.5px")} />
+              </div>
+              <button onClick={doAnalyze} disabled={creating || !accToAnalyze.length} style={c(`padding:11px 20px;border:none;border-radius:11px;background:linear-gradient(150deg,#3c7a5e,#2a5a44);color:#fff;font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:14px;cursor:${creating || !accToAnalyze.length ? "default" : "pointer"};opacity:${creating || !accToAnalyze.length ? .55 : 1};white-space:nowrap`)}>{creating ? "Đang tạo…" : `✓ Phân tích ${accToAnalyze.length} video`}</button>
+            </div>
+          </div>
+          <div style={c("max-height:380px;overflow:auto;border:1px solid rgba(140,96,40,.16);border-radius:12px")}>
+            {(accJob.videos || []).map((v: any) => {
+              const inSet = toAnalyzeIds.has(v.awemeId);
+              return (
+                <div key={v.awemeId} style={c(`display:flex;gap:10px;align-items:center;padding:9px 12px;border-bottom:1px solid rgba(140,96,40,.1);background:${inSet ? "rgba(60,122,94,.06)" : "transparent"};opacity:${inSet ? 1 : .5}`)}>
+                  <div style={c("flex:1;min-width:0")}>
+                    <div style={c("font-size:13px;color:#2a2016;white-space:nowrap;overflow:hidden;text-overflow:ellipsis")}>{v.desc || "(không có caption)"}</div>
+                    <div style={c("font-size:11px;color:#8a7c67;margin-top:1px")}>❤ {nf(v.stats?.likes)} · ▶ {nf(v.stats?.views)} · 💬 {nf(v.stats?.comments)} {v.eng ? `· điểm ${v.eng.score}` : ""}</div>
+                  </div>
+                  {!inSet && <span style={c("flex-shrink:0;font-size:11px;color:#a8946f")}>ngoài trần</span>}
+                  <a href={v.link} target="_blank" rel="noreferrer" style={c("flex-shrink:0;font-size:11.5px;color:#9a5a12;text-decoration:none;border:1px solid rgba(140,96,40,.3);border-radius:8px;padding:4px 9px")}>Mở ↗</a>
+                </div>
+              );
+            })}
+            {!(accJob.videos || []).length ? <div style={c("padding:20px;text-align:center;color:#8a7c67;font-size:13px")}>Không có video nào.</div> : null}
+          </div>
+        </div>
+      )}
+
+      {cohorts.length > 0 && (
+        <div style={c("display:flex;gap:8px;flex-wrap:wrap;margin-bottom:20px")}>
+          {cohorts.map((co) => {
+            const on = sel?.cohort.id === co.id;
+            return (
+              <div key={co.id} onClick={() => openCohort(co.id)} style={c(`cursor:pointer;border:1px solid ${on ? "rgba(176,106,22,.5)" : "rgba(140,96,40,.22)"};background:${on ? "rgba(176,106,22,.1)" : "#fffdf8"};border-radius:12px;padding:10px 14px`)}>
+                <div style={c("font-weight:600;font-size:13.5px;color:#2a2016")}>👤 {co.product}</div>
+                <div style={c("font-size:11.5px;color:#8a7c67;margin-top:2px")}>{co.done}/{co.total} đã mổ xẻ{co.hasInsight ? " · ✓ có kết luận" : ""}{isAdmin && co.owner ? ` · 👤 ${co.owner}` : ""}</div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {sel && (
+        <>
+          <SectionHead tag="Tổng quan" title={`Tài khoản: "${sel.cohort.product}"`} />
+          <div style={c(`display:grid;grid-template-columns:${isMobile ? "1fr 1fr" : "repeat(auto-fit,minmax(140px,1fr))"};gap:12px;margin-bottom:28px`)}>
+            {card("Số video", nf(sel.cohort.count))}
+            {sum && card("Tương tác", `${sum.tot}·${sum.kha}·${sum.thap}`)}
+            {sum && card("Median like", nf(sum.medianLikes))}
+            {sum && card("Median ER", `${sum.medianRate}%`)}
+          </div>
+
+          <SectionHead tag="Kết luận" title="Điểm chung của video tương tác cao" />
+          {!insight ? (
+            <div style={c("background:#fffdf8;border:1px dashed rgba(140,96,40,.3);border-radius:14px;padding:18px;margin-bottom:14px;color:#8a7c67;font-size:13.5px")}>
+              Đang mổ xẻ nội dung… kết luận sẽ hiện khi đủ dữ liệu.{" "}
+              <span onClick={async () => { const r = await finalizeCohort(sel.cohort.id); showToast(r?.done ? "Đã dựng kết luận" : "Chưa đủ video mổ xẻ xong"); openCohort(sel.cohort.id); }} style={c("color:#9a5a12;font-weight:600;cursor:pointer;text-decoration:underline")}>Thử dựng ngay</span>
+            </div>
+          ) : (
+            <div style={c("display:flex;flex-direction:column;gap:12px;margin-bottom:28px")}>
+              {insight.metrics.map((mi: any) => (
+                <div key={mi.metric} style={c("background:#fffdf8;border:1px solid rgba(140,96,40,.2);border-left:3px solid #b06a16;border-radius:0 14px 14px 0;padding:16px 18px")}>
+                  <div style={c("font-family:'Space Grotesk',sans-serif;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:#b06a16;font-weight:600;margin-bottom:6px")}>Tương tác cao · {mi.goodN} cao vs {mi.badN} thấp</div>
+                  <div style={c("font-size:14px;color:#2a2016;line-height:1.55;margin-bottom:8px")}>{mi.conclusion}</div>
+                  {mi.drivers.map((d: any, i: number) => {
+                    const ex = (d.examples || [])[0];
+                    return (
+                      <div key={i} style={c(`${i ? "margin-top:12px;padding-top:12px;border-top:1px solid rgba(70,54,32,.08);" : ""}`)}>
+                        <div style={c("font-size:13.5px;color:#2a2016")}>• <b>{d.trait}</b> <span style={c("color:#8a7c67")}>— {d.goodRate}% video cao (vs {d.badRate}% thấp)</span></div>
+                        {ex && (
+                          <div style={c("margin:6px 0 0 14px;font-size:12.5px;color:#574a3a;line-height:1.65")}>
+                            {ex.hook && <div>↳ <b>Hook nói:</b> “{ex.hook}”</div>}
+                            {!!(ex.lines && ex.lines.length) && <div>↳ <b>Lời thoại đắt:</b> {ex.lines.map((l: string) => `“${l}”`).join(" · ")}</div>}
+                            {!!(ex.shots && ex.shots.length) && (
+                              <div>↳ <b>Quay cảnh:</b>
+                                <div style={c("margin:2px 0 0 14px")}>
+                                  {ex.shots.map((s: any, j: number) => (<div key={j}><span style={c("color:#9a5a12;font-weight:600")}>[{s.ts}]</span> {s.vi}{s.cam ? <span style={c("color:#8a7c67")}> — {s.cam}</span> : null}</div>))}
+                                </div>
+                              </div>
+                            )}
+                            {ex.title && <div style={c("color:#8a7c67;font-size:11.5px;margin-top:3px")}>Mẫu từ: {ex.link ? <a href={ex.link} target="_blank" rel="noopener" style={c("color:#9a5a12")}>{ex.title}</a> : ex.title}</div>}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              ))}
+            </div>
+          )}
+
+          <SectionHead tag="Tổng hợp" title="Vì sao tài khoản này thành công" />
+          {synthesis ? (
+            <div style={c("margin-bottom:28px")}>
+              <SynthesisView data={{ report: synthesis, created: sel.cohort.created, count: sel.cohort.count, title: sel.cohort.product }} isMobile={isMobile} onBack={() => {}} canExport={!!isAdmin} showToast={showToast} />
+            </div>
+          ) : (
+            <div style={c("background:#fffdf8;border:1px dashed rgba(140,96,40,.3);border-radius:14px;padding:18px;margin-bottom:28px;color:#8a7c67;font-size:13.5px")}>
+              {totalCount > 0 && doneCount === totalCount ? (
+                <>
+                  Đã mổ xẻ xong {doneCount}/{totalCount} video.{" "}
+                  <button onClick={doSynthesize} disabled={synthesizing} style={c(`padding:9px 16px;border:none;border-radius:10px;background:linear-gradient(150deg,#c07c1e,#9a5a12);color:#fff;font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:13px;cursor:${synthesizing ? "default" : "pointer"};opacity:${synthesizing ? .6 : 1};margin-left:6px`)}>{synthesizing ? "Đang tổng hợp…" : "Tổng hợp vì sao tài khoản thành công"}</button>
+                </>
+              ) : (
+                `Đang mổ xẻ nội dung… (${doneCount}/${totalCount}) — bấm tổng hợp khi mọi video đã xong.`
+              )}
+            </div>
+          )}
+
+          <SectionHead tag="Bảng xếp hạng" title={`${sel.videos.length} video theo tương tác`} />
+          <div style={c("border:1px solid rgba(140,96,40,.18);border-radius:14px;overflow:hidden;background:#fffdf8")}>
+            <div style={c("display:flex;align-items:center;gap:10px;padding:9px 14px;background:rgba(176,106,22,.07);border-bottom:1px solid rgba(140,96,40,.18);font-family:'Space Grotesk',sans-serif;font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:#8a7c67;font-weight:600")}>
+              <span style={c("width:26px")}>#</span>
+              <span style={c("flex:1;min-width:0")}>Tiêu đề video</span>
+              <span style={c("width:42px;text-align:right")} title="Điểm tương tác">Điểm</span>
+              {!isMobile && <span style={c("width:72px;text-align:right")}>Like</span>}
+              {!isMobile && <span style={c("width:48px;text-align:right")}>ER</span>}
+              <span style={c("width:54px")}>Tương tác</span>
+              <span style={c("width:18px;text-align:center")}>TT</span>
+            </div>
+            {sel.videos.map((v: any, i: number) => (
+              <div key={v.id} onClick={() => openVideo(v.id, v.hasContent)} style={c(`display:flex;align-items:center;gap:10px;padding:10px 14px;border-top:${i ? "1px solid rgba(70,54,32,.08)" : "none"};cursor:${v.hasContent ? "pointer" : "default"};font-size:13px`)}>
+                <span style={c("width:26px;color:#8a7c67;font-family:'Space Grotesk',sans-serif;font-weight:600")}>{i + 1}</span>
+                <span style={c("flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#2a2016")}>{v.title}</span>
+                {v.eng && <span style={c("font-family:'Fraunces',serif;font-weight:600;color:#9a5a12;width:42px;text-align:right")}>{v.eng.score}</span>}
+                {v.eng && !isMobile && <span style={c("width:72px;text-align:right;color:#574a3a")}>{nf(v.eng.likes)}</span>}
+                {v.eng && !isMobile && <span style={c("width:48px;text-align:right;color:#574a3a")}>{v.eng.engagementRate}%</span>}
+                {v.eng && <span style={c("width:54px")}>{chip(v.eng.tier)}</span>}
+                <span title={v.status} style={c("width:18px;text-align:center;color:#8a7c67")}>{stIcon(v.status)}</span>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+
+      {!cohorts.length && !sel && (
+        <div style={c("text-align:center;color:#8a7c67;font-size:14px;padding:30px 0")}>Chưa có phân tích tài khoản nào. Dán link tài khoản ở trên để bắt đầu.</div>
       )}
     </div>
   );
