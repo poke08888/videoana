@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { engagementRate, filterAccountVideos, type AccountVideo } from "./account.js";
+import { engagementRate, filterAccountVideos, type AccountVideo, normalizeAccountInput } from "./account.js";
 
 const V = (o: Partial<AccountVideo> & { likes: number; views: number; createTime?: number; comments?: number; shares?: number; saves?: number }): AccountVideo => ({
   awemeId: o.awemeId || "1", desc: o.desc || "", author: "a", nickname: "n", link: "http://x/1",
@@ -50,4 +50,31 @@ test("filter sinceDays: video createTime=0 (không rõ ngày) -> GIỮ", () => {
   const now = 1_700_000_000;
   const vids = [V({ createTime: 0, likes: 1, views: 1 })];
   assert.equal(filterAccountVideos(vids, { sinceDays: 30 }, now).length, 1);
+});
+
+test("normalize: link TikTok @handle", () => {
+  assert.deepEqual(normalizeAccountInput("https://www.tiktok.com/@nerman.official"), { platform: "tiktok", ref: "nerman.official" });
+});
+test("normalize: TikTok có query/đuôi", () => {
+  assert.deepEqual(normalizeAccountInput("tiktok.com/@abc_123/video/999?is=1"), { platform: "tiktok", ref: "abc_123" });
+});
+test("normalize: bare @handle -> tiktok", () => {
+  assert.deepEqual(normalizeAccountInput("@shop.cool"), { platform: "tiktok", ref: "shop.cool" });
+});
+test("normalize: bare handle không @ -> tiktok", () => {
+  assert.deepEqual(normalizeAccountInput("shopcool"), { platform: "tiktok", ref: "shopcool" });
+});
+test("normalize: Douyin user url -> giữ nguyên url có https", () => {
+  const r = normalizeAccountInput("https://www.douyin.com/user/MS4wLjABAAAAxyz");
+  assert.equal(r?.platform, "douyin");
+  assert.equal(r?.ref, "https://www.douyin.com/user/MS4wLjABAAAAxyz");
+});
+test("normalize: Douyin thiếu scheme -> thêm https", () => {
+  const r = normalizeAccountInput("v.douyin.com/abc/");
+  assert.equal(r?.platform, "douyin");
+  assert.equal(r?.ref, "https://v.douyin.com/abc/");
+});
+test("normalize: rác -> null", () => {
+  assert.equal(normalizeAccountInput("   "), null);
+  assert.equal(normalizeAccountInput("has space"), null);
 });

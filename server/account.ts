@@ -5,6 +5,25 @@
  */
 import { computeEngagement, type EngagementStats } from "./tiktok.js";
 
+export type Platform = "tiktok" | "douyin";
+
+/** Chuẩn hoá input người dùng thành {platform, ref}. TikTok ref=handle; Douyin ref=url. */
+export function normalizeAccountInput(input: string): { platform: Platform; ref: string } | null {
+  const s = String(input || "").trim();
+  if (!s) return null;
+  if (/(douyin|iesdouyin)\.com/i.test(s)) {
+    const url = /^https?:\/\//i.test(s) ? s : `https://${s}`;
+    return { platform: "douyin", ref: url };
+  }
+  if (/tiktok\.com/i.test(s)) {
+    const m = s.match(/@([A-Za-z0-9_.\-]+)/);
+    return m ? { platform: "tiktok", ref: m[1] } : null;
+  }
+  const bare = s.replace(/^@/, "");
+  if (/^[A-Za-z0-9_.\-]+$/.test(bare)) return { platform: "tiktok", ref: bare };
+  return null;
+}
+
 export interface AccountVideo {
   awemeId: string;
   desc: string;
