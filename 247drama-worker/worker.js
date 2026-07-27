@@ -9,15 +9,26 @@ const { findPendingWork } = require("./work");
 const { renderEpisode } = require("./render");
 
 async function main() {
-  // Fail-fast: đảm bảo thư mục làm việc tồn tại (nếu ổ ngoài BINGNET chưa mount thì dừng ngay,
-  // tránh tải + OCR + DỊCH (tốn quota Gemini) rồi mới chết ở bước ghi file).
-  for (const d of [env.downloadDir, env.tmpDir, env.outputDir]) {
+  // Fail-fast: nếu workDir nằm trên /Volumes (ổ ngoài) thì XÁC MINH đã mount thật, KHÔNG chỉ mkdir.
+  // Vì mkdir -p sẽ "thành công" bằng cách tạo thư mục trên ổ CHÍNH khi ổ ngoài chưa mount ->
+  // media đổ vào ổ chính (đang đầy 91%). So st_dev với "/" để phát hiện chưa mount.
+  if (env.workDir.startsWith("/Volumes/")) {
+    const mountRoot = env.workDir.split("/").slice(0, 3).join("/"); // /Volumes/<tên>
+    let mountDev;
     try {
-      fs.mkdirSync(d, { recursive: true });
+      mountDev = fs.statSync(mountRoot).dev;
     } catch (e) {
-      console.error(`[worker] không tạo được ${d} — ổ BINGNET đã mount chưa?`, e.message);
+      console.error(`[worker] ${mountRoot} không tồn tại — ổ ngoài chưa mount. Dừng.`);
       process.exit(1);
     }
+    if (mountDev === fs.statSync("/").dev) {
+      console.error(`[worker] ${mountRoot} cùng thiết bị với "/" -> chưa mount ổ ngoài. Dừng (tránh ghi lên ổ chính).`);
+      process.exit(1);
+    }
+  }
+  // Ổ ngoài đã mount (hoặc workDir trên ổ chính do cấu hình): tạo thư mục làm việc.
+  for (const d of [env.downloadDir, env.tmpDir, env.outputDir]) {
+    fs.mkdirSync(d, { recursive: true });
   }
 
   await db.connect();
