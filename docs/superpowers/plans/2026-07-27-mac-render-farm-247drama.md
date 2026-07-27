@@ -592,7 +592,8 @@ async function probeDuration(file) {
 async function rsyncToServer(localFile, filename) {
   const { host, user, password, uploadsPath } = env.server;
   const rsh = `sshpass -p ${JSON.stringify(password)} ssh -o StrictHostKeyChecking=accept-new`;
-  await run("rsync", ["-a", "-e", rsh, localFile, `${user}@${host}:${uploadsPath}/${filename}`], {
+  // --chmod=F644: ép file world-readable (rsync -a giữ mode 700 của Mac -> nginx www-data không đọc được -> 403).
+  await run("rsync", ["-a", "--chmod=F644", "-e", rsh, localFile, `${user}@${host}:${uploadsPath}/${filename}`], {
     timeout: 5 * 60 * 1000,
   });
 }
