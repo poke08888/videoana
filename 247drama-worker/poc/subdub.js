@@ -6,8 +6,10 @@ const fs = require("fs");
 const path = require("path");
 const { execFile } = require("child_process");
 const axios = require("axios");
-const { env } = require("./../config");
+const db = require("./../db");
+const { env, buildSubtitleConfig } = require("./../config");
 const { tts } = require("./elevenlabs");
+const { tagEmotions } = require("./emotion");
 
 const BASE = process.argv[2] || "hg_7650805046258453528_ep0";
 const VOICE = process.env.ELEVEN_VOICE_ID || "Tr84Gom1NKJwoYZT55td";
@@ -46,6 +48,22 @@ async function main() {
   const viSegs = await loadViSegs(BASE);
   console.log(`[subdub] ${viSegs.length} câu Việt`);
 
+  // 1b) Gemini gán tag cảm xúc từng câu (Plan A) -> chèn [tag] vào text v3.
+  const emoPath = path.join(OUT_DIR, "emotions.json");
+  let tags;
+  if (fs.existsSync(emoPath)) {
+    tags = JSON.parse(fs.readFileSync(emoPath, "utf8"));
+    console.log("[subdub] dùng emotions.json local");
+  } else {
+    await db.connect();
+    await db.loadSettings();
+    const cfg = buildSubtitleConfig(global.settingJSON);
+    tags = await tagEmotions(viSegs, { apiKey: cfg.apiKey, model: cfg.geminiModel });
+    await db.mongoose.disconnect();
+    fs.writeFileSync(emoPath, JSON.stringify(tags, null, 2));
+  }
+  console.log(`[subdub] cảm xúc: ${tags.filter(Boolean).length}/${tags.length} câu có tag (${[...new Set(tags.filter(Boolean))].join(", ")})`);
+
   // 2) video ĐÃ CÓ SUB (tải từ R2 nếu chưa có local)
   const subbed = path.join(OUT_DIR, `${BASE}_subbed.mp4`);
   if (!fs.existsSync(subbed)) {
@@ -76,8 +94,9 @@ async function main() {
     const slot = Math.max(0.6, nextStart - (s.start || 0));
     const mp3 = path.join(clipsDir, `c${i}.mp3`);
     if (!fs.existsSync(mp3)) {
+      const emo = tags[i] ? `[${tags[i]}] ` : ""; // chèn tag cảm xúc v3 (không đọc thành lời)
       process.stdout.write(`\r[subdub] TTS ${i + 1}/${viSegs.length}   `);
-      fs.writeFileSync(mp3, await tts(text, { apiKey: process.env.ELEVEN_API_KEY, voiceId: VOICE }));
+      fs.writeFileSync(mp3, await tts(emo + text, { apiKey: process.env.ELEVEN_API_KEY, voiceId: VOICE }));
     }
     const dur = await probeDur(mp3);
     const atempo = dur > slot ? Math.min(MAX_ATEMPO, +(dur / slot).toFixed(3)) : 1;
