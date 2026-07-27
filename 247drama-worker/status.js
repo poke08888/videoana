@@ -48,7 +48,10 @@ function snapshot() {
   const now = Date.now();
   const elapsedMin = (now - state.startedAt) / 60000;
   const perMin = elapsedMin > 0 ? state.doneThisRun / elapsedMin : 0;
-  const totalDone = state.doneAtStart + state.doneThisRun;
+  // done = tổng số THẬT của từng phim (initMovies đặt lại mỗi pass + done() cộng live),
+  // cap ở target từng phim để tránh doc trùng làm vượt. KHÔNG cộng doneThisRun (daemon lặp
+  // nhiều pass -> doneThisRun cộng dồn sẽ double-count -> >100%).
+  const totalDone = Object.values(state.movies).reduce((n, m) => n + Math.min(m.done, m.target || m.done), 0);
   const remaining = Math.max(0, state.target - totalDone);
   const etaMin = perMin > 0 ? Math.round(remaining / perMin) : null;
   return {
@@ -59,7 +62,7 @@ function snapshot() {
       target: state.target,
       remaining,
       failed: state.failed,
-      pct: state.target ? Math.round((totalDone / state.target) * 100) : 0,
+      pct: state.target ? Math.min(100, Math.round((totalDone / state.target) * 100)) : 0,
       doneThisRun: state.doneThisRun,
     },
     throughput: { perMin: Math.round(perMin * 10) / 10, etaMin, concurrency: state.concurrency },
