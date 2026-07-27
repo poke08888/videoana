@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>247drama — Tiến độ render sub</title>
+<style>
+  :root { --bg:#0f1115; --card:#181b22; --line:#262b36; --tx:#e6e9ef; --mut:#8b93a3; --acc:#4ea1ff; --ok:#39d98a; --warn:#ffb020; --bad:#ff5d5d; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--tx); font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; padding:16px; }
+  h1 { font-size:18px; margin:0 0 2px; }
+  .sub { color:var(--mut); font-size:12px; margin-bottom:14px; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:10px; margin-bottom:16px; }
+  .kpi { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:12px 14px; }
+  .kpi .n { font-size:24px; font-weight:700; }
+  .kpi .l { color:var(--mut); font-size:11px; text-transform:uppercase; letter-spacing:.04em; }
+  .bar { height:10px; background:var(--line); border-radius:6px; overflow:hidden; }
+  .bar > i { display:block; height:100%; background:linear-gradient(90deg,var(--acc),var(--ok)); }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:14px; margin-bottom:14px; }
+  .card h2 { font-size:13px; margin:0 0 10px; color:var(--mut); text-transform:uppercase; letter-spacing:.04em; }
+  .movie { margin-bottom:11px; }
+  .movie .top { display:flex; justify-content:space-between; gap:8px; margin-bottom:4px; }
+  .movie .nm { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .movie .ct { color:var(--mut); font-variant-numeric:tabular-nums; flex:none; }
+  .movie.done .nm::before { content:"✓ "; color:var(--ok); }
+  .row { display:flex; align-items:center; gap:8px; padding:6px 0; border-top:1px solid var(--line); font-variant-numeric:tabular-nums; }
+  .row:first-child { border-top:0; }
+  .tag { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .badge { flex:none; font-size:11px; padding:2px 8px; border-radius:20px; font-weight:600; }
+  .b-tải { background:rgba(78,161,255,.15); color:var(--acc); }
+  .b-sub { background:rgba(255,176,32,.15); color:var(--warn); }
+  .b-upload { background:rgba(57,217,138,.15); color:var(--ok); }
+  .sec { color:var(--mut); flex:none; font-size:12px; }
+  .dot { width:8px; height:8px; border-radius:50%; background:var(--ok); display:inline-block; margin-right:6px; animation:pulse 1.4s infinite; }
+  .dot.off { background:var(--mut); animation:none; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
+  .empty { color:var(--mut); font-style:italic; }
+  @media (prefers-color-scheme: light) {
+    :root { --bg:#f4f6fa; --card:#fff; --line:#e2e6ee; --tx:#1a1d24; --mut:#6b7280; }
+  }
+</style>
+</head>
+<body>
+  <h1>247drama — Tiến độ render sub Việt</h1>
+  <div class="sub"><span id="live"><span class="dot"></span>đang chạy</span> · cập nhật <span id="upd">—</span></div>
+
+  <div class="grid">
+    <div class="kpi"><div class="n" id="k-pct">—</div><div class="l">Hoàn thành</div></div>
+    <div class="kpi"><div class="n" id="k-done">—</div><div class="l">Tập đã có / mục tiêu</div></div>
+    <div class="kpi"><div class="n" id="k-rate">—</div><div class="l">Tốc độ (tập/phút)</div></div>
+    <div class="kpi"><div class="n" id="k-eta">—</div><div class="l">Còn lại (ước tính)</div></div>
+  </div>
+  <div class="bar" style="margin-bottom:16px"><i id="k-barfill" style="width:0%"></i></div>
+
+  <div class="card">
+    <h2>Đang xử lý (<span id="inflight-n">0</span>)</h2>
+    <div id="inflight"></div>
+  </div>
+
+  <div class="card">
+    <h2>Từng phim</h2>
+    <div id="movies"></div>
+  </div>
+
+  <div class="card">
+    <h2>Vừa xong</h2>
+    <div id="recent"></div>
+  </div>
+
+<script>
+function fmtEta(m){ if(m==null) return "—"; if(m<60) return m+" phút"; const h=Math.floor(m/60), r=m%60; return h+"h"+(r?(" "+r+"m"):""); }
+function esc(s){ return String(s).replace(/[&<>]/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c])); }
+
+async function tick(){
+  try {
+    const r = await fetch("render-status.json?t="+Date.now(), {cache:"no-store"});
+    if(!r.ok) throw 0;
+    const d = await r.json();
+
+    document.getElementById("k-pct").textContent = d.overall.pct+"%";
+    document.getElementById("k-done").textContent = d.overall.done+" / "+d.overall.target;
+    document.getElementById("k-rate").textContent = d.throughput.perMin ?? "—";
+    document.getElementById("k-eta").textContent = d.running ? fmtEta(d.throughput.etaMin) : "xong";
+    document.getElementById("k-barfill").style.width = d.overall.pct+"%";
+    document.getElementById("upd").textContent = new Date(d.updatedAt).toLocaleTimeString("vi-VN");
+    const live = document.getElementById("live");
+    live.innerHTML = d.running ? '<span class="dot"></span>đang chạy · '+d.throughput.concurrency+' luồng'
+                               : '<span class="dot off"></span>đã dừng';
+
+    const inf = d.inflight||[];
+    document.getElementById("inflight-n").textContent = inf.length;
+    document.getElementById("inflight").innerHTML = inf.length ? inf.map(x=>
+      '<div class="row"><span class="tag">'+esc(x.tag)+'</span>'+
+      '<span class="badge b-'+x.phase+'">'+x.phase+'</span>'+
+      '<span class="sec">'+x.sec+'s</span></div>').join("")
+      : '<div class="empty">—</div>';
+
+    document.getElementById("movies").innerHTML = (d.movies||[]).map(m=>{
+      const pct = m.target ? Math.round(m.done/m.target*100) : 0;
+      const done = m.target>0 && m.done>=m.target;
+      return '<div class="movie'+(done?' done':'')+'">'+
+        '<div class="top"><span class="nm">'+esc(m.name)+'</span><span class="ct">'+m.done+'/'+(m.target||'?')+'</span></div>'+
+        '<div class="bar"><i style="width:'+pct+'%"></i></div></div>';
+    }).join("");
+
+    const rec = d.recent||[];
+    document.getElementById("recent").innerHTML = rec.length ? rec.map(x=>
+      '<div class="row"><span class="tag">'+esc(x.tag)+'</span>'+
+      '<span class="badge '+(x.sub==="none"?"b-sub":"b-upload")+'">'+(x.sub==="none"?"không sub":"sub "+x.sub+" · "+x.segs+" câu")+'</span>'+
+      '<span class="sec">'+x.agoSec+'s trước</span></div>').join("")
+      : '<div class="empty">—</div>';
+  } catch(e) {
+    document.getElementById("live").innerHTML = '<span class="dot off"></span>chưa có dữ liệu…';
+  }
+}
+tick(); setInterval(tick, 2000);
+</script>
+</body>
+</html>

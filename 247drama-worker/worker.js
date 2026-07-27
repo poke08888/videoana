@@ -5,8 +5,9 @@ process.env.TMPDIR = env.tmpDir;
 
 const pLimit = require("p-limit");
 const db = require("./db");
-const { findPendingWork } = require("./work");
+const { findPendingWork, extract52apiSource } = require("./work");
 const { renderEpisode } = require("./render");
+const status = require("./status");
 
 async function main() {
   // Fail-fast: nếu workDir nằm trên /Volumes (ổ ngoài) thì XÁC MINH đã mount thật, KHÔNG chỉ mkdir.
@@ -35,10 +36,25 @@ async function main() {
   await db.loadSettings();
   console.log(`[worker] concurrency=${env.concurrency}, ocrThreads=${env.ocrThreads}, tmp=${env.tmpDir}`);
 
+  // Nạp trạng thái mọi phim 52api (kể cả phim đã xong) cho dashboard.
+  const allMovies = await db.MovieSeries.find({ sourceProvider: /^52api-/ })
+    .select("_id name bookId sourceProvider sourceEpisodeCount")
+    .lean();
+  const movieRows = [];
+  for (const m of allMovies) {
+    const { provider, sourceId } = extract52apiSource(m);
+    if (!provider || !sourceId) continue;
+    const done = await db.ShortVideo.countDocuments({ movieSeries: m._id });
+    movieRows.push({ key: `${provider}:${sourceId}`, name: m.name, done, target: m.sourceEpisodeCount || 0 });
+  }
+  status.initMovies(movieRows);
+
   const work = await findPendingWork();
   const totalMissing = work.reduce((n, w) => n + w.missing.length, 0);
   console.log(`[worker] ${work.length} phim, ${totalMissing} tập cần render`);
-  if (!totalMissing) { await db.mongoose.disconnect(); return; }
+  const pushTimer = setInterval(() => status.pushToServer(), 3000);
+  await status.pushToServer();
+  if (!totalMissing) { clearInterval(pushTimer); await status.pushToServer(false); await db.mongoose.disconnect(); return; }
 
   const limit = pLimit(env.concurrency);
   let done = 0, ok = 0, fail = 0;
@@ -57,6 +73,8 @@ async function main() {
   }
   await Promise.all(jobs);
 
+  clearInterval(pushTimer);
+  await status.pushToServer(false); // đẩy lần cuối, đánh dấu running=false
   console.log(`[worker] XONG: ${ok} tập ok, ${fail} lỗi / ${totalMissing}`);
   await db.mongoose.disconnect();
 }

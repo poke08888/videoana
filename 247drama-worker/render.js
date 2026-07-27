@@ -5,6 +5,7 @@ const duanju = require("./util/duanjuProvider");
 const { subtitleVideoBuffer } = require("./util/autosub");
 const { env, buildFilename, buildVideoUrl, buildSubtitleConfig } = require("./config");
 const { ShortVideo } = require("./db");
+const status = require("./status");
 
 function run(cmd, args, opts = {}) {
   return new Promise((resolve, reject) => {
@@ -43,6 +44,8 @@ async function rsyncToServer(localFile, filename) {
 
 async function renderEpisode({ series, provider, sourceId, ep }) {
   const tag = `${provider}:${sourceId} ep${ep.index + 1}`;
+  const movieKey = `${provider}:${sourceId}`;
+  const t0 = Date.now();
   const filename = buildFilename(provider, sourceId, ep.index);
   const outPath = path.join(env.outputDir, filename);
   const rawPath = path.join(env.downloadDir, filename);
@@ -53,8 +56,9 @@ async function renderEpisode({ series, provider, sourceId, ep }) {
 
   try {
     // 1) resolve + tải mp4 gốc (hm qua proxy)
+    status.setPhase(tag, "tải");
     const resolved = await duanju.resolveVideo(provider, sourceId, ep.videoId);
-    if (!resolved.mp4Url) return { ok: false, reason: "không có link" };
+    if (!resolved.mp4Url) { status.fail(tag); return { ok: false, reason: "không có link" }; }
     let buf = await duanju.downloadToBuffer(resolved.mp4Url, { useProxy: provider === "hm" });
 
     if (env.keepOriginal) {
@@ -62,6 +66,7 @@ async function renderEpisode({ series, provider, sourceId, ep }) {
     }
 
     // 2) OCR sub Trung -> dịch Việt -> burn (file tạm ghi vào TMPDIR=BINGNET/tmp)
+    status.setPhase(tag, "sub");
     const subCfg = buildSubtitleConfig(global.settingJSON);
     const r = await subtitleVideoBuffer(buf, subCfg);
     buf = r.buffer;
@@ -69,6 +74,7 @@ async function renderEpisode({ series, provider, sourceId, ep }) {
     // Áp dụng cho MỌI provider: nếu chỉ chặn hg thì tập hm hỏng sẽ bị upsert thành record
     // vĩnh viễn không phát được (idempotency coi như "đã xong", không bao giờ thử lại).
     if (!r.subbed && r.codec !== "h264" && !r.transcoded) {
+      status.fail(tag);
       return { ok: false, reason: `codec không phát được (${r.codec || "bvc2"})` };
     }
     const subLang = r.subbed ? (subCfg.targetLang || "vi") : "";
@@ -77,6 +83,7 @@ async function renderEpisode({ series, provider, sourceId, ep }) {
     fs.writeFileSync(outPath, buf);
 
     // 4) rsync lên server TRƯỚC
+    status.setPhase(tag, "upload");
     await rsyncToServer(outPath, filename);
 
     // 5) duration + 6) upsert Mongo (khớp process52apiEpisodes)
@@ -103,9 +110,11 @@ async function renderEpisode({ series, provider, sourceId, ep }) {
     // Raw download giữ lại làm backup nếu keepOriginal (mặc định), ngược lại xoá luôn.
     try { fs.unlinkSync(outPath); } catch (e) {}
     if (!env.keepOriginal) { try { fs.unlinkSync(rawPath); } catch (e) {} }
+    status.done(tag, movieKey, { sub: subLang || "none", segs: r.segments || 0, sec: Math.round((Date.now() - t0) / 1000) });
     console.log(`[render] ✓ ${tag} sub=${subLang || "none"} ${r.segments || 0} câu, ${duration}s`);
     return { ok: true };
   } catch (e) {
+    status.fail(tag);
     console.error(`[render] ✗ ${tag}:`, e.message);
     return { ok: false, reason: e.message };
   }
