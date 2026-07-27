@@ -82,7 +82,7 @@ async function subtitleVideoBuffer(buffer, cfg = {}) {
       enabled: coverEnabled,
     });
 
-    return { buffer: out, subbed: true, segments: viSegs.length, reason: "", codec: "h264", transcoded: true };
+    return { buffer: out, subbed: true, segments: viSegs.length, viSegs, reason: "", codec: "h264", transcoded: true };
   } catch (e) {
     // Fallback: vẫn đảm bảo video H.264 xem được (chỉ không có sub Việt).
     // Trả thêm codec/transcoded để caller biết buffer cuối có phát được không (chặn bvc2).

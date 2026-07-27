@@ -1,21 +1,19 @@
-// POC lồng tiếng Việt 1 tập bằng ElevenLabs TTS (bản nhanh: giảm audio gốc + đè tiếng Việt).
-// Dùng: node poc/dub-episode.js [đường-dẫn-mp4]   (mặc định ep0 phim "Mười mấy năm tu luyện")
+// POC lồng tiếng Việt 1 tập bằng ElevenLabs TTS.
+// Dub đi TỪ SUB VIỆT đã có (sidecar .vi.json do render lưu) — KHÔNG dịch lại từ tiếng Trung.
+// Dùng: node poc/dub-episode.js [đường-dẫn-mp4]
 require("dotenv").config();
 const fs = require("fs");
-const os = require("os");
 const path = require("path");
 const { execFile } = require("child_process");
-const db = require("./../db");
-const { ocrSubtitles } = require("./../util/asrOcr");
-const { translateSegments } = require("./../util/translate");
-const { buildSubtitleConfig, env } = require("./../config");
+const axios = require("axios");
+const { env } = require("./../config");
 const { tts } = require("./elevenlabs");
 
 const EP = process.argv[2] || path.join(env.downloadDir, "hg_7650805046258453528_ep0.mp4");
-const VOICE = process.env.ELEVEN_VOICE_ID || "21m00Tcm4TlvDq8ikWAM"; // Rachel (premade multilingual)
+const VOICE = process.env.ELEVEN_VOICE_ID || "Tr84Gom1NKJwoYZT55td";
 const OUT_DIR = process.env.POC_OUT || path.join(env.workDir, "dub-poc");
-const ORIG_VOL = process.env.ORIG_VOL || "0.15"; // audio gốc giảm còn 15%
-const MAX_ATEMPO = 1.6; // ép nhanh tối đa để không tràn khe (tránh méo)
+const ORIG_VOL = process.env.ORIG_VOL || "0.15";
+const MAX_ATEMPO = 1.6;
 
 function run(cmd, args, opts = {}) {
   return new Promise((resolve, reject) => {
@@ -29,9 +27,24 @@ async function probeDur(f) {
   const out = await run("ffprobe", ["-v", "error", "-show_entries", "format=duration", "-of", "default=nk=1:nw=1", f]);
   return parseFloat(String(out).trim()) || 0;
 }
-// Lọc rác OCR (khớp cleanOcrSegs trong autosub).
-function cleanOcr(segs) {
-  return (segs || []).filter((s) => s && s.text && /[一-鿿]/.test(s.text) && s.text.replace(/\s/g, "").length >= 2);
+
+// Lấy segment tiếng Việt của SUB: ưu tiên cache local, rồi sidecar .vi.json trên R2.
+async function loadViSegs(segPath, sidecarName) {
+  if (fs.existsSync(segPath)) {
+    console.log("[dub] dùng segments.json local");
+    return JSON.parse(fs.readFileSync(segPath, "utf8"));
+  }
+  const url = `${env.r2.publicBase}/videos/${sidecarName}`;
+  console.log(`[dub] tải sub Việt từ R2: ${url}`);
+  try {
+    const { data } = await axios.get(url, { timeout: 30000 });
+    return Array.isArray(data) ? data : JSON.parse(data);
+  } catch (e) {
+    throw new Error(
+      `chưa có sub Việt cho tập này (sidecar ${sidecarName} không có trên R2). ` +
+        `Hãy render tập này (worker lưu sidecar) rồi dub lại.`,
+    );
+  }
 }
 
 async function main() {
@@ -40,26 +53,18 @@ async function main() {
   fs.mkdirSync(OUT_DIR, { recursive: true });
   const clipsDir = path.join(OUT_DIR, "clips");
   fs.mkdirSync(clipsDir, { recursive: true });
+  const base = path.basename(EP).replace(/\.mp4$/, "");
+  const sidecarName = `${base}.vi.json`;
+  const segPath = path.join(OUT_DIR, "segments.json");
   console.log(`[dub] tập: ${EP}`);
 
-  // 1) segment tiếng Việt (OCR Trung -> lọc -> dịch Gemini)
-  await db.connect();
-  await db.loadSettings();
-  const cfg = buildSubtitleConfig(global.settingJSON);
-  if (!cfg.apiKey) throw new Error("thiếu Gemini key trong settingJSON");
-  console.log("[dub] OCR hardsub Trung...");
-  const ocr = await ocrSubtitles(EP);
-  const zhSegs = cleanOcr(ocr.segments);
-  if (!zhSegs.length) throw new Error("OCR không ra câu nào");
-  console.log(`[dub] ${zhSegs.length} câu Trung -> dịch Việt...`);
-  const viSegs = await translateSegments(zhSegs, {
-    apiKey: cfg.apiKey, model: cfg.geminiModel, sourceLang: cfg.sourceLang, targetLang: cfg.targetLang, batchSize: cfg.translateBatchSize,
-  });
-  await db.mongoose.disconnect();
-  fs.writeFileSync(path.join(OUT_DIR, "segments.json"), JSON.stringify(viSegs, null, 2));
-  console.log(`[dub] ${viSegs.length} câu Việt -> segments.json`);
+  // 1) SUB VIỆT (không OCR/dịch — đọc bản dịch đã có)
+  const viSegs = await loadViSegs(segPath, sidecarName);
+  if (!viSegs.length) throw new Error("sub Việt rỗng");
+  fs.writeFileSync(segPath, JSON.stringify(viSegs, null, 2));
+  console.log(`[dub] ${viSegs.length} câu Việt (từ sub)`);
 
-  // 2) TTS từng câu + đo độ dài -> tính atempo ép vừa khe
+  // 2) TTS từng câu + time-fit vào khe sub
   const clips = [];
   for (let i = 0; i < viSegs.length; i++) {
     const s = viSegs[i];
@@ -76,7 +81,7 @@ async function main() {
   }
   console.log(`\n[dub] xong TTS ${clips.length} clip`);
 
-  // 3) ffmpeg: audio gốc nhỏ + đè các clip đúng timestamp -> thay track audio
+  // 3) ffmpeg: audio gốc nhỏ + đè clip đúng timestamp -> thay track audio
   const inputs = ["-i", EP];
   clips.forEach((c) => inputs.push("-i", c.file));
   const parts = [`[0:a]volume=${ORIG_VOL}[bg]`];

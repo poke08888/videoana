@@ -101,6 +101,15 @@ async function renderEpisodeInner({ series, provider, sourceId, ep }) {
     status.setPhase(tag, "upload");
     await uploadToR2(buf, buildR2Key(provider, sourceId, ep.index), "video/mp4");
 
+    // 4b) Lưu sidecar segment tiếng Việt của SUB (text+timing) để lồng tiếng tái dùng
+    // -> dub đi từ SUB VIỆT (không dịch lại từ Trung). 1 bản dịch cho cả sub lẫn dub.
+    if (r.viSegs && r.viSegs.length) {
+      try {
+        const subKey = buildR2Key(provider, sourceId, ep.index).replace(/\.mp4$/, ".vi.json");
+        await uploadToR2(Buffer.from(JSON.stringify(r.viSegs)), subKey, "application/json");
+      } catch (e) {}
+    }
+
     // 5) duration + 6) upsert Mongo (khớp process52apiEpisodes)
     const duration = await probeDuration(outPath);
     const videoUrl = buildVideoUrl(provider, sourceId, ep.index);
