@@ -1,0 +1,6 @@
+node_modules/
+.env
+ocr-venv/
+*.mp4
+*.ass
+*.log
