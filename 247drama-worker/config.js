@@ -20,6 +20,14 @@ const env = {
     password: process.env.SERVER_PASSWORD,
     uploadsPath: process.env.SERVER_UPLOADS,
   },
+  r2: {
+    endpoint: process.env.R2_ENDPOINT,
+    accessKey: process.env.R2_ACCESS_KEY,
+    secret: process.env.R2_SECRET,
+    bucket: process.env.R2_BUCKET,
+    publicBase: process.env.R2_PUBLIC_BASE,
+    keyPrefix: process.env.R2_KEY_PREFIX || "videos",
+  },
 };
 
 // Tên file phẳng, KHỚP đúng uploadBufferToStorage local của server.
@@ -27,10 +35,16 @@ function buildFilename(provider, sourceId, index) {
   return `${provider}_${sourceId}_ep${index}.mp4`;
 }
 
-// URL công khai KHỚP đúng bản server tạo (storage=local).
+// Key trên R2: <prefix>/<filename>. Server + worker dùng chung scheme.
+function buildR2Key(provider, sourceId, index) {
+  const prefix = process.env.R2_KEY_PREFIX || "videos";
+  return `${prefix}/${buildFilename(provider, sourceId, index)}`;
+}
+
+// URL công khai đọc từ R2 (r2.dev hoặc custom domain sau này).
 function buildVideoUrl(provider, sourceId, index) {
-  const base = process.env.baseURL || env.baseUrl;
-  return `${base}/uploads/${buildFilename(provider, sourceId, index)}`;
+  const base = process.env.R2_PUBLIC_BASE || env.r2.publicBase || "";
+  return `${base}/${buildR2Key(provider, sourceId, index)}`;
 }
 
 // Khớp getSubtitleConfig() của server (controllers/admin/movieSeries.controller.js).
@@ -51,4 +65,4 @@ function buildSubtitleConfig(settingJSON) {
   };
 }
 
-module.exports = { env, buildFilename, buildVideoUrl, buildSubtitleConfig };
+module.exports = { env, buildFilename, buildR2Key, buildVideoUrl, buildSubtitleConfig };

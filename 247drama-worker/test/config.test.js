@@ -1,16 +1,22 @@
 const { test } = require("node:test");
 const assert = require("node:assert");
-const { buildFilename, buildVideoUrl } = require("../config");
+const { buildFilename, buildR2Key, buildVideoUrl } = require("../config");
 
 test("buildFilename khớp format server", () => {
   assert.strictEqual(buildFilename("hg", "7661582233639062553", 58), "hg_7661582233639062553_ep58.mp4");
   assert.strictEqual(buildFilename("hm", "12345", 0), "hm_12345_ep0.mp4");
 });
 
-test("buildVideoUrl khớp URL server", () => {
-  process.env.baseURL = "http://103.179.185.196";
+test("buildR2Key = prefix + filename", () => {
+  process.env.R2_KEY_PREFIX = "videos";
+  assert.strictEqual(buildR2Key("hg", "7661582233639062553", 58), "videos/hg_7661582233639062553_ep58.mp4");
+});
+
+test("buildVideoUrl trỏ R2 public base", () => {
+  process.env.R2_KEY_PREFIX = "videos";
+  process.env.R2_PUBLIC_BASE = "https://pub-abc123.r2.dev";
   assert.strictEqual(
     buildVideoUrl("hg", "7661582233639062553", 58),
-    "http://103.179.185.196/uploads/hg_7661582233639062553_ep58.mp4",
+    "https://pub-abc123.r2.dev/videos/hg_7661582233639062553_ep58.mp4",
   );
 });
