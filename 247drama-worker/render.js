@@ -4,7 +4,7 @@ const { execFile } = require("child_process");
 const duanju = require("./util/duanjuProvider");
 const { subtitleVideoBuffer } = require("./util/autosub");
 const { env, buildFilename, buildVideoUrl, buildSubtitleConfig } = require("./config");
-const { ShortVideo, MovieSeries } = require("./db");
+const { ShortVideo } = require("./db");
 
 function run(cmd, args, opts = {}) {
   return new Promise((resolve, reject) => {
@@ -59,8 +59,10 @@ async function renderEpisode({ series, provider, sourceId, ep }) {
     const subCfg = buildSubtitleConfig(global.settingJSON);
     const r = await subtitleVideoBuffer(buf, subCfg);
     buf = r.buffer;
-    // hg: tập bvc2 không decode được -> bỏ, không lưu tập đen.
-    if (!r.subbed && provider === "hg" && r.codec !== "h264" && !r.transcoded) {
+    // Transcode hỏng hoàn toàn (cả burn LẪN fallback H.264 fail) -> bỏ, không lưu tập đen.
+    // Áp dụng cho MỌI provider: nếu chỉ chặn hg thì tập hm hỏng sẽ bị upsert thành record
+    // vĩnh viễn không phát được (idempotency coi như "đã xong", không bao giờ thử lại).
+    if (!r.subbed && r.codec !== "h264" && !r.transcoded) {
       return { ok: false, reason: `codec không phát được (${r.codec || "bvc2"})` };
     }
     const subLang = r.subbed ? (subCfg.targetLang || "vi") : "";
