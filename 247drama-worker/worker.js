@@ -77,6 +77,7 @@ async function main() {
   await status.pushToServer(false); // đẩy lần cuối, đánh dấu running=false
   console.log(`[worker] XONG: ${ok} tập ok, ${fail} lỗi / ${totalMissing}`);
   await db.mongoose.disconnect();
+  process.exit(0); // ép thoát: 1 socket tải treo (đã timeout) có thể giữ event loop sống
 }
 
 main().catch((e) => { console.error("[worker] fatal:", e); process.exit(1); });

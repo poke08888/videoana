@@ -42,7 +42,28 @@ async function rsyncToServer(localFile, filename) {
   );
 }
 
-async function renderEpisode({ series, provider, sourceId, ep }) {
+// Timeout cứng mỗi tập: 1 tập bình thường ~90-140s. Nếu quá EP_TIMEOUT_MIN (mặc định 8 phút)
+// thì coi như treo (tải hg stall...) -> bỏ, giải phóng slot, tránh Promise.all treo cả run.
+const EP_TIMEOUT_MS = Math.max(1, parseInt(process.env.EP_TIMEOUT_MIN) || 8) * 60 * 1000;
+
+async function renderEpisode(args) {
+  const tag = `${args.provider}:${args.sourceId} ep${args.ep.index + 1}`;
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`quá ${EP_TIMEOUT_MS / 60000} phút (treo, có thể tải stall)`)), EP_TIMEOUT_MS);
+  });
+  try {
+    return await Promise.race([renderEpisodeInner(args), timeout]);
+  } catch (e) {
+    status.fail(tag);
+    console.error(`[render] ✗ ${tag}:`, e.message);
+    return { ok: false, reason: e.message };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function renderEpisodeInner({ series, provider, sourceId, ep }) {
   const tag = `${provider}:${sourceId} ep${ep.index + 1}`;
   const movieKey = `${provider}:${sourceId}`;
   const t0 = Date.now();
