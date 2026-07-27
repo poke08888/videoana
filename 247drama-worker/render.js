@@ -80,7 +80,15 @@ async function renderEpisodeInner({ series, provider, sourceId, ep }) {
     status.setPhase(tag, "tải");
     const resolved = await duanju.resolveVideo(provider, sourceId, ep.videoId);
     if (!resolved.mp4Url) { status.fail(tag); return { ok: false, reason: "không có link" }; }
-    let buf = await duanju.downloadToBuffer(resolved.mp4Url, { useProxy: provider === "hm" });
+    // hg thường tải trực tiếp OK, nhưng MỘT SỐ tập trả URL douyinvod bị chặn/reset từ VN
+    // ("socket hang up") -> tải trực tiếp fail thì retry QUA PROXY HK (như hm). Timeout ngắn
+    // ở lần trực tiếp để fail nhanh sang proxy.
+    let buf;
+    try {
+      buf = await duanju.downloadToBuffer(resolved.mp4Url, { useProxy: provider === "hm", timeout: 60000, retries: 2 });
+    } catch (e1) {
+      buf = await duanju.downloadToBuffer(resolved.mp4Url, { useProxy: true, timeout: 120000, retries: 3 });
+    }
 
     if (env.keepOriginal) {
       try { fs.writeFileSync(rawPath, buf); } catch (e) {}
