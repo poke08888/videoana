@@ -18,7 +18,7 @@
 - **Idempotent:** bỏ qua tập đã có `episodeNumber` trong Mongo. Chạy lại worker không tạo trùng.
 - **Secrets không commit:** `.env` worker chứa Mongo connection string + password server → phải nằm trong `.gitignore`.
 - Giá trị chốt từ server (dùng nguyên): `freeEpisodesForNonVip=5` → `freeLimit=6` (index<6 miễn phí, coin 0; index>=6 khoá, coin 10). `proxyUrl=socks5://127.0.0.1:1080`. Gemini key + 52api key + OCR params đọc runtime từ `settingJSON` trong Mongo.
-- **HK VPS proxy:** `root@47.76.79.169` password `Dinh2510@`. **Server 247drama:** `root@103.179.185.196` password `Ngaymainha@1`.
+- **HK VPS proxy** (`HK_HOST`/`HK_PASSWORD`) và **Server 247drama** (`SERVER_HOST`/`SERVER_PASSWORD`): thông tin đăng nhập lưu trong `.env` (gitignored), KHÔNG hardcode trong file commit.
 
 ---
 

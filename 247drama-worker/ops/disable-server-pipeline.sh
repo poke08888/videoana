@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Tắt hẳn pipeline tải/OCR trên server 247drama để Mac làm worker duy nhất.
+# Mật khẩu + host đọc từ .env (gitignored) — KHÔNG hardcode trong file được commit.
 #
 # LƯU Ý: KHÔNG dùng importConcurrency=0 để tắt — getImportConcurrency() làm
 # `Math.max(1, Math.min(5, n || 1))`, nên n=0 (falsy) -> vẫn = 1 luồng. Cách
@@ -10,8 +11,13 @@
 #
 # ĐẢO NGƯỢC (bật lại server): xoá 2 dòng 52api khỏi /etc/hosts trên server.
 set -e
-SRV=root@103.179.185.196
-export SSHPASS='Ngaymainha@1'
+DIR="$(dirname "$0")"
+set -a; . "$DIR/../.env"; set +a
+: "${SERVER_HOST:?SERVER_HOST chưa có trong .env}"
+: "${SERVER_USER:?SERVER_USER chưa có trong .env}"
+: "${SERVER_PASSWORD:?SERVER_PASSWORD chưa có trong .env}"
+export SSHPASS="$SERVER_PASSWORD"
+SRV="${SERVER_USER}@${SERVER_HOST}"
 RUN="sshpass -e ssh -o StrictHostKeyChecking=accept-new $SRV"
 
 # 1) Chặn 52api trên server (reversible) — chặn nguồn tải/OCR của server.

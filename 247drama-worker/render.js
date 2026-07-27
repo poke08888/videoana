@@ -94,6 +94,9 @@ async function renderEpisode({ series, provider, sourceId, ep }) {
       { upsert: true },
     );
 
+    // Output đã nằm trên server -> xoá bản trên BINGNET để không tích 2 bản mọi tập.
+    // Raw download giữ lại làm backup nếu keepOriginal (mặc định), ngược lại xoá luôn.
+    try { fs.unlinkSync(outPath); } catch (e) {}
     if (!env.keepOriginal) { try { fs.unlinkSync(rawPath); } catch (e) {} }
     console.log(`[render] ✓ ${tag} sub=${subLang || "none"} ${r.segments || 0} câu, ${duration}s`);
     return { ok: true };

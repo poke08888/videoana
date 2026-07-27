@@ -1,4 +1,5 @@
 // Bắt buộc file tạm nằm trên BINGNET (autosub/transcode dùng os.tmpdir()).
+const fs = require("fs");
 const { env } = require("./config");
 process.env.TMPDIR = env.tmpDir;
 
@@ -8,6 +9,17 @@ const { findPendingWork } = require("./work");
 const { renderEpisode } = require("./render");
 
 async function main() {
+  // Fail-fast: đảm bảo thư mục làm việc tồn tại (nếu ổ ngoài BINGNET chưa mount thì dừng ngay,
+  // tránh tải + OCR + DỊCH (tốn quota Gemini) rồi mới chết ở bước ghi file).
+  for (const d of [env.downloadDir, env.tmpDir, env.outputDir]) {
+    try {
+      fs.mkdirSync(d, { recursive: true });
+    } catch (e) {
+      console.error(`[worker] không tạo được ${d} — ổ BINGNET đã mount chưa?`, e.message);
+      process.exit(1);
+    }
+  }
+
   await db.connect();
   await db.loadSettings();
   console.log(`[worker] concurrency=${env.concurrency}, ocrThreads=${env.ocrThreads}, tmp=${env.tmpDir}`);
@@ -22,10 +34,10 @@ async function main() {
 
   const jobs = [];
   for (const it of work) {
+    // Cập nhật tổng số tập nguồn (khớp process52apiEpisodes) — 1 lần/phim.
+    await db.MovieSeries.updateOne({ _id: it.series._id }, { $set: { sourceEpisodeCount: it.episodes.length } }).catch(() => {});
     for (const ep of it.missing) {
       jobs.push(limit(async () => {
-        // Cập nhật tổng số tập nguồn (khớp process52apiEpisodes) — chạy 1 lần/phim là đủ, updateOne rẻ.
-        await db.MovieSeries.updateOne({ _id: it.series._id }, { $set: { sourceEpisodeCount: it.episodes.length } }).catch(() => {});
         const r = await renderEpisode({ series: it.series, provider: it.provider, sourceId: it.sourceId, ep });
         done++; r.ok ? ok++ : fail++;
         if (done % 5 === 0 || done === totalMissing) console.log(`[worker] tiến độ ${done}/${totalMissing} (ok ${ok}, lỗi ${fail})`);
