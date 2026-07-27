@@ -3,7 +3,8 @@ const path = require("path");
 const { execFile } = require("child_process");
 const duanju = require("./util/duanjuProvider");
 const { subtitleVideoBuffer } = require("./util/autosub");
-const { env, buildFilename, buildVideoUrl, buildSubtitleConfig } = require("./config");
+const { uploadToR2 } = require("./util/r2");
+const { env, buildFilename, buildR2Key, buildVideoUrl, buildSubtitleConfig } = require("./config");
 const { ShortVideo } = require("./db");
 const status = require("./status");
 
@@ -25,21 +26,6 @@ async function probeDuration(file) {
   } catch (e) {
     return 0;
   }
-}
-
-// rsync 1 file lên /uploads server (đúng thứ tự: up xong mới ghi Mongo).
-async function rsyncToServer(localFile, filename) {
-  const { host, user, password, uploadsPath } = env.server;
-  const rsh = `sshpass -p ${JSON.stringify(password)} ssh -o StrictHostKeyChecking=accept-new`;
-  const remote = `${uploadsPath}/${filename}`;
-  await run("rsync", ["-t", "-e", rsh, localFile, `${user}@${host}:${remote}`], { timeout: 5 * 60 * 1000 });
-  // File nguồn trên exFAT/BINGNET có mode giả (700) -> nginx www-data không đọc -> 403.
-  // macOS dùng openrsync (KHÔNG hỗ trợ --chmod) nên ép quyền bằng chmod qua ssh sau khi copy.
-  await run(
-    "sshpass",
-    ["-p", password, "ssh", "-o", "StrictHostKeyChecking=accept-new", `${user}@${host}`, `chmod 644 ${remote}`],
-    { timeout: 60000 },
-  );
 }
 
 // Timeout cứng mỗi tập: 1 tập bình thường ~90-140s. Nếu quá EP_TIMEOUT_MIN (mặc định 8 phút)
@@ -111,9 +97,9 @@ async function renderEpisodeInner({ series, provider, sourceId, ep }) {
     // 3) ghi output ra BINGNET
     fs.writeFileSync(outPath, buf);
 
-    // 4) rsync lên server TRƯỚC
+    // 4) upload thẳng R2 (bỏ rsync server)
     status.setPhase(tag, "upload");
-    await rsyncToServer(outPath, filename);
+    await uploadToR2(buf, buildR2Key(provider, sourceId, ep.index), "video/mp4");
 
     // 5) duration + 6) upsert Mongo (khớp process52apiEpisodes)
     const duration = await probeDuration(outPath);
