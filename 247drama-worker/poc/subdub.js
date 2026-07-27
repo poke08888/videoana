@@ -13,7 +13,8 @@ const BASE = process.argv[2] || "hg_7650805046258453528_ep0";
 const VOICE = process.env.ELEVEN_VOICE_ID || "Tr84Gom1NKJwoYZT55td";
 const OUT_DIR = process.env.POC_OUT || path.join(env.workDir, "dub-poc");
 const DEMUCS_PY = process.env.DEMUCS_PYTHON || path.join(env.workDir, "demucs-venv/bin/python");
-const BG_VOL = process.env.BG_VOL || "1.0";
+const BG_VOL = process.env.BG_VOL || "0.55"; // nền hạ xuống để không át giọng
+const VOICE_VOL = process.env.VOICE_VOL || "2.5"; // giọng tăng ~+8dB (đang nhỏ hơn nền)
 const MAX_ATEMPO = 1.3;
 
 function run(cmd, args, opts = {}) {
@@ -91,11 +92,14 @@ async function main() {
   const labels = ["[bg]"];
   clips.forEach((c, k) => {
     const idx = k + 2;
-    const chain = c.atempo > 1 ? `atempo=${c.atempo},adelay=${c.startMs}:all=1` : `adelay=${c.startMs}:all=1`;
+    const speed = c.atempo > 1 ? `atempo=${c.atempo},` : "";
+    const chain = `${speed}volume=${VOICE_VOL},adelay=${c.startMs}:all=1`; // tăng giọng + đặt đúng giờ
     parts.push(`[${idx}:a]${chain}[c${k}]`);
     labels.push(`[c${k}]`);
   });
-  parts.push(`${labels.join("")}amix=inputs=${labels.length}:normalize=0:dropout_transition=0[aout]`);
+  // amix rồi LIMITER chặn đỉnh (giọng ×2.5 dễ vượt 0dBFS -> méo). Giới hạn ~-1dBFS.
+  parts.push(`${labels.join("")}amix=inputs=${labels.length}:normalize=0:dropout_transition=0[mix]`);
+  parts.push(`[mix]alimiter=limit=0.9:attack=5:release=50[aout]`);
   const filterFile = path.join(OUT_DIR, "filter_subdub.txt");
   fs.writeFileSync(filterFile, parts.join(";\n"));
 
