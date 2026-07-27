@@ -22,10 +22,20 @@ def main():
         _t = int(os.environ.get("OCR_THREADS", "0") or 0)
     except ValueError:
         _t = 0
+    # Giới hạn TRIỆT ĐỂ khi chạy song song: OpenCV + ONNX intra/inter-op. Nếu không, mỗi
+    # tiến trình OCR bung hết nhân -> nhiều OCR cùng lúc = thrashing (load bùng lên).
+    if _t > 0:
+        try:
+            cv2.setNumThreads(_t)
+        except Exception:
+            pass
     try:
-        engine = RapidOCR(intra_op_num_threads=_t) if _t > 0 else RapidOCR()
+        engine = RapidOCR(intra_op_num_threads=_t, inter_op_num_threads=_t) if _t > 0 else RapidOCR()
     except TypeError:
-        engine = RapidOCR()
+        try:
+            engine = RapidOCR(intra_op_num_threads=_t) if _t > 0 else RapidOCR()
+        except TypeError:
+            engine = RapidOCR()
 
     cap = cv2.VideoCapture(video)
     vfps = cap.get(cv2.CAP_PROP_FPS) or 25.0
