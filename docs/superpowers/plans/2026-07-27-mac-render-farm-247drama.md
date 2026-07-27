@@ -592,10 +592,11 @@ async function probeDuration(file) {
 async function rsyncToServer(localFile, filename) {
   const { host, user, password, uploadsPath } = env.server;
   const rsh = `sshpass -p ${JSON.stringify(password)} ssh -o StrictHostKeyChecking=accept-new`;
-  // --chmod=F644: ép file world-readable (rsync -a giữ mode 700 của Mac -> nginx www-data không đọc được -> 403).
-  await run("rsync", ["-a", "--chmod=F644", "-e", rsh, localFile, `${user}@${host}:${uploadsPath}/${filename}`], {
-    timeout: 5 * 60 * 1000,
-  });
+  const remote = `${uploadsPath}/${filename}`;
+  await run("rsync", ["-t", "-e", rsh, localFile, `${user}@${host}:${remote}`], { timeout: 5 * 60 * 1000 });
+  // File nguồn exFAT/BINGNET có mode giả (700) -> nginx 403. macOS openrsync KHÔNG hỗ trợ --chmod
+  // nên ép quyền bằng chmod 644 qua ssh sau khi copy.
+  await run("sshpass", ["-p", password, "ssh", "-o", "StrictHostKeyChecking=accept-new", `${user}@${host}`, `chmod 644 ${remote}`], { timeout: 60000 });
 }
 
 async function renderEpisode({ series, provider, sourceId, ep }) {
