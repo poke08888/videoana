@@ -165,6 +165,20 @@ export async function connectDB() {
   await addColumnIfMissing("ads_cohorts", "owner TEXT"); // email người tạo cụm
   await addColumnIfMissing("ads_cohorts", "synthesis TEXT"); // báo cáo tổng hợp "vì sao tài khoản thành công"
 
+  // Backfill NGÀY cho phiếu CŨ thuộc cụm (date cũ chỉ là placeholder "Hôm nay"/
+  // "Vừa xong"). Lấy ngày tạo cụm (ads_cohorts.created, ISO) → định dạng dd/mm/yyyy.
+  // Phiếu single cũ không có nguồn ngày nên giữ nguyên placeholder.
+  try {
+    await runQuery(
+      `UPDATE history SET date = strftime('%d/%m/%Y', (SELECT c.created FROM ads_cohorts c WHERE c.id = history.cohort_id))
+       WHERE date IN ('Hôm nay','Vừa xong')
+         AND cohort_id IS NOT NULL
+         AND (SELECT c.created FROM ads_cohorts c WHERE c.id = history.cohort_id) IS NOT NULL`
+    );
+  } catch (e) {
+    console.warn("[nonelab] Bỏ qua backfill ngày history:", e);
+  }
+
   // 2d. Kho kiến thức theo sản phẩm — chắt lọc từ các cụm, bơm vào prompt sau này.
   await runQuery(`
     CREATE TABLE IF NOT EXISTS product_knowledge (
