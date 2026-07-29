@@ -45,6 +45,10 @@ const app = express();
 app.use(cors());
 app.use(express.json({ limit: "16mb" })); // phiếu có nhúng ảnh frame thật (data-URL)
 
+// Ngày giờ thật khi tạo phiếu (thay cho placeholder "Hôm nay"). VD "24/07/2026 14:30".
+const nowVN = (): string =>
+  new Date().toLocaleString("vi-VN", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit", hour12: false });
+
 function resolveKey(reqKey?: string): string | null {
   const k = (reqKey || "").trim();
   if (k.length >= 10) return k;
@@ -236,7 +240,7 @@ app.post("/api/analyze/batch", requireAuth, upload.array("videos", 20), async (r
     const insertItem = async (title: string, queueMeta: any) => {
       await runQuery(
         "INSERT INTO history (id, title, platform, product, date, score, analysis, thumb, status, queue_meta, owner) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        [newId(), title, form.platform || "TikTok / Douyin", form.product || "", "Hôm nay", 0, "{}", pickBg(), "pending", JSON.stringify(queueMeta), owner]
+        [newId(), title, form.platform || "TikTok / Douyin", form.product || "", nowVN(), 0, "{}", pickBg(), "pending", JSON.stringify(queueMeta), owner]
       );
     };
 
@@ -330,7 +334,7 @@ app.post("/api/ads/import", requireEditor, upload.single("file"), async (req, re
       const meta = { apiKey, model, form: { product, platform: "TikTok / Douyin" }, tiktokUrl: v.link, tokapiKey, email, ads: toAdsReport(v), cohortId };
       await runQuery(
         "INSERT INTO history (id, title, platform, product, date, score, analysis, thumb, status, queue_meta, cohort_id, owner) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        [id, `#${v.stt ?? "?"} · ${product}`, "TikTok / Douyin", product, "Hôm nay", v.efficiencyScore, "{}", av[enq % av.length], "pending", JSON.stringify(meta), cohortId, owner]
+        [id, `#${v.stt ?? "?"} · ${product}`, "TikTok / Douyin", product, nowVN(), v.efficiencyScore, "{}", av[enq % av.length], "pending", JSON.stringify(meta), cohortId, owner]
       );
       enq++;
     }
@@ -578,7 +582,7 @@ app.post("/api/campaign/create", requireEditor, async (req, res) => {
       const meta = { apiKey, model, form: { product: keyword, platform: "TikTok / Douyin" }, tiktokUrl: v.link, tokapiKey, email, eng: engs[i], cohortId };
       await runQuery(
         "INSERT INTO history (id, title, platform, product, date, score, analysis, thumb, status, queue_meta, cohort_id, owner) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        [id, (v.desc || "Video TikTok").slice(0, 80), "TikTok / Douyin", keyword, "Hôm nay", engs[i].score, "{}", av[i % av.length], "pending", JSON.stringify(meta), cohortId, owner]
+        [id, (v.desc || "Video TikTok").slice(0, 80), "TikTok / Douyin", keyword, nowVN(), engs[i].score, "{}", av[i % av.length], "pending", JSON.stringify(meta), cohortId, owner]
       );
     }
     res.json({ ok: true, cohortId, keyword, count: videos.length });
@@ -629,7 +633,7 @@ app.post("/api/account/create", requireEditor, async (req, res) => {
       const meta = { apiKey, model, form: { product: label, platform: platLabel }, tiktokUrl: v.link, tokapiKey, douyinKey, email, eng: engs[i], cohortId };
       await runQuery(
         "INSERT INTO history (id, title, platform, product, date, score, analysis, thumb, status, queue_meta, cohort_id, owner) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        [id, (v.desc || ("Video " + platLabel)).slice(0, 80), platLabel, label, "Hôm nay", engs[i].score, "{}", av[i % av.length], "pending", JSON.stringify(meta), cohortId, owner]
+        [id, (v.desc || ("Video " + platLabel)).slice(0, 80), platLabel, label, nowVN(), engs[i].score, "{}", av[i % av.length], "pending", JSON.stringify(meta), cohortId, owner]
       );
     }
     res.json({ ok: true, cohortId, count: videos.length });
