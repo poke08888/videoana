@@ -164,3 +164,42 @@ test("fetchAccountVideos: dedup theo aweme_id", async () => {
   const out = await fetchAccountVideos(acc, { count: 100, key: "K", apiGet });
   assert.deepEqual(out.map((v) => v.awemeId), ["1", "2"]);
 });
+
+// Bugfix: Douyin fetch_user_post_videos trả JSON có ký tự điều khiển thô -> parse khoan dung.
+import { parseJsonLenient } from "./account.js";
+
+test("parseJsonLenient: JSON hợp lệ parse như bình thường", () => {
+  assert.deepEqual(parseJsonLenient('{"a":1,"b":"x"}'), { a: 1, b: "x" });
+});
+
+test("parseJsonLenient: ký tự điều khiển thô trong string vẫn parse được", () => {
+  const bad = '{"desc":"dòng1\x01dòng2\nline3","n":5}'; // \x01 + xuống dòng thô trong string
+  assert.throws(() => JSON.parse(bad)); // parser strict phải fail
+  const out = parseJsonLenient(bad);
+  assert.equal(out.n, 5);
+  assert.ok(typeof out.desc === "string" && out.desc.includes("dòng1"));
+});
+
+// Bugfix Douyin: response ~1MB đôi khi bị cắt cụt -> retry + giữ video đã lấy.
+test("fetchAccountVideos: 1 trang lỗi tạm thời -> thử lại rồi lấy được", async () => {
+  const acc: Account = { platform: "tiktok", secId: "S", handle: "n", nickname: "N", avatar: "" };
+  let calls = 0;
+  const apiGet: ApiGet = async () => {
+    calls++;
+    if (calls === 1) throw new Error("Unterminated string in JSON");
+    return { aweme_list: [AW("1", 1, 1)], has_more: 0, max_cursor: "0" };
+  };
+  const out = await fetchAccountVideos(acc, { count: 100, key: "K", apiGet, sleepMs: 0 });
+  assert.deepEqual(out.map((v) => v.awemeId), ["1"]);
+  assert.equal(calls, 2);
+});
+
+test("fetchAccountVideos: trang sau hỏng hẳn -> giữ video trang trước, không ném", async () => {
+  const acc: Account = { platform: "tiktok", secId: "S", handle: "n", nickname: "N", avatar: "" };
+  const apiGet: ApiGet = async (_h, _p, params) => {
+    if (params.offset === "0") return { aweme_list: [AW("1", 1, 1), AW("2", 1, 1)], has_more: 1, max_cursor: "5" };
+    throw new Error("Unterminated string in JSON");
+  };
+  const out = await fetchAccountVideos(acc, { count: 100, key: "K", apiGet, sleepMs: 0 });
+  assert.deepEqual(out.map((v) => v.awemeId).sort(), ["1", "2"]);
+});

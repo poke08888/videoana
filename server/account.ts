@@ -17,12 +17,26 @@ export const defaultApiGet: ApiGet = async (host, pathname, params, key) => {
   const u = new URL(`https://${host}${pathname}`);
   for (const [k, v] of Object.entries(params)) if (v != null && v !== "") u.searchParams.set(k, v);
   const res = await fetch(u.toString(), { headers: { "x-rapidapi-key": key, "x-rapidapi-host": host } });
+  const txt = await res.text();
   if (!res.ok) {
-    const b = await res.text().catch(() => "");
-    throw new Error(`RapidAPI ${host} HTTP ${res.status}: ${b.slice(0, 160)}`);
+    throw new Error(`RapidAPI ${host} HTTP ${res.status}: ${txt.slice(0, 160)}`);
   }
-  return res.json();
+  return parseJsonLenient(txt);
 };
+
+/**
+ * Parse JSON KHOAN DUNG: API Douyin (fetch_user_post_videos) đôi khi trả ký tự
+ * điều khiển THÔ (chưa escape) trong desc video → JSON.parse strict ném lỗi
+ * "Unterminated string / Invalid control character". Thử strict trước, nếu lỗi
+ * thì thay mọi ký tự điều khiển bằng dấu cách rồi parse lại.
+ */
+export function parseJsonLenient(text: string): any {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return JSON.parse(text.replace(/[\x00-\x1F]+/g, " "));
+  }
+}
 
 export interface Account {
   platform: Platform;
@@ -139,19 +153,43 @@ function toAccountVideo(aw: any, account: Account): AccountVideo {
  */
 export async function fetchAccountVideos(
   account: Account,
-  opts: { count?: number; key: string; apiGet?: ApiGet; shouldStop?: () => boolean }
+  opts: { count?: number; key: string; apiGet?: ApiGet; shouldStop?: () => boolean; sleepMs?: number }
 ): Promise<AccountVideo[]> {
   const apiGet = opts.apiGet || defaultApiGet;
   const want = Math.min(Math.max(1, opts.count || 100), 100);
+  const sleepMs = opts.sleepMs ?? 800;
+  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+  // 1 trang = 1 lời gọi API. Response Douyin ~1MB (gzip/chunked) đôi khi bị cắt
+  // cụt tạm thời → JSON.parse ném "Unterminated string". Thử lại vài lần cho 1 trang.
+  const fetchPage = async (): Promise<any> => {
+    let last: any;
+    for (let i = 0; i < 3; i++) {
+      try {
+        return account.platform === "tiktok"
+          ? await apiGet(TIKTOK_HOST, `/v1/post/user/${account.secId}/posts`, { count: "20", offset: cursor }, opts.key)
+          : await apiGet(DOUYIN_HOST, "/api/v1/douyin/web/fetch_user_post_videos", { sec_user_id: account.secId, count: "20", max_cursor: cursor }, opts.key);
+      } catch (e) {
+        last = e;
+        if (i < 2) await sleep(sleepMs * (i + 1));
+      }
+    }
+    throw last;
+  };
   const out: AccountVideo[] = [];
   const seen = new Set<string>();
   let cursor = "0";
   const MAX_PAGES = 20;
   for (let p = 0; p < MAX_PAGES && out.length < want; p++) {
     if (opts.shouldStop?.()) break;
-    const raw = account.platform === "tiktok"
-      ? await apiGet(TIKTOK_HOST, `/v1/post/user/${account.secId}/posts`, { count: "20", offset: cursor }, opts.key)
-      : await apiGet(DOUYIN_HOST, "/api/v1/douyin/web/fetch_user_post_videos", { sec_user_id: account.secId, count: "20", max_cursor: cursor }, opts.key);
+    let raw: any;
+    try {
+      raw = await fetchPage();
+    } catch (e) {
+      // Trang này hỏng hẳn sau khi thử lại → GIỮ video đã lấy được, dừng phân
+      // trang thay vì làm hỏng cả job (thà có ít video còn hơn 0).
+      console.warn(`[nonelab] Lỗi lấy trang video tài khoản (giữ ${out.length} video đã có):`, String((e as any)?.message || e));
+      break;
+    }
     const data = account.platform === "douyin" ? (raw?.data || raw) : raw;
     const list: any[] = data?.aweme_list || [];
     for (const aw of list) {
