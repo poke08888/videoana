@@ -4,12 +4,25 @@
 
 function vttTime(sec) {
   const t = Math.max(0, sec);
-  const h = Math.floor(t / 3600);
-  const m = Math.floor((t % 3600) / 60);
-  const s = Math.floor(t % 60);
-  const ms = Math.round((t - Math.floor(t)) * 1000);
+  // Làm tròn về tổng số mili-giây NGAY TỪ ĐẦU rồi mới tách giờ/phút/giây/mili-giây.
+  // Nếu làm tròn giờ/phút/giây (floor) và mili-giây (round) riêng lẻ như trước, phần
+  // thập phân >= 0.9995 sẽ cho ms=1000 mà không cộng dồn được sang giây (ví dụ
+  // 1.9996 -> "00:00:01.1000" sai định dạng, đúng ra phải là "00:00:02.000").
+  const totalMs = Math.round(t * 1000);
+  const ms = totalMs % 1000;
+  const totalSec = Math.floor(totalMs / 1000);
+  const s = totalSec % 60;
+  const m = Math.floor(totalSec / 60) % 60;
+  const h = Math.floor(totalSec / 3600);
   const p = (n, w = 2) => String(n).padStart(w, "0");
   return `${p(h)}:${p(m)}:${p(s)}.${p(ms, 3)}`;
+}
+
+// Escape ký tự đặc biệt của WebVTT trong nội dung cue. Thứ tự bắt buộc: escape "&"
+// trước tiên (kẻo escape luôn "&" vừa sinh ra từ "<"/">"), rồi mới tới "<" và ">" —
+// dấu "<" mở tag trong WebVTT nên để nguyên có thể bị hiểu nhầm thành markup.
+function escapeVttText(text) {
+  return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
 /**
@@ -25,6 +38,7 @@ function segsToVtt(segments, opts = {}) {
         .split("\n")
         .map((l) => l.trim())
         .filter(Boolean)
+        .map(escapeVttText)
         .join("\n");
       return `${vttTime(s.start + offset)} --> ${vttTime(s.end + offset)}\n${text}\n`;
     });
