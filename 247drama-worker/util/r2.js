@@ -11,8 +11,9 @@ function r2Client() {
   });
 }
 
-// Upload buffer lên R2. Cache dài vì key cố định theo tập.
-async function uploadToR2(buffer, key, contentType) {
+// Upload buffer lên R2. Mặc định cache dài vì key video cố định theo tập; caller nào ghi đè
+// nhiều lần (phụ đề) thì truyền opts.cacheControl ngắn hơn để không kẹt ở edge Cloudflare.
+async function uploadToR2(buffer, key, contentType, opts = {}) {
   const client = r2Client();
   await client.send(
     new PutObjectCommand({
@@ -20,7 +21,7 @@ async function uploadToR2(buffer, key, contentType) {
       Key: key,
       Body: buffer,
       ContentType: contentType,
-      CacheControl: "public, max-age=31536000, immutable",
+      CacheControl: opts.cacheControl || "public, max-age=31536000, immutable",
     }),
   );
 }

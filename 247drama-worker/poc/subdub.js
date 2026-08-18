@@ -1,6 +1,7 @@
-// 1 VIDEO CÓ CẢ VIETSUB (chữ, đã burn) + VIETDUB (giọng Việt TTS, nền tách demucs).
+// 1 VIDEO CÓ CẢ VIETSUB (chữ, đã burn) + VIETDUB (đa giọng TTS, nền tách demucs).
 // Hình lấy từ video ĐÃ RENDER (có sub Việt) trên R2; tiếng = nền sạch + TTS từ SUB VIỆT.
-// Tái dùng no_vocals.wav (demucs) + clip TTS nếu đã có. Dùng: node poc/subdub.js [base_name]
+// Phân vai (casting.js): mỗi nhân vật 1 giọng; cảm xúc -> voice_settings. Timing KHÔNG chồng câu.
+// Dùng: node poc/subdub.js [base_name]
 require("dotenv").config();
 const fs = require("fs");
 const path = require("path");
@@ -9,15 +10,15 @@ const axios = require("axios");
 const db = require("./../db");
 const { env, buildSubtitleConfig } = require("./../config");
 const { tts } = require("./elevenlabs");
-const { tagEmotions } = require("./emotion");
+const { buildCasting } = require("./casting");
 
 const BASE = process.argv[2] || "hg_7650805046258453528_ep0";
-const VOICE = process.env.ELEVEN_VOICE_ID || "Tr84Gom1NKJwoYZT55td";
 const OUT_DIR = process.env.POC_OUT || path.join(env.workDir, "dub-poc");
 const DEMUCS_PY = process.env.DEMUCS_PYTHON || path.join(env.workDir, "demucs-venv/bin/python");
-const BG_VOL = process.env.BG_VOL || "0.55"; // nền hạ xuống để không át giọng
-const VOICE_VOL = process.env.VOICE_VOL || "2.5"; // giọng tăng ~+8dB (đang nhỏ hơn nền)
-const MAX_ATEMPO = 1.3;
+const BG_VOL = process.env.BG_VOL || "0.55";
+const VOICE_VOL = process.env.VOICE_VOL || "2.2";
+const MAX_ATEMPO = 1.15;   // giãn nhẹ cho tự nhiên (trước là 1.3 -> nói vội)
+const GAP_MS = 120;        // khe thở giữa 2 câu, không cho dính tiếng
 
 function run(cmd, args, opts = {}) {
   return new Promise((resolve, reject) => {
@@ -41,28 +42,29 @@ async function loadViSegs(name) {
 async function main() {
   if (!process.env.ELEVEN_API_KEY) throw new Error("thiếu ELEVEN_API_KEY");
   fs.mkdirSync(OUT_DIR, { recursive: true });
-  const clipsDir = path.join(OUT_DIR, "clips");
+  const clipsDir = path.join(OUT_DIR, "clips2"); // dir mới: đa giọng, không đụng clip cũ 1-giọng
   fs.mkdirSync(clipsDir, { recursive: true });
 
   // 1) sub Việt
   const viSegs = await loadViSegs(BASE);
   console.log(`[subdub] ${viSegs.length} câu Việt`);
 
-  // 1b) Gemini gán tag cảm xúc từng câu (Plan A) -> chèn [tag] vào text v3.
-  const emoPath = path.join(OUT_DIR, "emotions.json");
-  let tags;
-  if (fs.existsSync(emoPath)) {
-    tags = JSON.parse(fs.readFileSync(emoPath, "utf8"));
-    console.log("[subdub] dùng emotions.json local");
+  // 1b) casting: phân vai (giọng theo nhân vật) + cảm xúc (voice_settings). Cache casting.json.
+  const castPath = path.join(OUT_DIR, "casting.json");
+  let cast;
+  if (fs.existsSync(castPath)) {
+    cast = JSON.parse(fs.readFileSync(castPath, "utf8"));
+    console.log("[subdub] dùng casting.json local");
   } else {
     await db.connect();
     await db.loadSettings();
     const cfg = buildSubtitleConfig(global.settingJSON);
-    tags = await tagEmotions(viSegs, { apiKey: cfg.apiKey, model: cfg.geminiModel });
+    cast = await buildCasting(viSegs, { apiKey: cfg.apiKey, model: cfg.geminiModel });
     await db.mongoose.disconnect();
-    fs.writeFileSync(emoPath, JSON.stringify(tags, null, 2));
+    fs.writeFileSync(castPath, JSON.stringify(cast, null, 2));
   }
-  console.log(`[subdub] cảm xúc: ${tags.filter(Boolean).length}/${tags.length} câu có tag (${[...new Set(tags.filter(Boolean))].join(", ")})`);
+  console.log("[subdub] DÀN GIỌNG:");
+  cast.summary.forEach((s) => console.log("   " + s));
 
   // 2) video ĐÃ CÓ SUB (tải từ R2 nếu chưa có local)
   const subbed = path.join(OUT_DIR, `${BASE}_subbed.mp4`);
@@ -84,25 +86,48 @@ async function main() {
   if (!fs.existsSync(bg)) throw new Error("không có no_vocals.wav");
   console.log("[subdub] nền sạch OK");
 
-  // 4) TTS từng câu (tái dùng clip đã có), time-fit nhẹ
-  const clips = [];
+  // 4) TTS từng câu: giọng + voice_settings theo casting. Cache theo (index, voiceId).
+  const raw = [];
   for (let i = 0; i < viSegs.length; i++) {
     const s = viSegs[i];
     const text = String(s.text || "").trim();
     if (!text) continue;
-    const nextStart = i + 1 < viSegs.length ? (viSegs[i + 1].start || 0) : (s.end || 0) + 2;
-    const slot = Math.max(0.6, nextStart - (s.start || 0));
-    const mp3 = path.join(clipsDir, `c${i}.mp3`);
+    const c = cast.plan[i] || {};
+    const voiceId = c.voiceId || process.env.ELEVEN_VOICE_ID;
+    const mp3 = path.join(clipsDir, `c${i}_${voiceId}.mp3`);
     if (!fs.existsSync(mp3)) {
-      const emo = tags[i] ? `[${tags[i]}] ` : ""; // chèn tag cảm xúc v3 (không đọc thành lời)
-      process.stdout.write(`\r[subdub] TTS ${i + 1}/${viSegs.length}   `);
-      fs.writeFileSync(mp3, await tts(emo + text, { apiKey: process.env.ELEVEN_API_KEY, voiceId: VOICE }));
+      process.stdout.write(`\r[subdub] TTS ${i + 1}/${viSegs.length} (${c.char || "?"}/${c.emotion || "neutral"})        `);
+      // v3: cảm xúc qua AUDIO TAG chèn đầu câu (không đọc thành lời). neutral -> không chèn.
+      const ttsText = c.emotion && c.emotion !== "neutral" ? `[${c.emotion}] ${text}` : text;
+      const buf = await tts(ttsText, {
+        apiKey: process.env.ELEVEN_API_KEY,
+        voiceId,
+        stability: c.stability ?? 0.5,
+        style: c.style ?? 0.0,
+      });
+      fs.writeFileSync(mp3, buf);
     }
     const dur = await probeDur(mp3);
-    const atempo = dur > slot ? Math.min(MAX_ATEMPO, +(dur / slot).toFixed(3)) : 1;
-    clips.push({ file: mp3, startMs: Math.round((s.start || 0) * 1000), atempo });
+    raw.push({ file: mp3, start: s.start || 0, dur });
   }
-  console.log(`\n[subdub] ${clips.length} clip sẵn`);
+  console.log(`\n[subdub] ${raw.length} clip sẵn`);
+
+  // 4b) TIMING KHÔNG CHỒNG CÂU: đặt clip tại start, nếu tràn -> giãn atempo nhẹ (<=1.15),
+  // còn tràn thì ĐẨY câu sau trễ lại (cursor). Luôn chèn khe GAP_MS. Không bao giờ đè tiếng.
+  const clips = [];
+  let cursor = 0; // ms — mốc sớm nhất câu kế được phép bắt đầu
+  for (let i = 0; i < raw.length; i++) {
+    const r = raw[i];
+    const startMs = Math.max(Math.round(r.start * 1000), cursor);
+    const nextStartMs = i + 1 < raw.length ? Math.round(raw[i + 1].start * 1000) : startMs + Math.round(r.dur * 1000) + 999999;
+    const slotMs = nextStartMs - startMs - GAP_MS; // chỗ trống tới câu kế (đã trừ khe thở)
+    const durMs = r.dur * 1000;
+    let atempo = 1;
+    if (durMs > slotMs && slotMs > 0) atempo = Math.min(MAX_ATEMPO, +(durMs / slotMs).toFixed(3));
+    const effMs = Math.round(durMs / atempo);
+    clips.push({ file: r.file, startMs, atempo });
+    cursor = startMs + effMs + GAP_MS;
+  }
 
   // 5) mux: video CÓ SUB (0:v) + nền sạch (1) + clip Việt -> final
   const inputs = ["-i", subbed, "-i", bg];
@@ -112,20 +137,18 @@ async function main() {
   clips.forEach((c, k) => {
     const idx = k + 2;
     const speed = c.atempo > 1 ? `atempo=${c.atempo},` : "";
-    const chain = `${speed}volume=${VOICE_VOL},adelay=${c.startMs}:all=1`; // tăng giọng + đặt đúng giờ
-    parts.push(`[${idx}:a]${chain}[c${k}]`);
+    parts.push(`[${idx}:a]${speed}volume=${VOICE_VOL},adelay=${c.startMs}:all=1[c${k}]`);
     labels.push(`[c${k}]`);
   });
-  // amix rồi LIMITER chặn đỉnh (giọng ×2.5 dễ vượt 0dBFS -> méo). Giới hạn ~-1dBFS.
   parts.push(`${labels.join("")}amix=inputs=${labels.length}:normalize=0:dropout_transition=0[mix]`);
   parts.push(`[mix]alimiter=limit=0.9:attack=5:release=50[aout]`);
   const filterFile = path.join(OUT_DIR, "filter_subdub.txt");
   fs.writeFileSync(filterFile, parts.join(";\n"));
 
   const outFile = path.join(OUT_DIR, `${BASE}_subdub.mp4`);
-  console.log("[subdub] ghép video(sub) + nền + giọng Việt...");
+  console.log("[subdub] ghép video(sub) + nền + giọng Việt đa vai...");
   await run("ffmpeg", ["-y", ...inputs, "-filter_complex_script", filterFile, "-map", "0:v", "-map", "[aout]", "-c:v", "copy", "-c:a", "aac", "-b:a", "192k", outFile]);
-  console.log(`\n✅ XONG (Vietsub + Vietdub) -> ${outFile}`);
+  console.log(`\n✅ XONG (Vietsub + Vietdub đa giọng) -> ${outFile}`);
 }
 
 main().catch((e) => { console.error("\n[subdub] LỖI:", e.message); process.exit(1); });

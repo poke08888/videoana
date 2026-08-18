@@ -22,10 +22,13 @@ const ShortVideo = require("../models/shortVideo.model");
     }
 
     await mongoose.connect(mongoUrl);
-    const r = await ShortVideo.updateMany(
-      { burnedLang: { $exists: false } },
-      { $set: { burnedLang: "vi", subTracks: [] } },
-    );
+    // Gán burnedLang = subLang của CHÍNH tập đó, không gán cứng "vi": tập render nhưng
+    // phụ đề thất bại có subLang "" (video còn chữ Trung, chưa hề có sub Việt) — gán "vi"
+    // cho chúng là nói dối app (app sẽ ẩn nút chọn phụ đề). Bản chạy đầu trên production
+    // đã gán cứng và dán nhãn sai 95 tập; số đó đã được sửa tay bằng đúng pipeline này.
+    const r = await ShortVideo.updateMany({ burnedLang: { $exists: false } }, [
+      { $set: { burnedLang: { $ifNull: ["$subLang", ""] }, subTracks: [] } },
+    ]);
     console.log("✓ đã đánh dấu:", r.modifiedCount);
     await mongoose.disconnect();
   } catch (error) {

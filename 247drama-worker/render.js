@@ -95,6 +95,30 @@ async function renderEpisodeInner({ series, provider, sourceId, ep }) {
     }
     const subLang = r.subbed ? (subCfg.targetLang || "vi") : "";
 
+    // Chế độ soft: dựng sẵn nội dung WebVTT TRƯỚC khi upload bất cứ thứ gì. Video soft đã bị
+    // drawbox xoá chữ Trung, nên thiếu track = tập không còn một chữ nào; mà work.js coi
+    // "đã có bản ghi" là xong và KHÔNG BAO GIỜ render lại -> phải bỏ tập ngay từ đây để lần
+    // chạy sau làm lại, thay vì upsert một tập vĩnh viễn không xem được.
+    const softBodies = [];
+    if (!r.burned) {
+      // subStartOffsetMs do admin sửa tay trong JSON setting: không phải số thì coi như 0,
+      // nếu không segsToVtt sinh timestamp NaN mà vẫn ra chuỗi khác rỗng -> file phụ đề hỏng.
+      const rawOffset = ((global.settingJSON && global.settingJSON.subtitle) || {}).subStartOffsetMs;
+      const offsetSec = (typeof rawOffset === "number" && isFinite(rawOffset) ? rawOffset : 0) / 1000;
+      const wantLangs = [["vi", r.viSegs]];
+      if (subCfg.secondLang) wantLangs.push([subCfg.secondLang, r.enSegs]);
+      for (const [lang, segs] of wantLangs) {
+        const body = segsToVtt(segs, { offsetSec });
+        if (!body) {
+          status.fail(tag);
+          const why = `soft-sub thiếu bản dịch ${lang}`;
+          console.error(`[render] ✗ ${tag}: ${why} -> bỏ tập, lần chạy sau render lại`);
+          return { ok: false, reason: why };
+        }
+        softBodies.push([lang, body]);
+      }
+    }
+
     // 3) ghi output ra BINGNET
     fs.writeFileSync(outPath, buf);
 
@@ -110,19 +134,20 @@ async function renderEpisodeInner({ series, provider, sourceId, ep }) {
       } catch (e) {}
     }
 
-    // 4c) Chế độ soft: up track WebVTT rời cho từng ngôn ngữ có bản dịch.
+    // 4c) Chế độ soft: up track WebVTT rời (đã dựng và kiểm ở bước trên).
     const subTracks = [];
-    if (!r.burned) {
-      const offsetSec = (((global.settingJSON && global.settingJSON.subtitle) || {}).subStartOffsetMs || 0) / 1000;
-      for (const [lang, segs] of [["vi", r.viSegs], ["en", r.enSegs]]) {
-        const body = segsToVtt(segs, { offsetSec });
-        if (!body) continue;
-        try {
-          await uploadToR2(Buffer.from(body, "utf8"), buildSubKey(provider, sourceId, ep.index, lang), "text/vtt; charset=utf-8");
-          subTracks.push({ lang, url: buildSubUrl(provider, sourceId, ep.index, lang) });
-        } catch (e) {
-          console.error(`[render] up track ${lang} lỗi:`, e.message);
-        }
+    for (const [lang, body] of softBodies) {
+      try {
+        await uploadToR2(Buffer.from(body, "utf8"), buildSubKey(provider, sourceId, ep.index, lang), "text/vtt; charset=utf-8", {
+          // Phụ đề còn sửa nhiều lần (chất lượng dịch, timing). Cache dài + immutable như
+          // video sẽ khiến bản hỏng kẹt ở edge Cloudflare và ở máy người xem cả năm.
+          cacheControl: "public, max-age=300, must-revalidate",
+        });
+        subTracks.push({ lang, url: buildSubUrl(provider, sourceId, ep.index, lang) });
+      } catch (e) {
+        status.fail(tag);
+        console.error(`[render] ✗ ${tag}: up track ${lang} lỗi:`, e.message);
+        return { ok: false, reason: `up track ${lang} lỗi: ${e.message}` };
       }
     }
 

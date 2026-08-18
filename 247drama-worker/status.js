@@ -16,7 +16,23 @@ const state = {
   movies: {},        // key -> { name, done, target }
   inflight: {},      // tag -> { phase, since }
   recent: [],        // [{ tag, sub, segs, sec, at }]
+  needsRedo: [],     // [{ name, eps:[...] }] — tập trống vietsub (subLang != "vi") cần làm lại
 };
+
+// Danh sách tập trống vietsub (worker query DB mỗi pass) -> khu "cần làm lại" trên dashboard.
+function setNeedsRedo(list) {
+  state.needsRedo = Array.isArray(list) ? list : [];
+}
+
+// Cập nhật target 1 phim GIỮA pass: refreshMovieRows chạy đầu pass đọc sourceEpisodeCount cũ
+// (=0 với phim mới) -> target thiếu suốt cả pass dài. findPendingWork biết số tập thật thì gọi
+// hàm này để target + % hiện đúng ngay, không phải chờ pass sau.
+function setTarget(key, target) {
+  const m = state.movies[key];
+  if (!m || typeof target !== "number") return;
+  state.target += target - (m.target || 0);
+  m.target = target;
+}
 
 // movieRows: [{ key, name, done, target }] — nạp 1 lần lúc khởi động (mọi phim 52api).
 function initMovies(movieRows) {
@@ -54,6 +70,11 @@ function snapshot() {
   const totalDone = Object.values(state.movies).reduce((n, m) => n + Math.min(m.done, m.target || m.done), 0);
   const remaining = Math.max(0, state.target - totalDone);
   const etaMin = perMin > 0 ? Math.round(remaining / perMin) : null;
+  // Phim chưa xác định số tập (target<=0, vd nguồn hỏng / mới thêm chưa quét) -> KHÔNG được
+  // tính là xong. Nếu còn phim như vậy thì chặn % ở 99 để dashboard không báo 100% giả.
+  const unresolved = Object.values(state.movies).filter((m) => !m.target || m.target <= 0).length;
+  let pct = state.target ? Math.round((totalDone / state.target) * 100) : 0;
+  pct = unresolved > 0 ? Math.min(99, pct) : Math.min(100, pct);
   return {
     updatedAt: new Date(now).toISOString(),
     running: true,
@@ -62,7 +83,8 @@ function snapshot() {
       target: state.target,
       remaining,
       failed: state.failed,
-      pct: state.target ? Math.min(100, Math.round((totalDone / state.target) * 100)) : 0,
+      pct,
+      unresolved,
       doneThisRun: state.doneThisRun,
     },
     throughput: { perMin: Math.round(perMin * 10) / 10, etaMin, concurrency: state.concurrency },
@@ -73,6 +95,8 @@ function snapshot() {
       .map(([tag, v]) => ({ tag, phase: v.phase, sec: Math.round((now - v.since) / 1000) }))
       .sort((a, b) => b.sec - a.sec),
     recent: state.recent.map((r) => ({ tag: r.tag, sub: r.sub, segs: r.segs, sec: r.sec, agoSec: Math.round((now - r.at) / 1000) })),
+    needsRedo: state.needsRedo,
+    needsRedoCount: state.needsRedo.reduce((n, m) => n + (m.eps ? m.eps.length : 0), 0),
   };
 }
 
@@ -100,4 +124,4 @@ async function pushToServer(finalRunning) {
   }
 }
 
-module.exports = { initMovies, setPhase, done, fail, snapshot, pushToServer, STATUS_FILE };
+module.exports = { initMovies, setNeedsRedo, setTarget, setPhase, done, fail, snapshot, pushToServer, STATUS_FILE };

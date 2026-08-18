@@ -21,13 +21,31 @@ async function refreshMovieRows() {
     .select("_id name bookId sourceProvider sourceEpisodeCount")
     .lean();
   const movieRows = [];
+  const nameById = new Map();
   for (const m of allMovies) {
     const { provider, sourceId } = extract52apiSource(m);
     if (!provider || !sourceId) continue;
+    nameById.set(String(m._id), m.name);
     const done = await db.ShortVideo.countDocuments({ movieSeries: m._id });
     movieRows.push({ key: `${provider}:${sourceId}`, name: m.name, done, target: m.sourceEpisodeCount || 0 });
   }
   status.initMovies(movieRows);
+
+  // Tập TRỐNG vietsub: render xong nhưng OCR không ra câu nào -> subLang != "vi" (render.js đặt
+  // "" khi !r.subbed). Gom theo phim cho khu "Cần làm lại" trên dashboard (để check + render lại).
+  const blanks = await db.ShortVideo.find({ sourceProvider: /^52api-/, subLang: { $ne: "vi" } })
+    .select("movieSeries episodeNumber")
+    .lean();
+  const byMovie = {};
+  for (const b of blanks) {
+    const nm = nameById.get(String(b.movieSeries));
+    if (!nm) continue; // bỏ tập không map được phim (dữ liệu lạc)
+    (byMovie[nm] ||= []).push(b.episodeNumber);
+  }
+  const needsRedo = Object.keys(byMovie)
+    .sort()
+    .map((name) => ({ name, eps: byMovie[name].sort((a, b) => a - b) }));
+  status.setNeedsRedo(needsRedo);
 }
 
 // 1 vòng quét: tìm việc còn thiếu -> render hết. Trả về số tập đã xử lý trong vòng.
@@ -36,6 +54,9 @@ async function runPass() {
   await refreshMovieRows();
 
   const work = await findPendingWork();
+  // Cập nhật target thật NGAY khi biết số tập (phim mới đầu pass còn epCount=0) -> dashboard
+  // hiện đúng % suốt pass dài, không đứng hình ở target cũ.
+  for (const it of work) status.setTarget(`${it.provider}:${it.sourceId}`, it.episodes.length);
   const totalMissing = work.reduce((n, w) => n + w.missing.length, 0);
   console.log(`[worker] quét: ${work.length} phim, ${totalMissing} tập cần render`);
   if (!totalMissing) return 0;

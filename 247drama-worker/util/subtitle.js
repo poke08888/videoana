@@ -32,13 +32,15 @@ async function probeDimensions(srcPath) {
 
 // Đổi giây -> H:MM:SS.cs cho ASS.
 function assTime(sec) {
-  if (sec < 0) sec = 0;
-  const h = Math.floor(sec / 3600);
-  const m = Math.floor((sec % 3600) / 60);
-  const s = Math.floor(sec % 60);
-  const cs = Math.round((sec - Math.floor(sec)) * 100);
+  // Làm tròn về TỔNG centisecond trước rồi mới tách giờ/phút/giây. Tách trước rồi làm tròn
+  // phần lẻ riêng sẽ tràn ở mốc biên (1.995 -> "0:00:01.100", sai định dạng .cs) và làm
+  // phụ đề đốt cứng lệch với phụ đề rời .vtt (util/vtt.js dùng đúng cách này).
+  const total = Math.max(0, Math.round(sec * 100));
+  const h = Math.floor(total / 360000);
+  const m = Math.floor((total % 360000) / 6000);
+  const s = Math.floor((total % 6000) / 100);
   const pad = (n, l = 2) => String(n).padStart(l, "0");
-  return `${h}:${pad(m)}:${pad(s)}.${pad(cs)}`;
+  return `${h}:${pad(m)}:${pad(s)}.${pad(total % 100)}`;
 }
 
 // Escape text cho 1 dòng Dialogue ASS (xuống dòng -> \N).
@@ -107,4 +109,4 @@ function buildAss(segments, { width, height, assPath, chineseBottomRatio }) {
   return assPath;
 }
 
-module.exports = { extractAudio, probeDimensions, buildAss };
+module.exports = { extractAudio, probeDimensions, buildAss, assTime };
