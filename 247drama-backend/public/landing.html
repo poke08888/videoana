@@ -1,0 +1,499 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+  <meta name="theme-color" content="#000000" />
+  <title id="pageTitle">247TV – Xem phim ngắn hay nhất</title>
+  <meta name="description" id="pageDesc" content="Xem phim ngắn, phim bộ hấp dẫn trên 247TV. Tải app miễn phí ngay!" />
+  <!-- Open Graph -->
+  <meta property="og:site_name" content="247TV" />
+  <meta property="og:type" content="video.movie" />
+  <meta property="og:title" id="ogTitle" content="247TV – Xem phim ngắn hay nhất" />
+  <meta property="og:description" id="ogDesc" content="Xem phim ngắn, phim bộ hấp dẫn trên 247TV." />
+  <meta property="og:image" id="ogImage" content="" />
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" id="twTitle" content="247TV" />
+  <meta name="twitter:description" id="twDesc" content="Xem phim ngắn trên 247TV" />
+  <meta name="twitter:image" id="twImage" content="" />
+
+  <style>
+    :root {
+      --brand: #e83a57;
+      --cta-from: #fc5029;
+      --cta-to: #f22f5c;
+      --text: #ffffff;
+      --muted: rgba(255,255,255,.72);
+      --radius: 1.25rem;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; }
+
+    html, body {
+      margin: 0; padding: 0;
+      height: 100%;
+      font-family: "Roboto", "Noto Sans", system-ui, -apple-system, Arial, sans-serif;
+      color: var(--text);
+      touch-action: manipulation;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    /* ── Page shell ─────────────────────────────────── */
+    .page {
+      position: relative;
+      min-height: 100dvh;
+      min-height: 100vh;
+      width: 100%;
+      max-width: 37.5rem;
+      margin: 0 auto;
+      overflow: hidden;
+    }
+
+    /* ── Blurred poster background ───────────────────── */
+    .bg-poster {
+      position: absolute; inset: 0;
+      width: 100%; height: 100%;
+      object-fit: cover;
+      filter: blur(12px);
+      transform: scale(1.12);
+    }
+
+    /* ── Gradient overlay ────────────────────────────── */
+    .overlay {
+      position: absolute; inset: 0;
+      background: linear-gradient(180deg, rgba(0,0,0,.55) 0%, rgba(0,0,0,.92) 100%);
+    }
+
+    /* ── Top logo bar ────────────────────────────────── */
+    .topbar {
+      position: relative; z-index: 2;
+      display: flex; align-items: center; justify-content: center; gap: .5rem;
+      padding: calc(env(safe-area-inset-top, 0px) + .9rem) 1rem .6rem;
+    }
+
+    .logo {
+      width: 2rem; height: 2rem;
+      border-radius: .45rem;
+      background: var(--brand);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1.15rem; font-weight: 800; color: #fff;
+      flex-shrink: 0;
+    }
+
+    .brand-name {
+      font-size: 1.1rem; font-weight: 700; letter-spacing: .02em;
+      color: #fff; text-shadow: 0 1px 4px rgba(0,0,0,.5);
+    }
+
+    /* ── Main content ────────────────────────────────── */
+    .main {
+      position: relative; z-index: 2;
+      display: flex; flex-direction: column; align-items: center;
+      padding: .75rem clamp(.75rem,4vw,1.25rem) 9rem;
+      gap: clamp(12px,3.5vw,20px);
+    }
+
+    /* ── Thumbnail card ──────────────────────────────── */
+    .thumb-wrap {
+      position: relative;
+      width: min(62vw,17.5rem);
+      max-width: 18rem;
+      background: rgba(255,255,255,.1);
+      padding: .22rem;
+      border-radius: var(--radius);
+      box-shadow: 0 8px 32px rgba(0,0,0,.55);
+    }
+
+    .thumb-wrap img {
+      width: 100%; border-radius: 1.1rem;
+      display: block; aspect-ratio: 3/4; object-fit: cover;
+    }
+
+    /* play icon overlay */
+    .play-icon {
+      position: absolute; top: 50%; left: 50%;
+      transform: translate(-50%,-50%);
+      width: 3.5rem; height: 3.5rem;
+      background: rgba(0,0,0,.52);
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      pointer-events: none;
+    }
+
+    .play-icon svg { width: 1.6rem; height: 1.6rem; fill: #fff; margin-left: 3px; }
+
+    /* ── Title ───────────────────────────────────────── */
+    h1.movie-title {
+      margin: 0;
+      text-align: center;
+      font-size: clamp(1.1rem,5vw,1.4rem);
+      font-weight: 700;
+      line-height: 1.3;
+      max-width: min(92vw,32rem);
+      display: -webkit-box;
+      -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+      overflow: hidden;
+      text-shadow: 0 1px 6px rgba(0,0,0,.6);
+    }
+
+    /* ── Description ─────────────────────────────────── */
+    .movie-desc {
+      margin: 0;
+      text-align: center;
+      font-size: clamp(.82rem,3.8vw,.98rem);
+      color: var(--muted);
+      line-height: 1.6;
+      max-width: min(92vw,32rem);
+      display: -webkit-box;
+      -webkit-line-clamp: 4; -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+
+    /* ── Skeleton loader ─────────────────────────────── */
+    .skeleton {
+      background: linear-gradient(90deg, rgba(255,255,255,.08) 25%, rgba(255,255,255,.18) 50%, rgba(255,255,255,.08) 75%);
+      background-size: 200% 100%;
+      animation: shimmer 1.4s infinite;
+      border-radius: .5rem;
+    }
+    @keyframes shimmer { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
+
+    .skel-thumb { width: min(62vw,17.5rem); aspect-ratio: 3/4; border-radius: var(--radius); }
+    .skel-title { height: 1.6rem; width: min(80vw,22rem); }
+    .skel-desc  { height: 4.5rem; width: min(88vw,28rem); }
+
+    /* ── CTA wrap (fixed bottom) ─────────────────────── */
+    .cta-wrap {
+      position: fixed;
+      left: 50%; transform: translateX(-50%);
+      bottom: calc(max(1rem, env(safe-area-inset-bottom, 1rem)) + .6rem);
+      width: min(86vw,25rem);
+      z-index: 10;
+    }
+
+    .cta-btn {
+      display: block; width: 100%;
+      min-height: clamp(3rem,13vw,3.5rem);
+      background: radial-gradient(180% 60% at 50% 50%, rgba(255,255,255,0) 20%),
+                  linear-gradient(90deg, var(--cta-from) 0%, var(--cta-to) 100%);
+      color: #fff;
+      border: none; border-radius: 2rem;
+      font-size: clamp(1rem,4.5vw,1.15rem);
+      font-weight: 600; letter-spacing: .01em;
+      cursor: pointer; text-decoration: none;
+      display: flex; align-items: center; justify-content: center;
+      box-shadow: 0 6px 24px rgba(232,58,87,.5);
+      transition: opacity .15s, transform .1s;
+      -webkit-tap-highlight-color: transparent;
+      user-select: none; -webkit-user-select: none;
+    }
+
+    .cta-btn:active { opacity: .88; transform: scale(.985); }
+
+    /* animated hand + ripple */
+    .hand-wrap {
+      position: absolute;
+      right: -.25rem; top: 50%;
+      transform: translateY(-70%);
+      pointer-events: none; z-index: 11;
+    }
+
+    .hand-icon {
+      font-size: 2.2rem;
+      animation: handBounce 1s infinite ease-in-out;
+      display: block;
+      filter: drop-shadow(0 2px 4px rgba(0,0,0,.4));
+    }
+
+    .ripple-ring {
+      position: absolute;
+      right: .6rem; top: 50%;
+      transform: translateY(-50%);
+      width: 2.5rem; height: 2.5rem;
+      border: 2.5px solid rgba(255,255,255,.7);
+      border-radius: 50%;
+      animation: ripplePop 1s infinite ease-out;
+      pointer-events: none; z-index: 10;
+    }
+
+    @keyframes handBounce {
+      0%, 100% { transform: translate(20%, 10%); }
+      50%       { transform: translate(0, 0); }
+    }
+
+    @keyframes ripplePop {
+      0%   { transform: translateY(-50%) scale(0); opacity: 1; }
+      100% { transform: translateY(-50%) scale(1.4); opacity: 0; }
+    }
+
+    /* ── Footer (policy links) ───────────────────────── */
+    .footer {
+      position: relative; z-index: 2;
+      text-align: center;
+      padding: 0 1rem 1.5rem;
+      font-size: .75rem;
+      color: rgba(255,255,255,.45);
+    }
+
+    .footer a {
+      color: rgba(255,255,255,.55);
+      text-decoration: underline;
+      text-underline-offset: 2px;
+    }
+
+    .footer a:hover { color: rgba(255,255,255,.8); }
+
+    /* ── Error state ─────────────────────────────────── */
+    .error-box {
+      position: relative; z-index: 2;
+      text-align: center;
+      padding: 3rem 1.5rem;
+      color: rgba(255,255,255,.7);
+    }
+
+    .error-box h2 { font-size: 1.2rem; margin: 0 0 .5rem; color: #fff; }
+  </style>
+  <!-- TikTok Pixel Code Start -->
+  <script>
+  !function (w, d, t) {
+    w.TiktokAnalyticsObject=t;var ttq=w[t]=w[t]||[];ttq.methods=["page","track","identify","instances","debug","on","off","once","ready","alias","group","enableCookie","disableCookie","holdConsent","revokeConsent","grantConsent"],ttq.setAndDefer=function(t,e){t[e]=function(){t.push([e].concat(Array.prototype.slice.call(arguments,0)))}};for(var i=0;i<ttq.methods.length;i++)ttq.setAndDefer(ttq,ttq.methods[i]);ttq.instance=function(t){for(
+  var e=ttq._i[t]||[],n=0;n<ttq.methods.length;n++)ttq.setAndDefer(e,ttq.methods[n]);return e},ttq.load=function(e,n){var r="https://analytics.tiktok.com/i18n/pixel/events.js",o=n&&n.partner;ttq._i=ttq._i||{},ttq._i[e]=[],ttq._i[e]._u=r,ttq._t=ttq._t||{},ttq._t[e]=+new Date,ttq._o=ttq._o||{},ttq._o[e]=n||{};n=document.createElement("script")
+  ;n.type="text/javascript",n.async=!0,n.src=r+"?sdkid="+e+"&lib="+t;e=document.getElementsByTagName("script")[0];e.parentNode.insertBefore(n,e)};
+
+
+    ttq.load('D9TU0FBC77U9J4MAM4IG');
+    ttq.page();
+  }(window, document, 'ttq');
+  </script>
+  <!-- TikTok Pixel Code End -->
+</head>
+<body>
+<div class="page" id="page">
+  <!-- Background poster (blurred) -->
+  <img class="bg-poster" id="bgPoster" src="" alt="" aria-hidden="true" />
+  <div class="overlay"></div>
+
+  <!-- Top logo -->
+  <div class="topbar">
+    <div class="logo">▶</div>
+    <span class="brand-name">247TV</span>
+  </div>
+
+  <!-- Content area -->
+  <main class="main" id="mainContent">
+    <!-- Skeleton shown while loading -->
+    <div class="skeleton skel-thumb" id="skelThumb"></div>
+    <div class="skeleton skel-title" id="skelTitle"></div>
+    <div class="skeleton skel-desc"  id="skelDesc"></div>
+  </main>
+
+  <!-- CTA (hidden until loaded) -->
+  <div class="cta-wrap" id="ctaWrap" style="display:none">
+    <a class="cta-btn" id="ctaBtn" href="#" onclick="if(window.ttq)ttq.track('ClickButton');">Nhấp để tiếp tục xem</a>
+    <div class="ripple-ring"></div>
+    <div class="hand-wrap"><span class="hand-icon">👆</span></div>
+  </div>
+</div>
+
+<!-- Footer policy links (outside page for z-index) -->
+<footer class="footer" id="pageFooter" style="display:none">
+  <p style="margin:.3rem 0">
+    Bằng cách tiếp tục, bạn đồng ý với
+    <a href="/privacy.html" target="_blank" rel="noopener">Chính sách Bảo mật</a>
+    và
+    <a href="/privacy.html#terms" target="_blank" rel="noopener">Điều khoản Dịch vụ</a>
+    của 247TV.
+  </p>
+  <p style="margin:.2rem 0">© 2025 247TV. All rights reserved.</p>
+</footer>
+
+<script>
+(function () {
+  "use strict";
+
+  /* ── Helpers ─────────────────────────────── */
+  const $ = (id) => document.getElementById(id);
+
+  function getParam(name) {
+    return new URLSearchParams(location.search).get(name) || "";
+  }
+
+  /* ── Read movie ID from URL ──────────────── */
+  const movieId = getParam("id");
+
+  const defaultPromo = {
+    name: "247TV - Xem Phim Ngắn Độc Quyền",
+    description: "Khám phá hàng ngàn bộ phim ngắn, phim dài tập hấp dẫn, chất lượng cao được cập nhật liên tục mỗi ngày trên 247TV. Tải app ngay để trải nghiệm!",
+    thumbnail: ""
+  };
+
+  if (!movieId) {
+    renderPage(defaultPromo, true);
+  } else {
+    /* ── Fetch movie data ────────────────────── */
+    const API_BASE = location.origin;
+    fetch(`${API_BASE}/api/client/landing/movie?id=${encodeURIComponent(movieId)}`)
+      .then((r) => {
+        if (!r.ok) throw new Error("not found");
+        return r.json();
+      })
+      .then((res) => {
+        if (!res.status || !res.data) throw new Error("no data");
+        renderPage(res.data);
+      })
+      .catch(() => {
+        renderPage(defaultPromo, true);
+      });
+  }
+
+  /* ── Render page with movie data ─────────── */
+  function renderPage(movie, isGeneric = false) {
+    const thumb = movie.thumbnail || "";
+    const name  = movie.name || "247TV";
+    const desc  = movie.description || "";
+
+    /* update <head> meta */
+    document.title = `${name} – 247TV`;
+    setText("pageTitle", `${name} – 247TV`);
+    setText("pageDesc", desc.slice(0, 160));
+    setMeta("ogTitle", name);
+    setMeta("ogDesc", desc);
+    setMeta("ogImage", thumb);
+    setMeta("twTitle", name);
+    setMeta("twDesc", desc);
+    setMeta("twImage", thumb);
+
+    /* background blurred poster */
+    const bg = $("bgPoster");
+    if (thumb) {
+      bg.src = thumb;
+      bg.alt = name;
+    } else {
+      bg.style.display = "none";
+      $("page").style.background = "linear-gradient(135deg, #1a0b2e 0%, #000000 100%)";
+    }
+
+    /* remove skeletons */
+    ["skelThumb","skelTitle","skelDesc"].forEach(id => {
+      const el = $(id);
+      if (el) el.remove();
+    });
+
+    /* thumbnail card */
+    const thumbWrap = document.createElement("div");
+    thumbWrap.className = "thumb-wrap";
+    if (thumb) {
+      thumbWrap.innerHTML = `
+        <img src="${esc(thumb)}" alt="${esc(name)}" loading="eager" />
+        <div class="play-icon">
+          <svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+        </div>`;
+    } else {
+      thumbWrap.style.background = "linear-gradient(135deg, var(--brand) 0%, var(--cta-from) 100%)";
+      thumbWrap.style.display = "flex";
+      thumbWrap.style.alignItems = "center";
+      thumbWrap.style.justifyContent = "center";
+      thumbWrap.style.aspectRatio = "3/4";
+      thumbWrap.style.borderRadius = "1.1rem";
+      thumbWrap.innerHTML = `<div style="font-size: 3rem; font-weight: 900; color: white; text-shadow: 0 4px 12px rgba(0,0,0,0.3);">247TV</div>`;
+    }
+    $("mainContent").appendChild(thumbWrap);
+
+    /* title */
+    const h1 = document.createElement("h1");
+    h1.className = "movie-title";
+    h1.textContent = name;
+    $("mainContent").appendChild(h1);
+
+    /* description */
+    if (desc) {
+      const p = document.createElement("p");
+      p.className = "movie-desc";
+      p.textContent = desc;
+      $("mainContent").appendChild(p);
+    }
+
+    /* ── Tracking Parameters ── */
+    const urlParams = new URLSearchParams(window.location.search);
+
+    // Map UTMs to Branch standard parameters
+    const channel = urlParams.get("utm_source") || urlParams.get("af_channel") || "facebook";
+    const campaign = urlParams.get("utm_campaign") || urlParams.get("af_c_id") || "247tv-landing";
+    const feature = urlParams.get("utm_medium") || "paid_ad";
+
+    // Collect all other tracking params to pass to the app
+    const trackingData = {};
+    for (const [key, value] of urlParams.entries()) {
+      if (key !== "id") trackingData[key] = value;
+    }
+
+    /* CTA — show button first with fallback link, then upgrade to Branch short link */
+    const cta = $("ctaBtn");
+    const PLAY_STORE = "https://play.google.com/store/apps/details?id=com.nonelab.tv247";
+    cta.href = PLAY_STORE;
+    cta.setAttribute("rel", "noopener");
+    if (isGeneric) cta.textContent = "Tải app 247TV";
+    $("ctaWrap").style.display = "";
+    $("pageFooter").style.display = "";
+
+    /* Generate proper Branch short link via API for smart app-installed routing */
+    if (!isGeneric && movieId) {
+      const branchPayload = {
+        branch_key: "key_live_atFVrNqfejbiPDZXVR2q2mmnqEbYkkdF",
+        channel,
+        feature,
+        campaign,
+        data: {
+          "$og_title": name,
+          "$canonical_identifier": `movie/${movieId}/ep/1`,
+          "$canonical_url": `${location.origin}/share?id=${movieId}`,
+          "$og_image_url": thumb,
+          "movieSeriesId": movieId,
+          "episodeNumber": "1",
+          "movieName": name,
+          "contentType": "episode",
+          "$always_deeplink": true,
+          "$android_redirect_timeout": 750,
+          "$uri_redirect_mode": "1",
+          "$fallback_url": PLAY_STORE,
+          ...trackingData
+        }
+      };
+
+      fetch("https://api2.branch.io/v1/url", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(branchPayload)
+      })
+        .then(r => r.ok ? r.json() : null)
+        .then(json => {
+          if (json && json.url) {
+            cta.href = json.url;
+            console.log("Branch short link:", json.url);
+          }
+        })
+        .catch(() => { /* keep Play Store fallback */ });
+    }
+  }
+
+  /* ── Helpers ─────────────────────────────── */
+  function esc(str) {
+    return String(str).replace(/[&<>"']/g, c => ({
+      "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
+    })[c]);
+  }
+
+  function setText(id, val) {
+    const el = $(id);
+    if (el) el.textContent = val;
+  }
+
+  function setMeta(id, val) {
+    const el = $(id);
+    if (el) el.setAttribute("content", val);
+  }
+})();
+</script>
+</body>
+</html>

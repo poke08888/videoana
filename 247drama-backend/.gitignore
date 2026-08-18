@@ -1,0 +1,9 @@
+node_modules/
+uploads/
+.env
+
+# Script chạy tay của server có nhúng cứng chuỗi kết nối Mongo kèm mật khẩu.
+# Không kéo vào git; nếu cần chạy thì chạy thẳng trên server.
+check_langs.js
+add_vi_translation.js
+seed_setting.js
