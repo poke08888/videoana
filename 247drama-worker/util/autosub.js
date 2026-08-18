@@ -115,7 +115,9 @@ async function subtitleVideoBuffer(buffer, cfg = {}) {
     // soft: video SẠCH (chỉ che sub Trung), phụ đề đi kèm file .vtt rời.
     if (mode === "soft") {
       const clean = await transcodeCleanBox(srcF, boxCfg);
-      return { buffer: clean, subbed: true, segments: viSegs.length, viSegs, enSegs, burned: false, reason: "", codec: "h264", transcoded: true };
+      // chineseBottomRatio đi kèm để render.js canh track .vtt ngay dưới chữ Trung,
+      // đúng quy tắc mà buildAss dùng cho đường burn.
+      return { buffer: clean, subbed: true, segments: viSegs.length, viSegs, enSegs, chineseBottomRatio, burned: false, reason: "", codec: "h264", transcoded: true };
     }
 
     buildAss(viSegs, { width: dims.width, height: dims.height, assPath: assF, chineseBottomRatio });

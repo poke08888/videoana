@@ -89,3 +89,15 @@ test("giữ >= 2 cue: có đúng 1 dòng trống ngăn cách giữa hai cue", ()
   // Khẳng định cụ thể chuỗi ngăn cách: text cue 1 + dòng trống + timestamp cue 2
   assert.ok(out.includes("Cue 1\n\n00:00:01.000 --> 00:00:02.000"), out);
 });
+
+test("topRatio sinh cue setting vị trí dòng (phụ đề nằm dưới chữ Trung)", () => {
+  const out = segsToVtt([{ start: 0, end: 1, text: "A" }], { topRatio: 0.74 });
+  assert.ok(out.includes("00:00:00.000 --> 00:00:01.000 line:74% align:center"), out);
+});
+
+test("topRatio thiếu/không hợp lệ -> không ghi cue setting", () => {
+  for (const bad of [undefined, 0, 1, -0.5, NaN, "0.7"]) {
+    const out = segsToVtt([{ start: 0, end: 1, text: "A" }], { topRatio: bad });
+    assert.ok(!out.includes("line:"), `${bad} -> ${out}`);
+  }
+});

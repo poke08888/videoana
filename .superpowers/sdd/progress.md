@@ -65,3 +65,36 @@ FEATURE (user request): realtime render dashboard. status.js (per-episode phase 
 DECISION (user): "để nguyên" — giữ mật khẩu root trong lịch sử git nhánh feat/mac-render-farm, KHÔNG scrub history, KHÔNG đổi mật khẩu. Final-review Critical#1 = resolved-by-acceptance (repo local, chưa push). CẢNH BÁO: không push/chia sẻ nhánh này ra remote công khai (root creds trong history 23eefe3/b6d4300 + plan doc cũ).
 BUGFIX 3 (E2E): Douyin account fail. Root cause: fetch_user_post_videos ~1MB gzip/chunked đôi khi (a) control char thô, (b) truncate tạm thời -> JSON.parse ném -> hỏng cả job. Fix: parseJsonLenient + retry 3x/trang + break giữ video đã lấy. Verify live 22-42 video. Commit 88bd255/server 9fa5a87.
 BUGFIX 4 (E2E): lịch sử toàn "Hôm nay". Root cause: history.date hardcode "Hôm nay"/"Vừa xong". Fix: nowVN() (dd/mm/yyyy HH:mm) khi insert + backfill phiếu cụm từ ads_cohorts.created. Phiếu single cũ giữ placeholder (mất nguồn ngày). Commit 5146f09/server. Prod: ~295 phiếu có ngày thật, 637 single cũ giữ placeholder.
+
+---
+
+# Progress — Phụ đề song song vi/en (feat/mac-render-farm)
+
+Plan: docs/superpowers/plans/2026-08-18-dual-subtitle-vi-en.md
+Execution: subagent-driven. Task 1-5 worker (local, có test), 6-7 backend mirror, 8 deploy + nghiệm thu.
+Bí mật lấy từ 247drama-worker/.env (KHÔNG gõ mật khẩu vào lệnh/plan — nhánh này từng lộ trong history).
+Pre-flight: đã sửa plan bỏ mật khẩu thô (commit sau f44ce7f).
+Task 1: complete (commits 33b7b3b..34027af, review vòng 2 clean). Vòng 1 bắt 1 Critical trong code mẫu của plan: vttTime làm tròn ms tràn thành SS.1000 → sửa bằng cách tách từ tổng mili-giây. Thêm escape &/</> và test ≥2 cue. 21/21 test.
+  MINOR treo (final review triage): (a) segsToVtt(segs, null) throw TypeError; (b) buildAss/assTime trong util/subtitle.js CÙNG pattern làm tròn lỗi (centisecond) → burn có thể lệch 1 mốc biên so với soft, chưa sửa vì ngoài phạm vi Task 1.
+Task 2: complete (commit 4f68994, review clean). buildBoxFilter + transcodeCleanBox; reviewer chạy song song 10 case xác nhận chuỗi filter của transcodeBurnSub không đổi 1 byte; ffmpeg thật OK. 24/24 test.
+  MINOR treo: transcodeCleanBox chưa có unit test (chỉ smoke ffmpeg thủ công); test buildBoxFilter chưa phủ case override từng phần.
+Task 3: complete (commit ecfb055, review clean). Cờ subtitle.mode (burn mặc định, chỉ đúng chuỗi "soft" mới bật) + secondLang=en. Reviewer chạy 14 case biên: "SOFT"/số/object/" soft" đều rơi về burn. 27/27 test.
+Task 4: complete (commit 2242d56, review clean). translateBoth dịch vi+en song song TỪ tiếng Trung gốc; burn mode vẫn đúng 1 lượt Gemini (reviewer đếm thật + đo song song 152ms vs 300ms tuần tự); 3 nhánh lỗi đúng; mọi đường trả về đủ enSegs/burned. 31/31 test.
+  MINOR treo: probeDimensions vẫn chạy ở soft mode dù dims chỉ dùng cho buildAss (thừa 1 lượt ffprobe/tập).
+Task 5: complete (commit 2c29ff0, review clean). render.js up .vi.vtt/.en.vtt khi !burned + ghi subTracks/burnedLang; buildSubKey/buildSubUrl; model worker khai 2 field. Reviewer verify strict-mode Mongoose in-memory + trace 4 nhánh (burn/soft/fallback/lỗi codec sớm) + xác nhận offsetSec khớp buildAss. 33/33 test. WORKER XONG (Task 1-5).
+  MINOR treo: buildSubUrl không trim trailing slash của R2_PUBLIC_BASE (kế thừa từ buildVideoUrl); test set env không restore (thói quen sẵn có của repo).
+Task 6: complete (commit 71f69f2 sau amend, review = controller trực tiếp). Mirror backend về 247drama-backend/ (178 file). PHÁT HIỆN: rsync kéo về 3 script server nhúng cứng mật khẩu Mongo (check_langs.js, add_vi_translation.js, seed_setting.js) → đã xoá khỏi mirror + thêm vào .gitignore + amend commit nên mật khẩu KHÔNG vào lịch sử git. Cây HEAD của 247drama-backend sạch.
+  CẢNH BÁO TỒN ĐỌNG (không thuộc plan này): docs/superpowers/plans/2026-07-27-mac-render-farm-247drama.md còn mật khẩu root ở 10 chỗ trong CÂY LÀM VIỆC (không chỉ history). User trước đó đã quyết "để nguyên" cho history; file sống này cần hỏi lại.
+Task 7: complete (commits 94cc474..80926bd, review vòng 2 clean). Backend: model +subTracks/burnedLang, util/geoLang.js (XFF phần tử đầu, tra hụt→vi, không throw), 3 hàm client trả subDefault + thêm 2 field vào CẢ $project lẫn $push/$first (6 điểm sửa), script migration. Vòng 1 bắt Critical: script migration dùng sai tên biến env (MONGO_URI thay vì MongoDb_Connection_String) → sẽ crash và chặn pm2 reload trong chuỗi && của Task 8 → đã fix + try/catch + exit 1. Test geoLang 5/5.
+  MINOR treo: nhánh đọc header "X-Forwarded-For" viết hoa là code chết (Node hạ thường header); subDefault không có ở các nhánh return lỗi (không có data); script disconnect Mongo 2 lần trên đường thành công.
+Next: Task 8 = DEPLOY PRODUCTION (rsync backend + migration 3936 doc + pm2 reload + render thử 1 tập). Controller tự chạy, cần user xác nhận.
+Task 8: PARTIAL. ĐÃ LÀM: backup /root/backup_backend_20260818_173731; rsync backend; npm i geoip-lite; migration; pm2 reload (4 instance online); API xác nhận LIVE subDefault=vi với XFF 113.161.0.1 và =en với 8.8.8.8, response có burnedLang.
+  SỰ CỐ + ĐÃ SỬA: migration gán cứng burnedLang:"vi" cho mọi doc thiếu field → dán nhãn sai 95 tập có subLang:"" (render xong nhưng sub thất bại, video còn chữ Trung). Đã sửa production bằng pipeline $set burnedLang=$subLang → 3841 doc "vi", 95 doc "" (đúng ngữ nghĩa). Script cũng đã sửa + đẩy lại lên server.
+  CHƯA LÀM: render thử 1 tập soft — BỊ CHẶN vì 52api.cn hết hạn mức ("超出免费总额度"). Ổ BINGNET không mount nên đã tạo workspace /Volumes/o2/247drama-render (download/tmp/output). settingJSON.subtitle.mode đã trả về "burn".
+FINAL REVIEW (opus, phạm vi 43d4f50..HEAD, đã lọc commit mirror): 3 Critical + 6 Important. Đã sửa trong commit 802ee2e: (C1) soft thiếu track → bỏ tập thay vì upsert âm thầm (dựng VTT trước mọi upload); (C3) .vtt cache 300s must-revalidate thay vì 1 năm immutable; (I4) guard subStartOffsetMs NaN; (Minor#2) assTime làm tròn; redo-one in burnedLang/subTracks; migration gán theo subLang. Test worker 39/39.
+CÒN TREO (cần quyết định của user, chưa làm):
+  - I6: geoip-lite tốn ~177MB RSS mỗi process API (4 instance) — cân nhắc đổi sang header CF-IPCountry của Cloudflare.
+  - I1/I2: mode là cờ TOÀN CỤC, không bật riêng 1 series được; bật soft khi app chưa hỗ trợ = mọi tập mới không có phụ đề nào.
+  - I3: drawbox che cố định 0.66-0.83 nhưng OCR ghi nhận có phim sub nằm cao hơn (asrOcr y0=0.55) → soft mode trượt hộp = chữ Trung còn nguyên. Dùng scripts/scan-subs.js làm cổng nghiệm thu tập thử.
+  - I5: subDefault vắng ở các nhánh return lỗi của 3 API (nhánh không có data).
+  - C2: burnedLang "" gộp 2 nghĩa (video sạch soft VS video fallback còn chữ Trung) → app phải dựa vào subTracks, cần chốt hợp đồng trước khi code app.

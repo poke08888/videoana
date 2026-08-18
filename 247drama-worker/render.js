@@ -105,10 +105,19 @@ async function renderEpisodeInner({ series, provider, sourceId, ep }) {
       // nếu không segsToVtt sinh timestamp NaN mà vẫn ra chuỗi khác rỗng -> file phụ đề hỏng.
       const rawOffset = ((global.settingJSON && global.settingJSON.subtitle) || {}).subStartOffsetMs;
       const offsetSec = (typeof rawOffset === "number" && isFinite(rawOffset) ? rawOffset : 0) / 1000;
+      // Vị trí dòng: ngay dưới đáy chữ Trung do OCR phát hiện, cách một khoảng subGapRatio
+      // (~0.3cm) — cùng công thức buildAss dùng cho đường burn. Không có số OCR thì theo
+      // setting cố định như buildAss.
+      const S = (global.settingJSON && global.settingJSON.subtitle) || {};
+      const num = (v, d) => (typeof v === "number" && !isNaN(v) ? v : d);
+      const gapRatio = num(S.subGapRatio, 0.012);
+      const topRatio = typeof r.chineseBottomRatio === "number" && r.chineseBottomRatio > 0
+        ? Math.min(0.88, r.chineseBottomRatio + gapRatio)
+        : num(S.subTopRatio, num(S.coverBoxYRatio, 0.66) + 0.06);
       const wantLangs = [["vi", r.viSegs]];
       if (subCfg.secondLang) wantLangs.push([subCfg.secondLang, r.enSegs]);
       for (const [lang, segs] of wantLangs) {
-        const body = segsToVtt(segs, { offsetSec });
+        const body = segsToVtt(segs, { offsetSec, topRatio });
         if (!body) {
           status.fail(tag);
           const why = `soft-sub thiếu bản dịch ${lang}`;

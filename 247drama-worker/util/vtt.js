@@ -27,10 +27,17 @@ function escapeVttText(text) {
 
 /**
  * segments: [{start,end,text}] (giây). offsetSec: dịch thời gian (giống subStartOffsetMs).
+ * topRatio: vị trí ĐỈNH dòng chữ theo chiều cao video (0-1) -> ghi thành cue setting
+ *   "line:NN% align:center". Cần vì phim giữ nguyên phụ đề Trung cháy ở đáy: không đặt
+ *   vị trí thì player tự dán phụ đề xuống đáy, chồng lên chữ Trung. Đây là bản .vtt của
+ *   cùng quy tắc canh mà buildAss dùng cho đường burn (ngay dưới đáy chữ Trung).
  * Trả chuỗi WebVTT, hoặc "" nếu không còn dòng nào có chữ.
  */
 function segsToVtt(segments, opts = {}) {
   const offset = typeof opts.offsetSec === "number" ? opts.offsetSec : 0;
+  const top = typeof opts.topRatio === "number" && isFinite(opts.topRatio) && opts.topRatio > 0 && opts.topRatio < 1
+    ? ` line:${Math.round(opts.topRatio * 100)}% align:center`
+    : "";
   const cues = (segments || [])
     .filter((s) => s && s.text && String(s.text).trim())
     .map((s) => {
@@ -40,7 +47,7 @@ function segsToVtt(segments, opts = {}) {
         .filter(Boolean)
         .map(escapeVttText)
         .join("\n");
-      return `${vttTime(s.start + offset)} --> ${vttTime(s.end + offset)}\n${text}\n`;
+      return `${vttTime(s.start + offset)} --> ${vttTime(s.end + offset)}${top}\n${text}\n`;
     });
   if (!cues.length) return "";
   return `WEBVTT\n\n${cues.join("\n")}`;
