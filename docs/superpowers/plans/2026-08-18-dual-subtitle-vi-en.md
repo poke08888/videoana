@@ -669,12 +669,15 @@ git commit -m "feat(worker): up track .vtt và ghi subTracks/burnedLang vào Mon
 - [ ] **Step 1: Kéo source về (bỏ node_modules, uploads, .env)**
 
 ```bash
+set -a; . /Users/kevin/video/247drama-worker/.env; set +a   # SERVER_*, MongoDb_Connection_String, R2_*
 mkdir -p /Users/kevin/video/247drama-backend
 rsync -avz --exclude node_modules --exclude uploads --exclude .env \
-  -e "sshpass -p 'Ngaymainha@1' ssh -o StrictHostKeyChecking=no" \
-  root@103.179.185.196:/var/www/247drama/backend/ /Users/kevin/video/247drama-backend/
+  -e "sshpass -p \"$SERVER_PASSWORD\" ssh -o StrictHostKeyChecking=no" \
+  "$SERVER_USER@$SERVER_HOST:/var/www/247drama/backend/" /Users/kevin/video/247drama-backend/
 ```
 Expected: rsync liệt kê `controllers/`, `models/`, `routes/`, `util/`, `index.js`
+
+**Không bao giờ gõ mật khẩu/URI thẳng vào lệnh hay file trong repo** — nhánh này đã có tiền lệ lộ mật khẩu trong lịch sử git; mọi bí mật lấy từ `247drama-worker/.env` (đã gitignore).
 
 - [ ] **Step 2: Chặn rác vào git**
 
@@ -870,7 +873,8 @@ git commit -m "feat(backend): subTracks/burnedLang + subDefault theo geoip"
 - [ ] **Step 1: Backup backend trên server**
 
 ```bash
-sshpass -p 'Ngaymainha@1' ssh -o StrictHostKeyChecking=no root@103.179.185.196 \
+set -a; . /Users/kevin/video/247drama-worker/.env; set +a
+sshpass -p "$SERVER_PASSWORD" ssh -o StrictHostKeyChecking=no "$SERVER_USER@$SERVER_HOST" \
   'cp -r /var/www/247drama/backend /root/backup_backend_$(date +%Y%m%d_%H%M%S) && ls -d /root/backup_backend_*'
 ```
 Expected: in ra thư mục backup vừa tạo
@@ -878,10 +882,11 @@ Expected: in ra thư mục backup vừa tạo
 - [ ] **Step 2: Đẩy code lên server**
 
 ```bash
+set -a; . /Users/kevin/video/247drama-worker/.env; set +a
 rsync -avz --exclude node_modules --exclude uploads --exclude .env --exclude test \
-  -e "sshpass -p 'Ngaymainha@1' ssh -o StrictHostKeyChecking=no" \
-  /Users/kevin/video/247drama-backend/ root@103.179.185.196:/var/www/247drama/backend/
-sshpass -p 'Ngaymainha@1' ssh -o StrictHostKeyChecking=no root@103.179.185.196 \
+  -e "sshpass -p \"$SERVER_PASSWORD\" ssh -o StrictHostKeyChecking=no" \
+  /Users/kevin/video/247drama-backend/ "$SERVER_USER@$SERVER_HOST:/var/www/247drama/backend/"
+sshpass -p "$SERVER_PASSWORD" ssh -o StrictHostKeyChecking=no "$SERVER_USER@$SERVER_HOST" \
   'cd /var/www/247drama/backend && export NVM_DIR=/root/.nvm && . $NVM_DIR/nvm.sh && npm install geoip-lite@1.4.10 --save && node scripts/backfill-burnedlang.js && pm2 reload backend && pm2 list | head -12'
 ```
 Expected: `đã đánh dấu: 3936`, 4 instance `backend` trạng thái `online`
@@ -889,13 +894,13 @@ Expected: `đã đánh dấu: 3936`, 4 instance `backend` trạng thái `online`
 - [ ] **Step 3: Bật soft-sub và render 1 tập thử**
 
 ```bash
-sshpass -p 'Ngaymainha@1' ssh -o StrictHostKeyChecking=no root@103.179.185.196 \
-  'mongosh "mongodb://admin:dbadmin123@127.0.0.1:27017/247drama?authSource=admin" --quiet --eval "db.settings.updateOne({}, {\$set: {\"subtitle.mode\": \"soft\"}}); printjson(db.settings.findOne({}, {subtitle: 1}).subtitle.mode)"'
+set -a; . /Users/kevin/video/247drama-worker/.env; set +a
+mongosh "$MongoDb_Connection_String" --quiet --eval 'db.settings.updateOne({}, {$set: {"subtitle.mode": "soft"}}); print(db.settings.findOne({}, {subtitle: 1}).subtitle.mode)'
 cd /Users/kevin/video/247drama-worker && node scripts/redo-one.js <provider>_<sourceId>_ep<N>
 ```
 Expected: mongosh in `soft`; worker chạy hết các pha `tải → sub → upload` không lỗi
 
-(Nếu tên setting doc khác `settings`, kiểm bằng `db.getCollectionNames()` rồi chỉnh đúng collection.)
+(Mongo prod mở ra ngoài nên chạy mongosh ngay ở máy này, không cần ssh. Nếu tên collection khác `settings`, kiểm bằng `db.getCollectionNames()` rồi chỉnh lại.)
 
 - [ ] **Step 4: Kiểm tra R2 và Mongo**
 
@@ -905,15 +910,16 @@ const {S3Client,ListObjectsV2Command}=require('@aws-sdk/client-s3');require('dot
 const c=new S3Client({region:'auto',endpoint:process.env.R2_ENDPOINT,credentials:{accessKeyId:process.env.R2_ACCESS_KEY,secretAccessKey:process.env.R2_SECRET}});
 c.send(new ListObjectsV2Command({Bucket:process.env.R2_BUCKET,Prefix:'videos/<provider>_<sourceId>_ep<N>'})).then(r=>console.log((r.Contents||[]).map(o=>o.Key)));
 "
-sshpass -p 'Ngaymainha@1' ssh -o StrictHostKeyChecking=no root@103.179.185.196 \
-  'mongosh "mongodb://admin:dbadmin123@127.0.0.1:27017/247drama?authSource=admin" --quiet --eval "printjson(db.shortvideos.findOne({videoUrl:/<provider>_<sourceId>_ep<N>/}, {videoUrl:1, subTracks:1, burnedLang:1}))"'
+mongosh "$MongoDb_Connection_String" --quiet --eval 'printjson(db.shortvideos.findOne({videoUrl:/<provider>_<sourceId>_ep<N>/}, {videoUrl:1, subTracks:1, burnedLang:1}))'
 ```
 Expected: R2 có 4 key (`.mp4`, `.vi.json`, `.vi.vtt`, `.en.vtt`); Mongo có `subTracks` 2 phần tử, `burnedLang: ""`
 
 - [ ] **Step 5: Kiểm tra video sạch và nội dung phụ đề**
 
 ```bash
-curl -s "$(sshpass -p 'Ngaymainha@1' ssh -o StrictHostKeyChecking=no root@103.179.185.196 'mongosh "mongodb://admin:dbadmin123@127.0.0.1:27017/247drama?authSource=admin" --quiet --eval "print(db.shortvideos.findOne({videoUrl:/<provider>_<sourceId>_ep<N>/}).subTracks[1].url)"')" | head -12
+set -a; . /Users/kevin/video/247drama-worker/.env; set +a
+EN_URL=$(mongosh "$MongoDb_Connection_String" --quiet --eval 'print(db.shortvideos.findOne({videoUrl:/<provider>_<sourceId>_ep<N>/}).subTracks.find(t=>t.lang==="en").url)')
+curl -s "$EN_URL" | head -12
 ```
 Expected: in ra `WEBVTT` + vài cue tiếng Anh
 
@@ -922,8 +928,9 @@ Mở file `.mp4` mới trong QuickTime: dải đáy đã che sub Trung, KHÔNG c
 - [ ] **Step 6: Kiểm tra API trả đúng theo IP**
 
 ```bash
-curl -s -H "X-Forwarded-For: 113.161.0.1" "http://103.179.185.196/api/<đường-dẫn-route-client-lấy-tập>" | head -c 400
-curl -s -H "X-Forwarded-For: 8.8.8.8"     "http://103.179.185.196/api/<đường-dẫn-route-client-lấy-tập>" | head -c 400
+set -a; . /Users/kevin/video/247drama-worker/.env; set +a
+curl -s -H "X-Forwarded-For: 113.161.0.1" "http://$SERVER_HOST/api/<đường-dẫn-route-client-lấy-tập>" | head -c 400
+curl -s -H "X-Forwarded-For: 8.8.8.8"     "http://$SERVER_HOST/api/<đường-dẫn-route-client-lấy-tập>" | head -c 400
 ```
 Expected: lần 1 có `"subDefault":"vi"`, lần 2 có `"subDefault":"en"`; cả hai đều có `subTracks` cho tập vừa render
 
@@ -932,8 +939,8 @@ Expected: lần 1 có `"subDefault":"vi"`, lần 2 có `"subDefault":"en"`; cả
 - [ ] **Step 7: Xác nhận tập cũ không hỏng**
 
 ```bash
-sshpass -p 'Ngaymainha@1' ssh -o StrictHostKeyChecking=no root@103.179.185.196 \
-  'mongosh "mongodb://admin:dbadmin123@127.0.0.1:27017/247drama?authSource=admin" --quiet --eval "printjson(db.shortvideos.findOne({burnedLang:\"vi\"}, {videoUrl:1, burnedLang:1, subTracks:1}))"'
+set -a; . /Users/kevin/video/247drama-worker/.env; set +a
+mongosh "$MongoDb_Connection_String" --quiet --eval 'printjson(db.shortvideos.findOne({burnedLang:"vi"}, {videoUrl:1, burnedLang:1, subTracks:1}))'
 ```
 Expected: `burnedLang: "vi"`, `subTracks: []`, `videoUrl` không đổi
 
