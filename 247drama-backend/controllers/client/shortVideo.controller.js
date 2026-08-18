@@ -14,6 +14,9 @@ const UserAutoUnlockStatus = require("../../models/userAutoUnlockStatus.model");
 //generate History UniqueId
 const { generateHistoryUniqueId } = require("../../util/generateHistoryUniqueId");
 
+//resolve phụ đề mặc định theo IP (VN -> vi, còn lại -> en)
+const { resolveSubLang } = require("../../util/geoLang");
+
 //retrieves all videos from a specific movie series for a user
 exports.retrieveMovieSeriesVideosForUser = async (req, res) => {
   try {
@@ -134,6 +137,8 @@ exports.retrieveMovieSeriesVideosForUser = async (req, res) => {
             videoImage: 1,
             videoUrl: 1,
             coin: 1,
+            subTracks: 1,
+            burnedLang: 1,
             isLocked: {
               $cond: {
                 if: { $gt: [{ $size: "$userVideoStatus" }, 0] },
@@ -173,6 +178,8 @@ exports.retrieveMovieSeriesVideosForUser = async (req, res) => {
                 videoUrl: "$videoUrl",
                 isLocked: "$isLocked",
                 coin: "$coin",
+                subTracks: "$subTracks",
+                burnedLang: "$burnedLang",
                 isLike: "$isLike",
                 totalLikes: "$totalLikes",
               },
@@ -204,12 +211,15 @@ exports.retrieveMovieSeriesVideosForUser = async (req, res) => {
     // Check if the auto-unlock is enabled for this user and movie series
     const isAutoUnlockEnabled = autoUnlockStatus ? autoUnlockStatus.isAutoUnlockEpisodes : false;
 
+    const subDefault = resolveSubLang(req);
+
     return res.status(200).json({
       status: true,
       message: "Retrieved videos from a specific movie series for the user.",
       userInfo: userInfo,
       totalVideosCount: totalVideosCount,
       isAutoUnlockEnabled,
+      subDefault,
       data: videos[0] || null,
     });
   } catch (error) {
@@ -344,6 +354,8 @@ exports.getVideosGroupedByMovieSeries = async (req, res) => {
             episodeNumber: 1,
             videoImage: 1,
             videoUrl: 1,
+            subTracks: 1,
+            burnedLang: 1,
             isLocked: {
               $cond: {
                 if: { $gt: [{ $size: "$userVideoStatus" }, 0] },
@@ -385,6 +397,8 @@ exports.getVideosGroupedByMovieSeries = async (req, res) => {
                 videoImage: "$videoImage",
                 videoUrl: "$videoUrl",
                 isLocked: "$isLocked",
+                subTracks: "$subTracks",
+                burnedLang: "$burnedLang",
                 isLike: "$isLike",
                 totalLikes: "$totalLikes", // Include total likes in the videos field
               },
@@ -443,7 +457,9 @@ exports.getVideosGroupedByMovieSeries = async (req, res) => {
       return res.status(200).json({ status: false, message: "You are blocked by admin." });
     }
 
-    return res.status(200).json({ status: true, message: "Retrieved grouped videos by movie series.", data: groupedVideos });
+    const subDefault = resolveSubLang(req);
+
+    return res.status(200).json({ status: true, message: "Retrieved grouped videos by movie series.", subDefault, data: groupedVideos });
   } catch (error) {
     console.log(error);
     return res.status(500).json({ status: false, message: error.message || "Internal Server Error" });
@@ -841,6 +857,7 @@ exports.loadMovieSeriesVideosForUser = async (req, res) => {
     const limit = req.query.limit ? parseInt(req.query.limit) : 50;
 
     const movieSeriesId = new mongoose.Types.ObjectId(req.query.movieSeriesId);
+    const subDefault = resolveSubLang(req);
 
     if (req.query.userId) {
       const userId = new mongoose.Types.ObjectId(req.query.userId);
@@ -933,6 +950,8 @@ exports.loadMovieSeriesVideosForUser = async (req, res) => {
               episodeNumber: 1,
               videoImage: 1,
               videoUrl: 1,
+              subTracks: 1,
+              burnedLang: 1,
               isLocked: {
                 $cond: {
                   if: { $gt: [{ $size: "$userVideoStatus" }, 0] },
@@ -981,6 +1000,8 @@ exports.loadMovieSeriesVideosForUser = async (req, res) => {
                   videoUrl: "$videoUrl",
                   isLocked: "$isLocked",
                   coin: "$coin",
+                  subTracks: "$subTracks",
+                  burnedLang: "$burnedLang",
                   isLike: "$isLike",
                   totalLikes: "$totalLikes",
                 },
@@ -1013,6 +1034,7 @@ exports.loadMovieSeriesVideosForUser = async (req, res) => {
         message: "Retrieved videos from a specific movie series for the user.",
         userInfo: userInfo,
         totalVideosCount: totalVideosCount || 0,
+        subDefault,
         data: videos[0] || null,
       });
     } else {
@@ -1071,6 +1093,8 @@ exports.loadMovieSeriesVideosForUser = async (req, res) => {
               episodeNumber: 1,
               videoImage: 1,
               videoUrl: 1,
+              subTracks: 1,
+              burnedLang: 1,
               isLocked: 1,
               coin: 1,
               "movieSeriesDetails._id": 1,
@@ -1098,6 +1122,8 @@ exports.loadMovieSeriesVideosForUser = async (req, res) => {
                   videoUrl: "$videoUrl",
                   isLocked: "$isLocked",
                   coin: "$coin",
+                  subTracks: "$subTracks",
+                  burnedLang: "$burnedLang",
                   isLike: "$isLike",
                   totalLikes: "$totalLikes",
                 },
@@ -1113,6 +1139,7 @@ exports.loadMovieSeriesVideosForUser = async (req, res) => {
       return res.status(200).json({
         status: true,
         message: "Retrieved videos from a specific movie series for the user.",
+        subDefault,
         totalVideosCount: totalVideosCount || 0,
         data: videos[0] || null,
       });

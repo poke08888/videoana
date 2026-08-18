@@ -10,6 +10,9 @@ const shortVideoSchema = new mongoose.Schema(
     coin: { type: Number, default: 0 }, //if isLocked true then coin must be needed
     isLocked: { type: Boolean, default: true },
     releaseDate: { type: Date, default: Date.now },
+    // Track phụ đề rời (soft-sub). Rỗng = tập cũ có phụ đề cháy sẵn trong video.
+    subTracks: { type: [{ lang: String, url: String, _id: false }], default: [] },
+    burnedLang: { type: String, default: "" },
   },
   {
     timestamps: true,
