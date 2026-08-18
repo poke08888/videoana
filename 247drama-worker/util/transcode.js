@@ -78,14 +78,10 @@ async function transcodeToH264(buffer) {
  * Gộp transcode + burn -> chỉ encode 1 lần.
  */
 async function transcodeBurnSub(srcPath, assPath, box = {}) {
-  const y = typeof box.yRatio === "number" ? box.yRatio : 0.66;
-  const h = typeof box.heightRatio === "number" ? box.heightRatio : 0.17;
-  const color = box.color || "white@1";
   const id = `${Date.now()}_${Math.floor(Math.random() * 1e9)}`;
   const outF = path.join(os.tmpdir(), `tc_sub_${id}.mp4`);
   // box.enabled=false -> KHÔNG che, chỉ burn phụ đề Việt (sub Trung giữ nguyên).
-  const drawbox = box.enabled === false ? "" : `drawbox=x=0:y=ih*${y}:w=iw:h=ih*${h}:color=${color}:t=fill,`;
-  const vf = `${drawbox}ass=${assPath}`;
+  const vf = `${buildBoxFilter(box)}ass=${assPath}`;
   await run("ffmpeg", [
     "-y",
     "-i", srcPath,
@@ -105,4 +101,49 @@ async function transcodeBurnSub(srcPath, assPath, box = {}) {
   return out;
 }
 
-module.exports = { transcodeToH264, transcodeBurnSub, probeVideoCodec };
+/**
+ * Chuỗi filter che dải sub Trung ở đáy. Kết thúc bằng "," để nối filter sau (ass=...).
+ * box.enabled=false -> không che.
+ */
+function buildBoxFilter(box = {}) {
+  if (box.enabled === false) return "";
+  const y = typeof box.yRatio === "number" ? box.yRatio : 0.66;
+  const h = typeof box.heightRatio === "number" ? box.heightRatio : 0.17;
+  const color = box.color || "white@1";
+  return `drawbox=x=0:y=ih*${y}:w=iw:h=ih*${h}:color=${color}:t=fill,`;
+}
+
+/**
+ * Encode H.264 chỉ CHE sub Trung, KHÔNG đốt phụ đề (chế độ soft-sub: phụ đề đi kèm
+ * file .vtt riêng). Tham số encode giữ y hệt transcodeBurnSub để chất lượng/dung lượng
+ * không đổi giữa hai chế độ.
+ */
+async function transcodeCleanBox(srcPath, box = {}) {
+  const id = `${Date.now()}_${Math.floor(Math.random() * 1e9)}`;
+  const outF = path.join(os.tmpdir(), `tc_clean_${id}.mp4`);
+  const vf = buildBoxFilter(box).replace(/,$/, "") || "null";
+  try {
+    await run("ffmpeg", [
+      "-y",
+      "-loglevel", "error",
+      "-nostats",
+      "-i", srcPath,
+      "-vf", vf,
+      "-c:v", "libx264",
+      "-preset", "veryfast",
+      "-crf", "24",
+      "-pix_fmt", "yuv420p",
+      "-c:a", "aac",
+      "-b:a", "128k",
+      "-movflags", "+faststart",
+      outF,
+    ]);
+    const out = fs.readFileSync(outF);
+    if (!out || !out.length) throw new Error("clean-box ra file rỗng");
+    return out;
+  } finally {
+    try { fs.unlinkSync(outF); } catch (x) {}
+  }
+}
+
+module.exports = { transcodeToH264, transcodeBurnSub, transcodeCleanBox, buildBoxFilter, probeVideoCodec };
