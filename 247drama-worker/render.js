@@ -4,7 +4,8 @@ const { execFile } = require("child_process");
 const duanju = require("./util/duanjuProvider");
 const { subtitleVideoBuffer } = require("./util/autosub");
 const { uploadToR2 } = require("./util/r2");
-const { env, buildFilename, buildR2Key, buildVideoUrl, buildSubtitleConfig } = require("./config");
+const { segsToVtt } = require("./util/vtt");
+const { env, buildFilename, buildR2Key, buildVideoUrl, buildSubtitleConfig, buildSubKey, buildSubUrl } = require("./config");
 const { ShortVideo } = require("./db");
 const status = require("./status");
 
@@ -101,13 +102,28 @@ async function renderEpisodeInner({ series, provider, sourceId, ep }) {
     status.setPhase(tag, "upload");
     await uploadToR2(buf, buildR2Key(provider, sourceId, ep.index), "video/mp4");
 
-    // 4b) Lưu sidecar segment tiếng Việt của SUB (text+timing) để lồng tiếng tái dùng
-    // -> dub đi từ SUB VIỆT (không dịch lại từ Trung). 1 bản dịch cho cả sub lẫn dub.
+    // 4b) Sidecar .vi.json giữ nguyên cho nhánh lồng tiếng (dub đi từ SUB VIỆT).
     if (r.viSegs && r.viSegs.length) {
       try {
         const subKey = buildR2Key(provider, sourceId, ep.index).replace(/\.mp4$/, ".vi.json");
         await uploadToR2(Buffer.from(JSON.stringify(r.viSegs)), subKey, "application/json");
       } catch (e) {}
+    }
+
+    // 4c) Chế độ soft: up track WebVTT rời cho từng ngôn ngữ có bản dịch.
+    const subTracks = [];
+    if (!r.burned) {
+      const offsetSec = (((global.settingJSON && global.settingJSON.subtitle) || {}).subStartOffsetMs || 0) / 1000;
+      for (const [lang, segs] of [["vi", r.viSegs], ["en", r.enSegs]]) {
+        const body = segsToVtt(segs, { offsetSec });
+        if (!body) continue;
+        try {
+          await uploadToR2(Buffer.from(body, "utf8"), buildSubKey(provider, sourceId, ep.index, lang), "text/vtt; charset=utf-8");
+          subTracks.push({ lang, url: buildSubUrl(provider, sourceId, ep.index, lang) });
+        } catch (e) {
+          console.error(`[render] up track ${lang} lỗi:`, e.message);
+        }
+      }
     }
 
     // 5) duration + 6) upsert Mongo (khớp process52apiEpisodes)
@@ -125,6 +141,8 @@ async function renderEpisodeInner({ series, provider, sourceId, ep }) {
           sourceProvider: `52api-${provider}`,
           sourceVideoId: ep.videoId,
           subLang,
+          subTracks,
+          burnedLang: r.burned ? subLang : "",
         },
       },
       { upsert: true },

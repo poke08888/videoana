@@ -69,4 +69,14 @@ function buildSubtitleConfig(settingJSON) {
   };
 }
 
-module.exports = { env, buildFilename, buildR2Key, buildVideoUrl, buildSubtitleConfig };
+// Key phụ đề trên R2: cùng tên file video, đổi .mp4 -> .<lang>.vtt.
+function buildSubKey(provider, sourceId, index, lang) {
+  return buildR2Key(provider, sourceId, index).replace(/\.mp4$/, `.${lang}.vtt`);
+}
+
+function buildSubUrl(provider, sourceId, index, lang) {
+  const base = process.env.R2_PUBLIC_BASE || env.r2.publicBase || "";
+  return `${base}/${buildSubKey(provider, sourceId, index, lang)}`;
+}
+
+module.exports = { env, buildFilename, buildR2Key, buildVideoUrl, buildSubtitleConfig, buildSubKey, buildSubUrl };
