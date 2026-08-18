@@ -62,6 +62,10 @@ function buildSubtitleConfig(settingJSON) {
     coverBoxHeightRatio: typeof s.coverBoxHeightRatio === "number" ? s.coverBoxHeightRatio : 0.17,
     coverBoxColor: s.coverBoxColor || "white@1",
     coverEnabled: s.coverEnabled !== false,
+    // "burn" (mặc định) = đốt phụ đề Việt vào video như cũ.
+    // "soft" = video sạch + 2 file .vtt (vi/en) rời -> app chọn theo quốc gia.
+    mode: s.mode === "soft" ? "soft" : "burn",
+    secondLang: s.secondLang || "en",
   };
 }
 
