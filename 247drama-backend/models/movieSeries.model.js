@@ -24,6 +24,13 @@ const movieSeriesSchema = new mongoose.Schema(
     createdByOps: { type: Boolean, default: false },
     // Đáy dòng chữ Hán của phim (0-1 theo chiều cao khung hình). Worker đo bằng OCR ở tập
     // đầu rồi chốt cho cả phim; người vận hành có thể đặt tay ("manual") để chốt trước khi chạy.
+    // Tên/mô tả: name + description luôn là bản NGƯỜI XEM VIỆT NAM thấy (đã dịch),
+    // *En là bản tiếng Anh, *Original giữ nguyên tiếng Trung của nguồn để đối chiếu và dịch lại.
+    nameEn: { type: String, trim: true, default: "" },
+    descriptionEn: { type: String, trim: true, default: "" },
+    nameOriginal: { type: String, trim: true, default: "" },
+    descriptionOriginal: { type: String, trim: true, default: "" },
+    metaTranslatedAt: { type: Date, default: null },
     zhBottomRatio: { type: Number, default: null },
     zhBottomSource: { type: String, default: "" }
   },

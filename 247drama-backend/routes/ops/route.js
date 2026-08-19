@@ -12,5 +12,6 @@ route.post("/import", opsAuth(), ops.importSeries);
 route.get("/queue", opsAuth(), ops.queue);
 route.get("/health", opsAuth(), ops.health);
 route.post("/sub-position", opsAuth(), ops.setSubPosition);
+route.post("/translate-meta", opsAuth(), ops.translateMeta);
 
 module.exports = route;

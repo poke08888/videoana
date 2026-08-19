@@ -2,6 +2,11 @@
 const express = require("express");
 const route = express.Router();
 
+// Tên/mô tả phim theo quốc gia: người xem ngoài Việt Nam nhận bản tiếng Anh của những phim
+// đã dịch. Đặt trước mọi route con để áp cho toàn bộ API client.
+const { localizeSeriesResponse } = require("../../util/seriesI18n");
+route.use(localizeSeriesResponse());
+
 //require client's route.js
 const user = require("./user.route");
 const report = require("./report.route");

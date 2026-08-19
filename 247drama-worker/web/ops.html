@@ -88,6 +88,9 @@
   .tbl { width:100%; border-collapse:collapse; font-size:12px; }
   .tbl th, .tbl td { text-align:left; padding:8px 10px; border-bottom:1px solid var(--line); white-space:nowrap; }
   .tbl th { color:var(--mut); font-weight:600; text-transform:uppercase; font-size:11px; }
+  .name-en { font-size:11px; color:var(--mut); margin:2px 0 4px; }
+  .pill-warn { display:inline-block; font-size:10px; padding:1px 6px; border-radius:999px;
+    background:rgba(255,176,32,.18); color:var(--warn); margin-left:6px; }
   .health-detail td { white-space:normal; background:rgba(255,255,255,.02); font-size:12px; }
 
   @media (prefers-color-scheme: light) {
@@ -487,6 +490,15 @@ function fmtDate(s) {
   return new Date(t).toLocaleString("vi-VN", { dateStyle: "short", timeStyle: "short" });
 }
 
+// Tên phim + trạng thái dịch. Phim nhập từ 52api có tên tiếng Trung; dịch xong thì name là
+// tiếng Việt và nameEn là bản tiếng Anh trả cho người xem ngoài Việt Nam.
+function nameCell(r) {
+  const en = r.nameEn ? '<div class="name-en">EN: ' + esc(r.nameEn) + '</div>' : '';
+  const flag = r.translated ? '' : ' <span class="pill-warn">chưa dịch</span>';
+  return '<div>' + esc(r.name) + flag + '</div>' + en +
+    '<button class="btn btn-ghost btn-sm btnTrans">' + (r.translated ? 'Dịch lại' : 'Dịch') + '</button>';
+}
+
 // Vị trí đáy chữ Hán của phim: mỗi phim một chỗ khác nhau nên phải chốt trước khi render
 // hàng loạt. "OCR" = worker đo ở tập đầu, "đặt tay" = người vận hành gõ vào (luôn thắng OCR).
 function posCell(r) {
@@ -504,7 +516,7 @@ function renderQueue(rows) {
   $("queueBody").innerHTML = rows.map(r => {
     const bookId = esc(r.bookId || "");
     return '<tr data-bookid="' + bookId + '">' +
-      '<td>' + esc(r.name) + '</td>' +
+      '<td>' + nameCell(r) + '</td>' +
       '<td>' + (r.total || 0) + '</td>' +
       '<td>' + (r.rendered || 0) + '</td>' +
       '<td>' + (r.vi || 0) + '</td>' +
@@ -529,6 +541,27 @@ async function tickQueue() {
 }
 
 $("queueBody").addEventListener("click", async (e) => {
+  if (e.target.classList.contains("btnTrans")) {
+    const row = e.target.closest("tr");
+    const bookId = row.getAttribute("data-bookid");
+    e.target.disabled = true;
+    const label = e.target.textContent;
+    e.target.textContent = "Đang dịch…";
+    try {
+      const body = await opsFetch("/api/ops/translate-meta", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ bookId }),
+      });
+      alert(body.message || "Đã dịch.");
+      tickQueue();
+    } catch (err) {
+      alert(err.message);
+      e.target.disabled = false;
+      e.target.textContent = label;
+    }
+    return;
+  }
   if (e.target.classList.contains("btnPos")) {
     const row = e.target.closest("tr");
     const bookId = row.getAttribute("data-bookid");

@@ -7,6 +7,7 @@ const { createClient } = require("../../util/duanju52");
 const { buildSeriesDoc } = require("../../util/opsSeries");
 const ShortVideo = require("../../models/shortVideo.model");
 const { diffEpisodes } = require("../../util/opsHealth");
+const { translateSeriesMeta } = require("../../util/translateMeta");
 const axiosRaw = require("axios");
 
 // Key 52api nằm trong Setting (worker dùng chung) -> đọc mỗi lần gọi, đổi key không cần restart.
@@ -30,6 +31,13 @@ const duanju = createClient({
     return body.data || body;
   },
 });
+
+// Key Gemini nằm trong Setting.subtitle (worker dùng chung) -> đọc mỗi lần gọi.
+async function getGeminiCfg() {
+  const s = await Setting.findOne({}).select("subtitle").lean();
+  const sub = (s && s.subtitle) || {};
+  return { apiKey: sub.geminiApiKey || "", model: sub.geminiModel || "gemini-2.5-flash" };
+}
 
 // Kiểm khoá vận hành đúng chưa (trang web dùng để mở khoá).
 exports.ping = async (req, res) => {
@@ -108,12 +116,19 @@ exports.importSeries = async (req, res) => {
       return res.status(409).json({ status: false, message: `Phim đã có trong hệ thống: ${existing.name}` });
     }
     const info = await duanju.detail(provider, sourceId);
-    const doc = buildSeriesDoc({ provider, sourceId, info, categoryId, languageId, type: Number(type) });
+    // Dịch tên + mô tả sang Việt/Anh. Dịch hụt KHÔNG chặn nhập phim: phim vẫn vào kho với
+    // tên tiếng Trung và cờ "chưa dịch" để bấm Dịch lại trên web vận hành.
+    const meta = await translateSeriesMeta(
+      { name: info.name, description: info.description },
+      await getGeminiCfg()
+    );
+    const doc = buildSeriesDoc({ provider, sourceId, info, categoryId, languageId, type: Number(type), meta });
     const created = await MovieSeries.create(doc);
+    const warn = meta.ok ? "" : ` Chưa dịch được tên/mô tả (${meta.error}) — bấm "Dịch lại" ở bảng dưới.`;
     return res.status(200).json({
       status: true,
-      message: `Đã nhập "${created.name}" (${doc.sourceEpisodeCount} tập). Worker sẽ render ở vòng quét kế tiếp.`,
-      data: { _id: created._id, bookId: created.bookId },
+      message: `Đã nhập "${created.name}" (${doc.sourceEpisodeCount} tập). Worker sẽ render ở vòng quét kế tiếp.${warn}`,
+      data: { _id: created._id, bookId: created.bookId, translated: meta.ok },
     });
   } catch (error) {
     console.error("ops import error:", error.message);
@@ -125,7 +140,7 @@ exports.importSeries = async (req, res) => {
 exports.queue = async (req, res) => {
   try {
     const series = await MovieSeries.find({ sourceProvider: /^52api-/ })
-      .select("_id name bookId sourceEpisodeCount updatedAt zhBottomRatio zhBottomSource")
+      .select("_id name nameEn bookId sourceEpisodeCount updatedAt zhBottomRatio zhBottomSource metaTranslatedAt")
       .sort({ updatedAt: -1 })
       .lean();
 
@@ -156,6 +171,8 @@ exports.queue = async (req, res) => {
           vi: st.vi,
           en: st.en,
           burned: st.burned,
+          nameEn: s.nameEn || "",
+          translated: !!s.metaTranslatedAt,
           zhBottomRatio: typeof s.zhBottomRatio === "number" ? s.zhBottomRatio : null,
           zhBottomSource: s.zhBottomSource || "",
           updatedAt: s.updatedAt,
@@ -165,6 +182,45 @@ exports.queue = async (req, res) => {
   } catch (error) {
     console.error("ops queue error:", error.message);
     return res.status(500).json({ status: false, message: "Không lấy được bảng sức khoẻ" });
+  }
+};
+
+// Dịch lại tên + mô tả của một phim đã có trong kho (dùng cho phim nhập trước khi có tính
+// năng dịch, hoặc khi Gemini dịch hụt lúc nhập). Luôn dịch từ bản gốc tiếng Trung đã lưu.
+exports.translateMeta = async (req, res) => {
+  try {
+    const bookId = String((req.body && req.body.bookId) || "");
+    if (!bookId.includes(":")) return res.status(400).json({ status: false, message: "Thiếu bookId" });
+    const doc = await MovieSeries.findOne({ bookId }).select("name description nameOriginal descriptionOriginal").lean();
+    if (!doc) return res.status(404).json({ status: false, message: "Không tìm thấy phim" });
+
+    // Phim nhập trước khi có tính năng này chưa có bản gốc riêng -> chính name/description
+    // đang là tiếng Trung, lấy luôn làm nguồn dịch.
+    const src = {
+      name: doc.nameOriginal || doc.name,
+      description: doc.descriptionOriginal || doc.description || "",
+    };
+    const meta = await translateSeriesMeta(src, await getGeminiCfg());
+    if (!meta.ok) return res.status(502).json({ status: false, message: `Dịch không thành công: ${meta.error}` });
+
+    await MovieSeries.updateOne(
+      { bookId },
+      {
+        $set: {
+          name: meta.vi.name,
+          description: meta.vi.description,
+          nameEn: meta.en.name,
+          descriptionEn: meta.en.description,
+          nameOriginal: src.name,
+          descriptionOriginal: src.description,
+          metaTranslatedAt: new Date(),
+        },
+      }
+    );
+    return res.status(200).json({ status: true, message: `Đã dịch: "${meta.vi.name}" / "${meta.en.name}"` });
+  } catch (error) {
+    console.error("ops translateMeta error:", error.message);
+    return res.status(500).json({ status: false, message: "Không dịch được tên phim" });
   }
 };
 
