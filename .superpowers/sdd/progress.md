@@ -98,3 +98,29 @@ CÒN TREO (cần quyết định của user, chưa làm):
   - I3: drawbox che cố định 0.66-0.83 nhưng OCR ghi nhận có phim sub nằm cao hơn (asrOcr y0=0.55) → soft mode trượt hộp = chữ Trung còn nguyên. Dùng scripts/scan-subs.js làm cổng nghiệm thu tập thử.
   - I5: subDefault vắng ở các nhánh return lỗi của 3 API (nhánh không có data).
   - C2: burnedLang "" gộp 2 nghĩa (video sạch soft VS video fallback còn chữ Trung) → app phải dựa vào subTracks, cần chốt hợp đồng trước khi code app.
+E2E SOFT: ĐÃ CHẠY THẬT (sau khi user gia hạn 52api). Tập thử hg:7385481006926531646 ep67 "Ba anh em kính mẹ".
+  Lần 1: render soft OK 74s/26 câu; R2 đủ 4 file; .vtt content-type text/vtt + cache-control max-age=300 must-revalidate (fix C3 hiệu lực trên CDN); vi có dấu, en không lẫn chữ Hán; Mongo burnedLang="" + 2 subTracks.
+  PHÁT HIỆN: check-sub.js báo verdict SUB_TRUNG (6/8 khung còn chữ Trung). Nguyên nhân KHÔNG phải lỗi code: settingJSON.subtitle.coverEnabled=false — admin cố ý không che chữ Trung, đường burn xưa nay vẫn đốt sub Việt NGAY DƯỚI chữ Trung.
+  USER CHỐT: giữ nguyên, không che tiếng Trung, sub Việt nằm dưới cách 0.3cm.
+  => Sửa tiếp (commit 4b9388c): segsToVtt nhận topRatio -> cue setting "line:NN% align:center"; autosub trả chineseBottomRatio; render tính topRatio = chineseBottomRatio + subGapRatio (cùng công thức buildAss). Lần 2 render soft xác nhận LIVE: cả 26 cue của cả 2 track đều có line:77% (OCR đo đáy chữ Trung ~75.8%).
+  Đã khôi phục production: mode=burn, ep67 render lại burn (burnedLang=vi, subTracks rỗng), xoá 2 file .vtt mồ côi trên R2.
+
+---
+
+# Progress — Web vận hành nhập phim 52api (feat/mac-render-farm)
+
+Plan: docs/superpowers/plans/2026-08-19-ops-web.md
+Execution: subagent-driven. Task 1-3 worker, 4-7 backend mirror, 8 trang tĩnh, 9 deploy + nghiệm thu.
+Bí mật chỉ đọc từ .env. OPS_PASSWORD sinh ở Task 9, chỉ nằm trên server.
+Ghi chú: Task 8 (ops.html) mô tả bằng yêu cầu chứ không có sẵn code -> dispatch bằng model mạnh hơn.
+Task 1: complete (commit 2a560a8, review clean). classifyEpisodes neo theo videoId; phim chỉ có tập lệch vẫn vào work[]; worker không render tập lệch. 52/52 test. GHI CHÚ: agent triển khai bị ngắt vì giới hạn phiên sau khi sửa xong code, controller chạy test + commit hộ; không có task-1-report.md.
+  MINOR treo: episodeNumber trùng -> Map giữ bản ghi cuối; sourceVideoId="0" bị coi là thiếu (check truthy); phần tử null trong mảng làm findPendingWork abort cả pass.
+Task 2: complete (commit 2355553, review clean). acceptTranslation: đủ cue + dưới 5% chữ Hán mỗi track mới publish; gỡ cả hai ngưỡng 0.5 cũ. Reviewer tiêm module giả gọi thật subtitleVideoBuffer: burn vẫn đúng 1 lượt dịch, soft thiếu track en -> loại CẢ TẬP (kể cả khi API dịch throw). 58/58 test.
+  MINOR treo: tên test ghi 34% trong khi thực tế 33%; chưa có test đúng biên 5% (nếu ai đổi >= thành > sẽ không bị bắt).
+Task 3: complete (commit f0dee71, review clean). buildSubKey/buildSubUrl mang .v{N}; ShortVideo.subVersion; render.js tăng phiên bản mỗi lần có track, giữ nguyên khi không có track; key .mp4 không đổi. Reviewer dựng worktree ở commit cha để xác nhận baseline 58 -> nay 61 test.
+  MINOR treo: prevDoc query cả ở chế độ burn (thừa 1 round-trip); nếu chạy 2 worker song song cùng 1 tập thì subVersion có thể trùng.
+WORKER XONG (Task 1-3).
+Task 4: complete (commit f33c782, review clean). opsAuth (401 sai khoá, 503 chưa cấu hình - fail-closed ở mọi biên đã thử); endpoint ping + options; MovieSeries thêm sourceProvider/sourceEpisodeCount/createdByOps (reviewer dựng document xác nhận Mongoose không còn vứt field). 9/9 test backend.
+  MINOR treo: so khoá không constant-time; options() không lọc isActive; chưa có rate-limit chống dò khoá.
+Task 5: complete (commit 664210e, review clean). Client 52api phía server: throttle (giãn nhịp minIntervalMs=3200 tránh rate limit) + cache 10 phút (tiết kiệm quota); hỗ trợ hg/hm chuẩn hoá field (title/desc/book_pic vs name/introduction/cover); tiêm httpGet/now test không gọi mạng thật. Kiểm tra key sớm trước gọi API. 7/7 test duanju52 + 9/9 test cũ = 16/16 pass backend.
+  MINOR treo: topCategories/topList chưa có test; cache không có invalidation/clear manual; worker dùng chung key 52api chưa có synchronization đối tác nên throttle từng process độc lập (phục thuộc tầng proxy chung nếu cần global throttle).
