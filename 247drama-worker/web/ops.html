@@ -196,7 +196,7 @@
 <script>
 const OPS_KEY = "opsKey";
 const $ = (id) => document.getElementById(id);
-function esc(s) { return String(s == null ? "" : s).replace(/[&<>]/g, c => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;" }[c])); }
+function esc(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[c])); }
 function fmtEta(m) { if (m == null) return "—"; if (m < 60) return m + " phút"; const h = Math.floor(m / 60), r = m % 60; return h + "h" + (r ? (" " + r + "m") : ""); }
 
 // ---- lớp gọi API /api/ops/* : tự gắn header ops-key, 401 -> xoá khoá + hiện lại ô nhập ----
@@ -275,7 +275,9 @@ let selectedItem = null;
 let optionsData = null;
 
 function renderCats() {
-  if (!cat.categoriesCache.length) { $("cats").innerHTML = ""; $("subcats").innerHTML = ""; return; }
+  // Ở chế độ tìm kiếm (mode "search"), cellId/subCellId không được gắn vào request (xem loadCatalog),
+  // nên chip danh mục cũ bấm vào sẽ vô tác dụng -> dọn hẳn chip khi rời chế độ duyệt danh mục ("top").
+  if (cat.mode !== "top" || !cat.categoriesCache.length) { $("cats").innerHTML = ""; $("subcats").innerHTML = ""; return; }
   $("cats").innerHTML = cat.categoriesCache.map(c =>
     '<span class="chip' + (c.cellId === cat.cellId ? " active" : "") + '" data-cell="' + esc(c.cellId) + '">' + esc(c.name) + "</span>"
   ).join("");
