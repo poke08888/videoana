@@ -14,6 +14,16 @@ function cleanOcrSegs(segs) {
   );
 }
 
+// Tỉ lệ dòng CÒN chữ Hán trong kết quả "đã dịch". translateSegments giữ nguyên text gốc
+// khi một lô dịch hụt, nên key Gemini chết/hết quota sẽ cho ra bản "dịch" y hệt tiếng Trung
+// mà không ném lỗi — tập vẫn lên như thành công. Đo lại để chặn.
+function hanRatio(segs) {
+  const lines = (segs || []).filter((s) => s && s.text && String(s.text).trim());
+  if (!lines.length) return 1;
+  const han = lines.filter((s) => /[\u4e00-\u9fff]/.test(s.text)).length;
+  return han / lines.length;
+}
+
 /**
  * Dịch zhSegs sang ngôn ngữ chính (targetLang) và ngôn ngữ phụ (secondLang) SONG SONG,
  * cả hai đều đi từ TIẾNG TRUNG GỐC (không dịch chuyền vi->en để khỏi tam sao thất bản).
@@ -105,6 +115,14 @@ async function subtitleVideoBuffer(buffer, cfg = {}) {
       batchSize: translateBatchSize,
     });
 
+    // Quá nửa số dòng vẫn là chữ Hán -> coi như CHƯA dịch (key chết, hết quota, model từ chối).
+    // Ném ra để rơi vào fallback: tập bị đánh dấu chưa có sub và sẽ được render lại,
+    // thay vì publish một tập phụ đề nguyên tiếng Trung.
+    const viHan = hanRatio(viSegs);
+    if (viHan > 0.5) {
+      throw new Error(`dịch ${targetLang} hụt: ${Math.round(viHan * 100)}% số dòng vẫn là chữ Hán`);
+    }
+
     const boxCfg = {
       yRatio: coverBoxYRatio,
       heightRatio: coverBoxHeightRatio,
@@ -114,6 +132,12 @@ async function subtitleVideoBuffer(buffer, cfg = {}) {
 
     // soft: video SẠCH (chỉ che sub Trung), phụ đề đi kèm file .vtt rời.
     if (mode === "soft") {
+      // Track phụ chưa dịch thì bỏ hẳn, để render.js coi là thiếu track và bỏ tập
+      // (thà render lại còn hơn publish track tiếng Trung dán nhãn tiếng Anh).
+      if (enSegs.length && hanRatio(enSegs) > 0.5) {
+        console.error(`[autosub] dịch ${secondLang} hụt (${Math.round(hanRatio(enSegs) * 100)}% còn chữ Hán) -> bỏ track phụ`);
+        enSegs.length = 0;
+      }
       const clean = await transcodeCleanBox(srcF, boxCfg);
       // chineseBottomRatio đi kèm để render.js canh track .vtt ngay dưới chữ Trung,
       // đúng quy tắc mà buildAss dùng cho đường burn.
@@ -137,4 +161,4 @@ async function subtitleVideoBuffer(buffer, cfg = {}) {
   }
 }
 
-module.exports = { subtitleVideoBuffer, translateBoth };
+module.exports = { subtitleVideoBuffer, translateBoth, hanRatio };

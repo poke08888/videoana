@@ -45,3 +45,21 @@ test("secondLang rỗng -> chỉ dịch 1 nhánh", async () => {
   assert.strictEqual(n, 1);
   assert.deepStrictEqual(r.enSegs, []);
 });
+
+const { hanRatio } = require("../util/autosub");
+
+test("hanRatio: bản dịch thật -> 0, bản chưa dịch -> 1", () => {
+  assert.strictEqual(hanRatio([{ text: "Xin chào" }, { text: "Tạm biệt" }]), 0);
+  assert.strictEqual(hanRatio([{ text: "你好" }, { text: "再见" }]), 1);
+});
+
+test("hanRatio: mảng rỗng hoặc toàn dòng trắng -> 1 (coi như chưa dịch)", () => {
+  assert.strictEqual(hanRatio([]), 1);
+  assert.strictEqual(hanRatio(null), 1);
+  assert.strictEqual(hanRatio([{ text: "  " }]), 1);
+});
+
+test("hanRatio: lẫn lộn -> đúng tỉ lệ", () => {
+  assert.strictEqual(hanRatio([{ text: "你好" }, { text: "Xin chào" }]), 0.5);
+  assert.strictEqual(hanRatio([{ text: "你好" }, { text: "A" }, { text: "B" }, { text: "C" }]), 0.25);
+});

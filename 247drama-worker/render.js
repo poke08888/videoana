@@ -3,7 +3,7 @@ const path = require("path");
 const { execFile } = require("child_process");
 const duanju = require("./util/duanjuProvider");
 const { subtitleVideoBuffer } = require("./util/autosub");
-const { uploadToR2 } = require("./util/r2");
+const { uploadToR2, uploadAndVerify } = require("./util/r2");
 const { segsToVtt } = require("./util/vtt");
 const { env, buildFilename, buildR2Key, buildVideoUrl, buildSubtitleConfig, buildSubKey, buildSubUrl } = require("./config");
 const { ShortVideo } = require("./db");
@@ -133,7 +133,9 @@ async function renderEpisodeInner({ series, provider, sourceId, ep }) {
 
     // 4) upload thẳng R2 (bỏ rsync server)
     status.setPhase(tag, "upload");
-    await uploadToR2(buf, buildR2Key(provider, sourceId, ep.index), "video/mp4");
+    // Xác nhận lại sau khi ghi: upload im lặng không lên (hoặc lên bản cũ) từng làm tập
+    // hỏng nằm vĩnh viễn vì Mongo vẫn được upsert như thành công.
+    await uploadAndVerify(buf, buildR2Key(provider, sourceId, ep.index), "video/mp4");
 
     // 4b) Sidecar .vi.json giữ nguyên cho nhánh lồng tiếng (dub đi từ SUB VIỆT).
     if (r.viSegs && r.viSegs.length) {
@@ -147,7 +149,7 @@ async function renderEpisodeInner({ series, provider, sourceId, ep }) {
     const subTracks = [];
     for (const [lang, body] of softBodies) {
       try {
-        await uploadToR2(Buffer.from(body, "utf8"), buildSubKey(provider, sourceId, ep.index, lang), "text/vtt; charset=utf-8", {
+        await uploadAndVerify(Buffer.from(body, "utf8"), buildSubKey(provider, sourceId, ep.index, lang), "text/vtt; charset=utf-8", {
           // Phụ đề còn sửa nhiều lần (chất lượng dịch, timing). Cache dài + immutable như
           // video sẽ khiến bản hỏng kẹt ở edge Cloudflare và ở máy người xem cả năm.
           cacheControl: "public, max-age=300, must-revalidate",
