@@ -6,5 +6,8 @@ const ops = require("../../controllers/ops/ops.controller");
 
 route.get("/ping", opsAuth(), ops.ping);
 route.get("/options", opsAuth(), ops.options);
+route.get("/catalog", opsAuth(), ops.catalog);
+route.get("/detail", opsAuth(), ops.detail);
+route.post("/import", opsAuth(), ops.importSeries);
 
 module.exports = route;
