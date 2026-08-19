@@ -16,7 +16,12 @@ const movieSeriesSchema = new mongoose.Schema(
     isTrending: { type: Boolean, default: false },
     isAutoAnimateBanner: { type: Boolean, default: false },
     isActive: { type: Boolean, default: true },
-    bookId: { type: String, unique: true, sparse: true }
+    bookId: { type: String, unique: true, sparse: true },
+    // Worker 52api ghi 2 field này; khai ở đây để backend tạo phim mới không bị Mongoose strict vứt.
+    sourceProvider: { type: String, trim: true },
+    sourceEpisodeCount: { type: Number, default: 0 },
+    // Phim do web vận hành tạo -> chỉ những phim này mới được xoá qua /api/ops.
+    createdByOps: { type: Boolean, default: false }
   },
   {
     timestamps: true,
