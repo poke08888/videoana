@@ -15,6 +15,7 @@ const shortVideoSchema = new mongoose.Schema(
     subLang: { type: String, default: "" }, // ngôn ngữ phụ đề đã burn ("vi" nếu đã auto-sub tiếng Việt)
     subSource: { type: String, default: "" }, // nguồn phụ đề: "ocr" | "whisper" (đánh dấu để resume import)
     subTracks: { type: [{ lang: String, url: String, _id: false }], default: undefined }, // track WebVTT rời (chế độ soft)
+    subVersion: { type: Number, default: 0 }, // số phiên bản bộ .vtt đang được subTracks trỏ tới
     burnedLang: { type: String, default: "" }, // ngôn ngữ đã đốt vào video ("" nếu video sạch/soft)
   },
   {

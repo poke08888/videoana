@@ -36,14 +36,31 @@ test("secondLang mặc định en", () => {
   assert.strictEqual(buildSubtitleConfig({ subtitle: { secondLang: "th" } }).secondLang, "th");
 });
 
-test("key phụ đề đi kèm tên file video, đổi đuôi theo lang", () => {
+test("key phụ đề đi kèm tên file video, đổi đuôi theo lang (mặc định v1)", () => {
   process.env.R2_KEY_PREFIX = "videos";
-  assert.strictEqual(buildSubKey("hg", "123", 0, "vi"), "videos/hg_123_ep0.vi.vtt");
-  assert.strictEqual(buildSubKey("hm", "9", 4, "en"), "videos/hm_9_ep4.en.vtt");
+  assert.strictEqual(buildSubKey("hg", "123", 0, "vi"), "videos/hg_123_ep0.v1.vi.vtt");
+  assert.strictEqual(buildSubKey("hm", "9", 4, "en"), "videos/hm_9_ep4.v1.en.vtt");
 });
 
-test("url phụ đề ghép từ R2_PUBLIC_BASE", () => {
+test("url phụ đề ghép từ R2_PUBLIC_BASE (mặc định v1)", () => {
   process.env.R2_KEY_PREFIX = "videos";
   process.env.R2_PUBLIC_BASE = "https://pub-x.r2.dev";
-  assert.strictEqual(buildSubUrl("hg", "123", 0, "en"), "https://pub-x.r2.dev/videos/hg_123_ep0.en.vtt");
+  assert.strictEqual(buildSubUrl("hg", "123", 0, "en"), "https://pub-x.r2.dev/videos/hg_123_ep0.v1.en.vtt");
+});
+
+test("key phụ đề mang số phiên bản", () => {
+  process.env.R2_KEY_PREFIX = "videos";
+  assert.strictEqual(buildSubKey("hg", "123", 5, "vi", 2), "videos/hg_123_ep5.v2.vi.vtt");
+  assert.strictEqual(buildSubKey("hm", "9", 0, "en", 1), "videos/hm_9_ep0.v1.en.vtt");
+});
+
+test("thiếu version -> mặc định v1", () => {
+  process.env.R2_KEY_PREFIX = "videos";
+  assert.strictEqual(buildSubKey("hg", "123", 5, "vi"), "videos/hg_123_ep5.v1.vi.vtt");
+});
+
+test("url phụ đề ghép base + key có phiên bản", () => {
+  process.env.R2_KEY_PREFIX = "videos";
+  process.env.R2_PUBLIC_BASE = "https://pub-x.r2.dev";
+  assert.strictEqual(buildSubUrl("hg", "123", 5, "en", 3), "https://pub-x.r2.dev/videos/hg_123_ep5.v3.en.vtt");
 });

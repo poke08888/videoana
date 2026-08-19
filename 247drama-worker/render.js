@@ -145,16 +145,22 @@ async function renderEpisodeInner({ series, provider, sourceId, ep }) {
       } catch (e) {}
     }
 
+    // Phiên bản bộ .vtt: lấy số hiện có + 1 để không ghi đè bộ cũ khi render lại.
+    const prevDoc = await ShortVideo.findOne({ movieSeries: series._id, episodeNumber: ep.index })
+      .select("subVersion")
+      .lean();
+    const subVersion = ((prevDoc && prevDoc.subVersion) || 0) + 1;
+
     // 4c) Chế độ soft: up track WebVTT rời (đã dựng và kiểm ở bước trên).
     const subTracks = [];
     for (const [lang, body] of softBodies) {
       try {
-        await uploadAndVerify(Buffer.from(body, "utf8"), buildSubKey(provider, sourceId, ep.index, lang), "text/vtt; charset=utf-8", {
+        await uploadAndVerify(Buffer.from(body, "utf8"), buildSubKey(provider, sourceId, ep.index, lang, subVersion), "text/vtt; charset=utf-8", {
           // Phụ đề còn sửa nhiều lần (chất lượng dịch, timing). Cache dài + immutable như
           // video sẽ khiến bản hỏng kẹt ở edge Cloudflare và ở máy người xem cả năm.
           cacheControl: "public, max-age=300, must-revalidate",
         });
-        subTracks.push({ lang, url: buildSubUrl(provider, sourceId, ep.index, lang) });
+        subTracks.push({ lang, url: buildSubUrl(provider, sourceId, ep.index, lang, subVersion) });
       } catch (e) {
         status.fail(tag);
         console.error(`[render] ✗ ${tag}: up track ${lang} lỗi:`, e.message);
@@ -178,6 +184,7 @@ async function renderEpisodeInner({ series, provider, sourceId, ep }) {
           sourceVideoId: ep.videoId,
           subLang,
           subTracks,
+          subVersion: subTracks.length ? subVersion : ((prevDoc && prevDoc.subVersion) || 0),
           burnedLang: r.burned ? subLang : "",
         },
       },

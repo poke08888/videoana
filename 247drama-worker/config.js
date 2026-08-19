@@ -69,14 +69,17 @@ function buildSubtitleConfig(settingJSON) {
   };
 }
 
-// Key phụ đề trên R2: cùng tên file video, đổi .mp4 -> .<lang>.vtt.
-function buildSubKey(provider, sourceId, index, lang) {
-  return buildR2Key(provider, sourceId, index).replace(/\.mp4$/, `.${lang}.vtt`);
+// Key phụ đề trên R2: cùng tên file video, thêm số phiên bản rồi tới ngôn ngữ.
+// Phiên bản để render lại KHÔNG ghi đè bộ .vtt cũ: bản ghi Mongo (ghi sau cùng) luôn trỏ
+// vào một bộ file nhất quán, không bao giờ có cảnh video mới nằm cạnh sub cũ.
+function buildSubKey(provider, sourceId, index, lang, version = 1) {
+  const v = Number.isFinite(version) && version > 0 ? Math.floor(version) : 1;
+  return buildR2Key(provider, sourceId, index).replace(/\.mp4$/, `.v${v}.${lang}.vtt`);
 }
 
-function buildSubUrl(provider, sourceId, index, lang) {
+function buildSubUrl(provider, sourceId, index, lang, version = 1) {
   const base = process.env.R2_PUBLIC_BASE || env.r2.publicBase || "";
-  return `${base}/${buildSubKey(provider, sourceId, index, lang)}`;
+  return `${base}/${buildSubKey(provider, sourceId, index, lang, version)}`;
 }
 
 module.exports = { env, buildFilename, buildR2Key, buildVideoUrl, buildSubtitleConfig, buildSubKey, buildSubUrl };
