@@ -50,7 +50,9 @@ export function veoVideoEngine(
         model,
         prompt: buildMotionPrompt(req),
         image: { imageBytes: fs.readFileSync(req.firstFrame.path).toString("base64"), mimeType: req.firstFrame.mimeType },
-        config: { aspectRatio: req.aspectRatio, durationSeconds: req.durationSec, numberOfVideos: 1, generateAudio: false, resolution: "720p" },
+        // KHÔNG truyền generateAudio: Gemini API không hỗ trợ (chỉ Vertex AI có). Veo tự sinh
+        // audio nhưng assemble.ts chỉ map audio từ file giọng nên track đó bị bỏ — vô hại.
+        config: { aspectRatio: req.aspectRatio, durationSeconds: req.durationSec, numberOfVideos: 1, resolution: "720p" },
       });
       const started = Date.now();
       while (!op.done) {

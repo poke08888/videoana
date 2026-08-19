@@ -5,7 +5,8 @@
  *   npx tsx scripts/studio-bench.ts --product ga.jpg --background ban.jpg \
  *     --prompt "Close-up: a hand picks up one piece of fried chicken from the tray" \
  *     --models veo-3.1-lite-generate-preview,veo-3.1-fast-generate-preview --runs 2 --out ./data/bench
- *   Thêm --keyframe path.png để bỏ qua bước sinh ảnh; --dry để chỉ in kế hoạch.
+ *   Thêm --keyframe path.png để bỏ qua bước sinh ảnh; --dry để chỉ in kế hoạch;
+ *   --motion low|medium|high để bench chốt chặn chống méo chữ trên nhãn (spec 2.3).
  */
 import "dotenv/config";
 import fs from "node:fs";
@@ -31,6 +32,8 @@ async function main() {
   const a = parseArgs(process.argv.slice(2));
   const out = String(a.out || "./data/bench");
   const runs = Number(a.runs || 2);
+  // Biên độ chuyển động: chốt chặn số 1 chống méo chữ trên nhãn (spec 2.3) — phải bench được.
+  const motion = (["low", "medium", "high"].includes(String(a.motion)) ? String(a.motion) : "medium") as "low" | "medium" | "high";
   const models = String(a.models || `${STUDIO.videoModelDraft},${STUDIO.videoModelFinal}`).split(",").map((s) => s.trim()).filter(Boolean);
   const prompt = String(a.prompt || "");
   const dry = !!a.dry;
@@ -39,6 +42,7 @@ async function main() {
 
   const plan = [`Ảnh khoá: ${a.keyframe ? "dùng sẵn " + a.keyframe : "sinh bằng " + STUDIO.imageModel + " (~$" + imageCost(STUDIO.imageModel, "2K") + ")"}`];
   let est = a.keyframe ? 0 : imageCost(STUDIO.imageModel, "2K");
+  plan.push(`Biên độ chuyển động: ${motion}`);
   for (const m of models) { plan.push(`${m} × ${runs} lượt × 8s = $${(videoCost(m, 8) * runs).toFixed(2)}`); est += videoCost(m, 8) * runs; }
   console.log(plan.join("\n") + `\nƯớc tính: $${est.toFixed(2)} ≈ ${usdToVnd(est).toLocaleString("vi-VN")} đ`);
   if (dry) return;
@@ -60,10 +64,10 @@ async function main() {
   for (const m of models) {
     const eng = veoVideoEngine(key, { draft: m, final: m });
     for (let i = 1; i <= runs; i++) {
-      const outPath = path.join(out, `${m}_run${i}.mp4`);
+      const outPath = path.join(out, `${m}_${motion}_run${i}.mp4`);
       const t0 = Date.now();
       try {
-        const r = await eng.generate({ prompt, firstFrame: { path: keyframe, mimeType: "image/png" }, durationSec: 8, aspectRatio: "9:16", tier: "draft", motionLevel: "medium", outPath });
+        const r = await eng.generate({ prompt, firstFrame: { path: keyframe, mimeType: "image/png" }, durationSec: 8, aspectRatio: "9:16", tier: "draft", motionLevel: motion, outPath });
         spent += r.costUsd;
         rows.push(`| ${path.basename(outPath)} | ${m} | ${((Date.now() - t0) / 1000).toFixed(0)}s | $${r.costUsd} |  |  |  |  |`);
         console.log(`✓ ${outPath} (${((Date.now() - t0) / 1000).toFixed(0)}s, $${r.costUsd})`);
