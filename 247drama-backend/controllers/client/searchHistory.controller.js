@@ -1,5 +1,6 @@
 const SearchHistory = require("../../models/searchHistory.model");
 const MovieSeries = require("../../models/movieSeries.model");
+const { seriesSearchOr } = require("../../util/searchMatch");
 const SearchCount = require("../../models/searchCount.model");
 
 //Entry for the SearchHistory + SearchCount
@@ -13,9 +14,11 @@ exports.searchMovieSeries = async (req, res) => {
       });
     }
 
+    // Khớp theo mọi ngôn ngữ đã dịch, không chỉ tên tiếng Việt, để lịch sử tìm kiếm của
+    // người xem nước ngoài cũng được ghi nhận.
     const movie = await MovieSeries.findOne({
       _id: movieSeriesId,
-      name: { $regex: query, $options: "i" },
+      $or: seriesSearchOr(query),
       isActive: true,
     }).lean();
 

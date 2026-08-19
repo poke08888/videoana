@@ -1,4 +1,5 @@
 const MovieSeries = require("../../models/movieSeries.model");
+const { seriesSearchOr } = require("../../util/searchMatch");
 
 //import model
 const Category = require("../../models/category.model");
@@ -228,7 +229,8 @@ exports.findContentBySearch = async (req, res) => {
     const matchStage = { isActive: true };
 
     if (searchQuery !== "All") {
-      matchStage.$or = [{ name: { $regex: searchQuery, $options: "i" } }, { description: { $regex: searchQuery, $options: "i" } }];
+      // Tìm theo mọi ngôn ngữ đã dịch: người xem Thái gõ tên tiếng Thái vẫn ra phim.
+      matchStage.$or = seriesSearchOr(searchQuery);
     }
 
     const userQuery = userId ? User.findOne({ _id: userId }).select("isBlock") : Promise.resolve(null);
@@ -888,7 +890,8 @@ exports.getContentBySearch = async (req, res) => {
     const matchStage = { isActive: true };
 
     if (searchQuery !== "All") {
-      matchStage.$or = [{ name: { $regex: searchQuery, $options: "i" } }, { description: { $regex: searchQuery, $options: "i" } }];
+      // Tìm theo mọi ngôn ngữ đã dịch: người xem Thái gõ tên tiếng Thái vẫn ra phim.
+      matchStage.$or = seriesSearchOr(searchQuery);
     }
 
     if (userId) {
