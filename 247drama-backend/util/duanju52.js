@@ -44,9 +44,11 @@ function createClient({ getKey, httpGet, minIntervalMs = 3200, cacheTtlMs = 6000
   }
 
   // hg và hm đặt tên field khác nhau -> chuẩn hoá về một hình dạng cho web.
+  // Bỏ qua phần tử rác (null, undefined, không phải object).
   function normalizeItem(it) {
+    if (it == null || typeof it !== "object" || Array.isArray(it)) return null;
     return {
-      sourceId: String(it.id != null ? it.id : it.book_id || ""),
+      sourceId: String(it.id != null ? it.id : (it.book_id != null ? it.book_id : "")),
       name: it.title || it.name || "",
       description: it.desc || it.introduction || "",
       cover: it.book_pic || it.cover || it.coverWap || "",
@@ -56,7 +58,7 @@ function createClient({ getKey, httpGet, minIntervalMs = 3200, cacheTtlMs = 6000
   return {
     async search(provider, keyword, page = 1) {
       const data = await call(baseOf(provider), { type: "search", keyword, page });
-      return ((data && data.lists) || []).map(normalizeItem);
+      return ((data && data.lists) || []).map(normalizeItem).filter((x) => x != null);
     },
     async topCategories() {
       const data = await call(TOP_BASE, { type: "top" });
@@ -71,7 +73,7 @@ function createClient({ getKey, httpGet, minIntervalMs = 3200, cacheTtlMs = 6000
     },
     async topList(cellId, subCellId = "", page = 1) {
       const data = await call(TOP_BASE, { type: "list", cell_id: cellId, sub_cell_id: subCellId, page });
-      return ((data && data.lists) || []).map(normalizeItem);
+      return ((data && data.lists) || []).map(normalizeItem).filter((x) => x != null);
     },
     async detail(provider, sourceId) {
       const data = await call(baseOf(provider), { type: "detail", id: sourceId });
