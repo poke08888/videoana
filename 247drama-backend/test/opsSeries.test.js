@@ -39,8 +39,12 @@ test("provider lạ -> ném lỗi", () => {
 test("có bản dịch -> name là tiếng Việt, giữ bản Anh và bản gốc tiếng Trung", () => {
   const meta = {
     ok: true,
-    vi: { name: "Chiến Thần Bắc Cảnh", description: "mô tả Việt" },
-    en: { name: "War God", description: "english desc" },
+    missing: [],
+    i18n: {
+      vi: { name: "Chiến Thần Bắc Cảnh", description: "mô tả Việt" },
+      en: { name: "War God", description: "english desc" },
+      th: { name: "เทพสงคราม", description: "คำอธิบาย" },
+    },
   };
   const d = buildSeriesDoc({ provider: "hg", sourceId: "1", info: { name: "北境战神", description: "中文", cover: "c", episodeCount: 3 }, categoryId: "c1", languageId: "l1", type: 2, meta });
   assert.strictEqual(d.name, "Chiến Thần Bắc Cảnh");
@@ -48,15 +52,30 @@ test("có bản dịch -> name là tiếng Việt, giữ bản Anh và bản g�
   assert.strictEqual(d.nameEn, "War God");
   assert.strictEqual(d.nameOriginal, "北境战神");
   assert.strictEqual(d.descriptionOriginal, "中文");
+  assert.strictEqual(d.i18n.th.name, "เทพสงคราม");
   assert.ok(d.metaTranslatedAt instanceof Date);
 });
 
-test("dịch hụt -> giữ nguyên tiếng Trung và KHÔNG đánh dấu đã dịch", () => {
-  const meta = { ok: false, vi: { name: "北境战神", description: "中文" }, en: { name: "北境战神", description: "中文" }, error: "x" };
+test("dịch hụt hết -> giữ nguyên tiếng Trung và KHÔNG đánh dấu đã dịch", () => {
+  const meta = { ok: false, i18n: {}, missing: ["vi", "en"], error: "x" };
   const d = buildSeriesDoc({ provider: "hg", sourceId: "1", info: { name: "北境战神", description: "中文", cover: "c", episodeCount: 3 }, categoryId: "c1", languageId: "l1", type: 2, meta });
   assert.strictEqual(d.name, "北境战神");
   assert.strictEqual(d.nameEn, "");
   assert.strictEqual(d.metaTranslatedAt, null);
+  assert.deepStrictEqual(d.metaMissingLangs, ["vi", "en"]);
+});
+
+test("dịch được vài thứ tiếng -> lưu phần dịch được, ghi lại ngôn ngữ còn thiếu", () => {
+  const meta = {
+    ok: false,
+    missing: ["th"],
+    i18n: { vi: { name: "Chiến Thần", description: "mô tả" }, en: { name: "War God", description: "desc" } },
+  };
+  const d = buildSeriesDoc({ provider: "hg", sourceId: "1", info: { name: "北境战神", description: "中文", cover: "c", episodeCount: 3 }, categoryId: "c1", languageId: "l1", type: 2, meta });
+  assert.strictEqual(d.name, "Chiến Thần");
+  assert.strictEqual(d.nameEn, "War God");
+  assert.deepStrictEqual(d.metaMissingLangs, ["th"]);
+  assert.ok(d.metaTranslatedAt instanceof Date);
 });
 
 test("không truyền meta -> hành vi như cũ, vẫn lưu bản gốc để dịch lại", () => {

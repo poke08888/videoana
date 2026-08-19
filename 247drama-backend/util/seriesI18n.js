@@ -7,7 +7,7 @@
 // Chỉ đụng vào object có _id trùng id phim đã dịch nên không chạm nhầm tên thể loại, tên
 // người dùng hay bất cứ field name nào khác.
 const MovieSeries = require("../models/movieSeries.model");
-const { resolveSubLang } = require("./geoLang");
+const { resolveSubLang, loadLangTable } = require("./geoLang");
 
 const TTL_MS = 5 * 60 * 1000;
 const MAX_DEPTH = 8;
@@ -15,18 +15,23 @@ const MAX_DEPTH = 8;
 let cache = { at: 0, map: new Map() };
 
 async function defaultFind() {
-  return MovieSeries.find({ nameEn: { $nin: ["", null] } })
-    .select("_id nameEn descriptionEn")
+  return MovieSeries.find({ metaTranslatedAt: { $ne: null } })
+    .select("_id i18n nameEn descriptionEn")
     .lean();
 }
 
-// Map id phim -> bản tiếng Anh. Cache 5 phút: phim mới dịch chậm nhất 5 phút là hiện ra,
-// đổi lại mỗi request không phải truy vấn thêm.
-async function getEnMap({ now = Date.now(), find = defaultFind, ttl = TTL_MS } = {}) {
-  if (now - cache.at < ttl) return cache.map;
+// Map id phim -> { <mã ngôn ngữ>: {name, description} }. Cache 5 phút: phim mới dịch chậm
+// nhất 5 phút là hiện ra, đổi lại mỗi request không phải truy vấn thêm.
+async function getTransMap({ now = Date.now(), find = defaultFind, ttl = TTL_MS } = {}) {
+  if (cache.at && now - cache.at < ttl) return cache.map;
   const rows = await find();
   const map = new Map();
-  for (const r of rows) map.set(String(r._id), { name: r.nameEn || "", description: r.descriptionEn || "" });
+  for (const r of rows) {
+    const byLang = { ...(r.i18n || {}) };
+    // Phim dịch từ bản trước (chỉ có nameEn) vẫn dùng được.
+    if (!byLang.en && r.nameEn) byLang.en = { name: r.nameEn, description: r.descriptionEn || "" };
+    if (Object.keys(byLang).length) map.set(String(r._id), byLang);
+  }
   cache = { at: now, map };
   return map;
 }
@@ -36,26 +41,27 @@ function clearCache() {
 }
 
 // Thay tại chỗ. Trả về chính node để dùng được kiểu localizePayload(body, map).
-function localizePayload(node, map, depth = 0) {
+function localizePayload(node, map, lang, depth = 0) {
   if (!node || typeof node !== "object" || depth > MAX_DEPTH) return node;
   if (Array.isArray(node)) {
-    for (const item of node) localizePayload(item, map, depth + 1);
+    for (const item of node) localizePayload(item, map, lang, depth + 1);
     return node;
   }
   if (node instanceof Date || Buffer.isBuffer(node)) return node;
 
-  const en = node._id != null ? map.get(String(node._id)) : null;
-  if (en && en.name) {
-    if (typeof node.name === "string") node.name = en.name;
-    if (typeof node.movieSeriesName === "string") node.movieSeriesName = en.name;
-    if (en.description) {
-      if (typeof node.description === "string") node.description = en.description;
-      if (typeof node.movieSeriesDescription === "string") node.movieSeriesDescription = en.description;
+  const byLang = node._id != null ? map.get(String(node._id)) : null;
+  const t = byLang ? byLang[lang] : null;
+  if (t && t.name) {
+    if (typeof node.name === "string") node.name = t.name;
+    if (typeof node.movieSeriesName === "string") node.movieSeriesName = t.name;
+    if (t.description) {
+      if (typeof node.description === "string") node.description = t.description;
+      if (typeof node.movieSeriesDescription === "string") node.movieSeriesDescription = t.description;
     }
   }
   for (const k of Object.keys(node)) {
     const v = node[k];
-    if (v && typeof v === "object") localizePayload(v, map, depth + 1);
+    if (v && typeof v === "object") localizePayload(v, map, lang, depth + 1);
   }
   return node;
 }
@@ -63,14 +69,20 @@ function localizePayload(node, map, depth = 0) {
 // Middleware cho router client. Người xem ở Việt Nam đi thẳng, không tốn gì.
 function localizeSeriesResponse(opts = {}) {
   const lookup = opts.resolveLang || resolveSubLang;
-  const load = opts.getMap || getEnMap;
+  const load = opts.getMap || getTransMap;
+  const loadTable = opts.loadLangTable || loadLangTable;
   return async (req, res, next) => {
     try {
-      if (lookup(req) !== "en") return next();
+      // Nạp bảng quốc gia -> ngôn ngữ trước khi tra, vì resolveSubLang là hàm đồng bộ đọc
+      // bảng đã cache. Middleware này chạy trước mọi route client nên bảng luôn ấm.
+      await loadTable();
+      const lang = lookup(req);
+      // "vi" là bản đã nằm sẵn ở name/description -> không phải đổi gì.
+      if (!lang || lang === "vi") return next();
       const map = await load();
       if (!map || !map.size) return next();
       const sendJson = res.json.bind(res);
-      res.json = (body) => sendJson(localizePayload(body, map));
+      res.json = (body) => sendJson(localizePayload(body, map, lang));
     } catch (e) {
       console.error("localizeSeriesResponse lỗi, trả nguyên bản:", e.message);
     }
@@ -78,4 +90,4 @@ function localizeSeriesResponse(opts = {}) {
   };
 }
 
-module.exports = { getEnMap, clearCache, localizePayload, localizeSeriesResponse, TTL_MS };
+module.exports = { getTransMap, clearCache, localizePayload, localizeSeriesResponse, TTL_MS };

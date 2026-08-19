@@ -1,32 +1,44 @@
-// Dịch tên + mô tả phim từ tiếng Trung sang tiếng Việt và tiếng Anh (Gemini).
+// Dịch tên + mô tả phim từ tiếng Trung sang nhiều ngôn ngữ (Gemini).
 //
 // Dùng lúc nhập phim từ 52api: nguồn trả tên/mô tả tiếng Trung, app không thể hiện chữ Hán
-// cho người xem. Lỗi dịch KHÔNG được chặn nhập phim — trả về bản gốc kèm ok=false để web
-// vận hành hiện nút "Dịch lại".
+// cho người xem. Lỗi dịch KHÔNG được chặn nhập phim — trả về phần dịch được kèm danh sách
+// ngôn ngữ còn thiếu để web vận hành hiện nút "Dịch lại".
 const axios = require("axios");
 
 const DEFAULT_MODEL = "gemini-2.5-flash";
 const HAN = /[一-鿿㐀-䶿]/;
 
+// Ngôn ngữ có bảng chữ riêng: bản dịch hụt kiểu "trả về tiếng Anh" không lộ chữ Hán nào,
+// nên phải kiểm thêm đúng bảng chữ.
+const LANGS = {
+  vi: { name: "tiếng Việt", script: null },
+  en: { name: "English", script: null },
+  th: { name: "tiếng Thái (ภาษาไทย)", script: /[฀-๿]/ },
+  id: { name: "tiếng Indonesia (Bahasa Indonesia)", script: null },
+};
+
 const clean = (v) => String(v == null ? "" : v).trim();
+const langName = (c) => (LANGS[c] ? LANGS[c].name : c);
+const isSupported = (c) => Object.prototype.hasOwnProperty.call(LANGS, c);
 
 function stripFence(s) {
   return String(s || "").replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/i, "").trim();
 }
 
-function buildPrompt({ name, description }) {
+function buildPrompt({ name, description }, langs) {
+  const shape = langs.map((l) => `"${l}":{"name":"","description":""}`).join(",");
+  const list = langs.map((l) => langName(l)).join(", ");
   return (
     "Bạn là biên tập viên nội dung phim ngắn. Dịch tên phim và phần mô tả sau từ tiếng Trung " +
-    "sang tiếng Việt và tiếng Anh.\n" +
-    "Tên phim: dịch thoáng cho tự nhiên và hấp dẫn với người xem, giữ đúng thể loại, không phiên âm Hán Việt máy móc.\n" +
+    `sang các thứ tiếng: ${list}.\n` +
+    "Tên phim: dịch thoáng cho tự nhiên và hấp dẫn với người xem bản ngữ, giữ đúng thể loại, " +
+    "không phiên âm máy móc.\n" +
     "Mô tả: dịch sát nội dung, không thêm bớt tình tiết, không bình luận.\n" +
-    "CHỈ trả về JSON đúng dạng sau, không giải thích:\n" +
-    '{"vi":{"name":"","description":""},"en":{"name":"","description":""}}\n\n' +
+    `CHỈ trả về JSON đúng dạng sau, không giải thích:\n{${shape}}\n\n` +
     `Tên: ${name}\nMô tả: ${description || "(không có)"}`
   );
 }
 
-// Gọi Gemini thật. Tách riêng để test tiêm hàm giả, không đụng mạng.
 function defaultAsk({ apiKey, model, timeout = 60000 }) {
   return async (prompt) => {
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`;
@@ -40,47 +52,57 @@ function defaultAsk({ apiKey, model, timeout = 60000 }) {
   };
 }
 
-// Một ngôn ngữ chỉ được coi là dịch xong khi có tên, và tên KHÔNG còn chữ Hán.
-// Gemini thỉnh thoảng trả nguyên tên gốc -> coi như chưa dịch, giữ để dịch lại sau.
-function takeLang(part, src) {
+// Một ngôn ngữ chỉ được nhận khi có tên, không còn chữ Hán, và đúng bảng chữ của nó.
+function takeLang(lang, part) {
   const name = clean(part && part.name);
   const description = clean(part && part.description);
   if (!name || HAN.test(name)) return null;
-  return { name, description: description && !HAN.test(description) ? description : "" };
+  const script = (LANGS[lang] || {}).script;
+  if (script && !script.test(name)) return null;
+  const okDesc = description && !HAN.test(description) && (!script || script.test(description));
+  return { name, description: okDesc ? description : "" };
 }
 
 /**
  * @param {{name:string, description:string}} src  tên/mô tả gốc (tiếng Trung)
- * @param {{apiKey?:string, model?:string, ask?:Function}} opts  ask = hàm gọi model (test tiêm vào)
- * @returns {Promise<{vi:{name,description}, en:{name,description}, ok:boolean, error:string}>}
+ * @param {{apiKey?:string, model?:string, langs?:string[], ask?:Function}} opts
+ * @returns {Promise<{i18n:object, ok:boolean, missing:string[], error:string}>}
+ *   i18n = { vi: {name, description}, en: {...} } — chỉ chứa ngôn ngữ dịch đạt.
  */
 async function translateSeriesMeta(src, opts = {}) {
   const { apiKey = "", model = DEFAULT_MODEL, ask } = opts;
-  const base = { name: clean(src && src.name), description: clean(src && src.description) };
-  const fallback = (error) => ({ vi: { ...base }, en: { ...base }, ok: false, error });
+  const wanted = (Array.isArray(opts.langs) && opts.langs.length ? opts.langs : ["vi", "en"])
+    .map((l) => String(l || "").trim().toLowerCase())
+    .filter((l, i, a) => l && isSupported(l) && a.indexOf(l) === i);
 
-  if (!base.name) return fallback("thiếu tên phim");
+  const base = { name: clean(src && src.name), description: clean(src && src.description) };
+  const fail = (error) => ({ i18n: {}, ok: false, missing: wanted, error });
+
+  if (!wanted.length) return { i18n: {}, ok: false, missing: [], error: "chưa chọn ngôn ngữ nào" };
+  if (!base.name) return fail("thiếu tên phim");
   const call = ask || (apiKey ? defaultAsk({ apiKey, model }) : null);
-  if (!call) return fallback("thiếu geminiApiKey");
+  if (!call) return fail("thiếu geminiApiKey");
 
   let parsed;
   try {
-    parsed = JSON.parse(stripFence(await call(buildPrompt(base))));
+    parsed = JSON.parse(stripFence(await call(buildPrompt(base, wanted))));
   } catch (e) {
-    return fallback(`Gemini lỗi: ${e.message}`);
+    return fail(`Gemini lỗi: ${e.message}`);
   }
 
-  const vi = takeLang(parsed && parsed.vi, base);
-  const en = takeLang(parsed && parsed.en, base);
-  if (!vi || !en) return fallback("bản dịch không hợp lệ (thiếu ngôn ngữ hoặc còn chữ Hán)");
-
-  // Mô tả gốc rỗng thì bản dịch rỗng là đúng, không tính là lỗi.
+  const i18n = {};
+  const missing = [];
+  for (const lang of wanted) {
+    const got = takeLang(lang, parsed && parsed[lang]);
+    if (got) i18n[lang] = { name: got.name, description: got.description || base.description };
+    else missing.push(lang);
+  }
   return {
-    vi: { name: vi.name, description: vi.description || (base.description ? base.description : "") },
-    en: { name: en.name, description: en.description || (base.description ? base.description : "") },
-    ok: true,
-    error: "",
+    i18n,
+    ok: missing.length === 0,
+    missing,
+    error: missing.length ? `chưa dịch được: ${missing.join(", ")}` : "",
   };
 }
 
-module.exports = { translateSeriesMeta, buildPrompt, DEFAULT_MODEL };
+module.exports = { translateSeriesMeta, buildPrompt, langName, isSupported, DEFAULT_MODEL };

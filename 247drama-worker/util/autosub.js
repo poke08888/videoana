@@ -4,6 +4,7 @@ const path = require("path");
 const { transcribeAudio } = require("./asr");
 const { ocrSubtitles } = require("./asrOcr");
 const { translateSegments } = require("./translate");
+const { checkTrack, langName } = require("./langRules");
 const { probeDimensions, buildAss } = require("./subtitle");
 const { transcodeToH264, transcodeBurnSub, transcodeCleanBox } = require("./transcode");
 
@@ -24,61 +25,92 @@ function hanRatio(segs) {
   return han / lines.length;
 }
 
-const HAN_LIMIT = 0.05; // quá 5% số dòng còn chữ Hán = một lô dịch hụt -> loại
-
 /**
- * Nghi thức nghiệm thu trước khi publish một tập: bản dịch phải ĐỦ dòng và THẬT SỰ đã dịch.
- * translateSegments giữ nguyên text gốc cho lô nào hụt, nên chỉ đếm "có kết quả" là không đủ.
+ * Nghi thức nghiệm thu trước khi publish một tập: mỗi track phải ĐỦ dòng và THẬT SỰ đã dịch
+ * đúng ngôn ngữ của nó (translateSegments giữ nguyên text gốc cho lô nào hụt, nên chỉ đếm
+ * "có kết quả" là không đủ).
+ *
+ * Ngôn ngữ chính hụt -> cả tập không đạt (thà chậm còn hơn đẩy tập không ai đọc được).
+ * Ngôn ngữ phụ hụt -> chỉ bỏ track đó, tập vẫn lên với các ngôn ngữ còn lại.
  */
-function acceptTranslation({ zhCount, viSegs, enSegs, secondLang }) {
-  const vi = viSegs || [];
-  const en = enSegs || [];
-  if (vi.length !== zhCount) {
-    return { ok: false, reason: `số cue vi (${vi.length}) khác số dòng OCR (${zhCount})` };
+function acceptTracks({ zhCount, tracks, primary = "vi" }) {
+  const all = tracks || {};
+  const main = checkTrack(primary, all[primary], zhCount);
+  if (!main.ok) return { ok: false, reason: main.reason, accepted: {}, dropped: [] };
+
+  const accepted = { [primary]: all[primary] };
+  const dropped = [];
+  for (const lang of Object.keys(all)) {
+    if (lang === primary) continue;
+    const v = checkTrack(lang, all[lang], zhCount);
+    if (v.ok) accepted[lang] = all[lang];
+    else dropped.push({ lang, reason: v.reason });
   }
-  const viHan = hanRatio(vi);
-  if (viHan >= HAN_LIMIT) {
-    return { ok: false, reason: `bản dịch vi hụt: ${Math.round(viHan * 100)}% số dòng còn chữ Hán` };
-  }
-  if (secondLang) {
-    if (en.length !== zhCount) {
-      return { ok: false, reason: `số cue ${secondLang} (${en.length}) khác số dòng OCR (${zhCount})` };
-    }
-    const enHan = hanRatio(en);
-    if (enHan >= HAN_LIMIT) {
-      return { ok: false, reason: `bản dịch ${secondLang} hụt: ${Math.round(enHan * 100)}% số dòng còn chữ Hán` };
-    }
-  }
-  return { ok: true, reason: "" };
+  return { ok: true, reason: "", accepted, dropped };
 }
 
 /**
- * Dịch zhSegs sang ngôn ngữ chính (targetLang) và ngôn ngữ phụ (secondLang) SONG SONG,
- * cả hai đều đi từ TIẾNG TRUNG GỐC (không dịch chuyền vi->en để khỏi tam sao thất bản).
- * Nhánh phụ lỗi thì bỏ qua (tập vẫn lên, chỉ thiếu track en); nhánh chính lỗi thì ném ra
+ * Dịch zhSegs sang TẤT CẢ ngôn ngữ đích SONG SONG, mỗi ngôn ngữ đều đi từ TIẾNG TRUNG GỐC
+ * (không dịch chuyền vi->th để khỏi tam sao thất bản).
+ * Ngôn ngữ phụ lỗi -> trả mảng rỗng, để nghiệm thu quyết định. Ngôn ngữ chính lỗi -> ném ra
  * cho subtitleVideoBuffer fallback.
  */
-async function translateBoth(zhSegs, opts = {}) {
+async function translateAll(zhSegs, opts = {}) {
   const {
     apiKey,
     model = "gemini-2.5-flash",
     sourceLang = "zh",
-    targetLang = "vi",
-    secondLang = "en",
+    langs = ["vi"],
+    primary = langs[0] || "vi",
     batchSize = 40,
     translateFn = translateSegments,
   } = opts;
   const base = { apiKey, model, sourceLang, batchSize };
-  const [viSegs, enSegs] = await Promise.all([
-    translateFn(zhSegs, { ...base, targetLang }),
-    secondLang
-      ? translateFn(zhSegs, { ...base, targetLang: secondLang }).catch((e) => {
-          console.error(`[autosub] dịch ${secondLang} lỗi, bỏ track phụ:`, e.message);
-          return [];
-        })
-      : Promise.resolve([]),
-  ]);
-  return { viSegs, enSegs };
+  const pairs = await Promise.all(
+    langs.map(async (lang) => {
+      if (lang === primary) return [lang, await translateFn(zhSegs, { ...base, targetLang: lang })];
+      try {
+        return [lang, await translateFn(zhSegs, { ...base, targetLang: lang })];
+      } catch (e) {
+        console.error(`[autosub] dịch ${lang} lỗi:`, e.message);
+        return [lang, []];
+      }
+    })
+  );
+  return Object.fromEntries(pairs);
+}
+
+/**
+ * Dịch + nghiệm thu, và dịch LẠI MỘT LẦN cho ngôn ngữ nào hụt. Dịch lại ở đây rẻ vì video đã
+ * tải và OCR xong rồi — rẻ hơn nhiều so với bỏ cả tập rồi làm lại từ đầu ở vòng sau.
+ */
+async function translateTracks(zhSegs, opts = {}) {
+  const { langs = ["vi"], primary = langs[0] || "vi", translateFn = translateSegments } = opts;
+  const tracks = await translateAll(zhSegs, opts);
+  const verdict = acceptTracks({ zhCount: zhSegs.length, tracks, primary });
+  if (!verdict.ok) return verdict;
+
+  const accepted = verdict.accepted;
+  const stillDropped = [];
+  for (const d of verdict.dropped) {
+    console.warn(`[autosub] ${d.reason} -> dịch lại ${langName(d.lang)} một lần`);
+    let segs = [];
+    try {
+      segs = await translateFn(zhSegs, {
+        apiKey: opts.apiKey,
+        model: opts.model,
+        sourceLang: opts.sourceLang || "zh",
+        batchSize: opts.batchSize,
+        targetLang: d.lang,
+      });
+    } catch (e) {
+      console.error(`[autosub] dịch lại ${d.lang} lỗi:`, e.message);
+    }
+    const v = checkTrack(d.lang, segs, zhSegs.length);
+    if (v.ok) accepted[d.lang] = segs;
+    else stillDropped.push({ lang: d.lang, reason: v.reason });
+  }
+  return { ok: true, reason: "", accepted, dropped: stillDropped };
 }
 
 /**
@@ -101,7 +133,9 @@ async function subtitleVideoBuffer(buffer, cfg = {}) {
     coverBoxColor = "white@1",
     coverEnabled = true,
     mode = "burn",
-    secondLang = "en",
+    // Danh sách ngôn ngữ phụ đề rời. Phần tử đầu là ngôn ngữ chính (cũng là ngôn ngữ đem burn
+    // ở chế độ burn). Chế độ burn chỉ cần ngôn ngữ chính.
+    langs = ["vi", "en"],
   } = cfg;
 
   const id = `${Date.now()}_${Math.floor(Math.random() * 1e9)}`;
@@ -134,22 +168,21 @@ async function subtitleVideoBuffer(buffer, cfg = {}) {
       if (!zhSegs.length) throw new Error("OCR không đọc được phụ đề nào");
     }
 
-    const { viSegs, enSegs } = await translateBoth(zhSegs, {
+    const wantLangs = mode === "soft" ? langs : [targetLang];
+    const verdict = await translateTracks(zhSegs, {
       apiKey,
       model: geminiModel,
       sourceLang,
-      targetLang,
-      secondLang: mode === "soft" ? secondLang : "",
+      langs: wantLangs,
+      primary: targetLang,
       batchSize: translateBatchSize,
     });
-
-    const verdict = acceptTranslation({
-      zhCount: zhSegs.length,
-      viSegs,
-      enSegs,
-      secondLang: mode === "soft" ? secondLang : "",
-    });
     if (!verdict.ok) throw new Error(verdict.reason);
+    const tracks = verdict.accepted;
+    const viSegs = tracks[targetLang];
+    if (verdict.dropped.length) {
+      console.warn(`[autosub] bỏ track: ${verdict.dropped.map((d) => d.lang).join(", ")}`);
+    }
 
     const boxCfg = {
       yRatio: coverBoxYRatio,
@@ -163,24 +196,24 @@ async function subtitleVideoBuffer(buffer, cfg = {}) {
       const clean = await transcodeCleanBox(srcF, boxCfg);
       // chineseBottomRatio đi kèm để render.js canh track .vtt ngay dưới chữ Trung,
       // đúng quy tắc mà buildAss dùng cho đường burn.
-      return { buffer: clean, subbed: true, segments: viSegs.length, viSegs, enSegs, chineseBottomRatio, burned: false, reason: "", codec: "h264", transcoded: true };
+      return { buffer: clean, subbed: true, segments: viSegs.length, viSegs, tracks, chineseBottomRatio, burned: false, reason: "", codec: "h264", transcoded: true };
     }
 
     buildAss(viSegs, { width: dims.width, height: dims.height, assPath: assF, chineseBottomRatio });
     const out = await transcodeBurnSub(srcF, assF, boxCfg);
-    return { buffer: out, subbed: true, segments: viSegs.length, viSegs, enSegs: [], burned: true, reason: "", codec: "h264", transcoded: true };
+    return { buffer: out, subbed: true, segments: viSegs.length, viSegs, tracks: { [targetLang]: viSegs }, burned: true, reason: "", codec: "h264", transcoded: true };
   } catch (e) {
     // Fallback: vẫn đảm bảo video H.264 xem được (chỉ không có sub Việt).
     // Trả thêm codec/transcoded để caller biết buffer cuối có phát được không (chặn bvc2).
     try {
       const r = await transcodeToH264(buffer);
-      return { buffer: r.buffer, subbed: false, segments: 0, enSegs: [], burned: false, reason: e.message, codec: r.codec, transcoded: r.transcoded };
+      return { buffer: r.buffer, subbed: false, segments: 0, tracks: {}, burned: false, reason: e.message, codec: r.codec, transcoded: r.transcoded };
     } catch (e2) {
-      return { buffer, subbed: false, segments: 0, enSegs: [], burned: false, reason: `${e.message}; transcode fail: ${e2.message}`, codec: "", transcoded: false };
+      return { buffer, subbed: false, segments: 0, tracks: {}, burned: false, reason: `${e.message}; transcode fail: ${e2.message}`, codec: "", transcoded: false };
     }
   } finally {
     cleanup();
   }
 }
 
-module.exports = { subtitleVideoBuffer, translateBoth, hanRatio, acceptTranslation };
+module.exports = { subtitleVideoBuffer, translateAll, translateTracks, hanRatio, acceptTracks };

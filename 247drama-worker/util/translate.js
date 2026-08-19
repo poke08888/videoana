@@ -1,4 +1,5 @@
 const axios = require("axios");
+const { langName } = require("./langRules");
 
 const GEMINI_HOST = "https://generativelanguage.googleapis.com/v1beta/models";
 
@@ -41,8 +42,8 @@ async function translateSegments(segments, opts = {}) {
   if (!segments.length) return [];
 
   const result = segments.map((s) => ({ ...s }));
-  const srcName = sourceLang === "zh" ? "tiếng Trung" : sourceLang;
-  const dstName = targetLang === "vi" ? "tiếng Việt" : targetLang;
+  const srcName = langName(sourceLang);
+  const dstName = langName(targetLang);
 
   for (let i = 0; i < segments.length; i += batchSize) {
     const batch = segments.slice(i, i + batchSize);
@@ -87,8 +88,8 @@ async function translateText(text, opts = {}) {
   if (!clean || !apiKey) return clean;
   try {
     const prompt =
-      `Dịch ${kind} phim sau từ ${sourceLang === "zh" ? "tiếng Trung" : sourceLang} sang ` +
-      `${targetLang === "vi" ? "tiếng Việt" : targetLang} tự nhiên, hấp dẫn, đúng thuần Việt. ` +
+      `Dịch ${kind} phim sau từ ${langName(sourceLang)} sang ` +
+      `${langName(targetLang)} tự nhiên, hấp dẫn, đúng văn phong bản ngữ. ` +
       `CHỈ trả về bản dịch, không giải thích, không thêm dấu ngoặc.\n\n${clean}`;
     const raw = await callGemini({ apiKey, model, prompt });
     return stripCodeFence(raw).trim() || clean;

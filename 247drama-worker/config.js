@@ -47,6 +47,20 @@ function buildVideoUrl(provider, sourceId, index) {
   return `${base}/${buildR2Key(provider, sourceId, index)}`;
 }
 
+// Ngôn ngữ hợp lệ: chỉ nhận mã đã có quy tắc nghiệm thu, bỏ trùng, giữ thứ tự.
+// Ngôn ngữ chính luôn đứng đầu để render.js và autosub biết track nào bắt buộc.
+function buildLangs(s) {
+  const { isSupported } = require("./util/langRules");
+  const primary = s.targetLang || "vi";
+  const raw = Array.isArray(s.langs) && s.langs.length ? s.langs : [primary, s.secondLang || "en"];
+  const out = [];
+  for (const code of [primary, ...raw]) {
+    const c = String(code || "").trim().toLowerCase();
+    if (c && isSupported(c) && !out.includes(c)) out.push(c);
+  }
+  return out;
+}
+
 // Khớp getSubtitleConfig() của server (controllers/admin/movieSeries.controller.js).
 function buildSubtitleConfig(settingJSON) {
   const s = (settingJSON && settingJSON.subtitle) || {};
@@ -65,7 +79,9 @@ function buildSubtitleConfig(settingJSON) {
     // "burn" (mặc định) = đốt phụ đề Việt vào video như cũ.
     // "soft" = video sạch + 2 file .vtt (vi/en) rời -> app chọn theo quốc gia.
     mode: s.mode === "soft" ? "soft" : "burn",
-    secondLang: s.secondLang || "en",
+    // Danh sách ngôn ngữ phụ đề rời, phần tử ĐẦU là ngôn ngữ chính (cũng là ngôn ngữ burn).
+    // Đọc từ settingJSON.subtitle.langs; thiếu thì giữ hành vi cũ (chính + secondLang).
+    langs: buildLangs(s),
   };
 }
 

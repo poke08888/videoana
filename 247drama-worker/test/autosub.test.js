@@ -1,49 +1,82 @@
 const { test } = require("node:test");
 const assert = require("node:assert");
-const { translateBoth } = require("../util/autosub");
+const { translateAll, translateTracks } = require("../util/autosub");
 
 const ZH = [{ start: 0, end: 1, text: "你好" }];
 
-test("dịch cả 2 nhánh từ tiếng Trung gốc, không dịch chuyền vi->en", async () => {
+test("dịch mọi ngôn ngữ từ tiếng Trung gốc, không dịch chuyền vi->en", async () => {
   const calls = [];
   const fake = async (segs, opts) => {
     calls.push({ src: opts.sourceLang, dst: opts.targetLang, text: segs[0].text });
     return [{ ...segs[0], text: `[${opts.targetLang}]` }];
   };
-  const r = await translateBoth(ZH, { apiKey: "k", secondLang: "en", translateFn: fake });
-  assert.strictEqual(r.viSegs[0].text, "[vi]");
-  assert.strictEqual(r.enSegs[0].text, "[en]");
-  assert.deepStrictEqual(calls.map((c) => c.src), ["zh", "zh"]);
-  assert.deepStrictEqual(calls.map((c) => c.text), ["你好", "你好"]);
+  const r = await translateAll(ZH, { apiKey: "k", langs: ["vi", "en", "th"], translateFn: fake });
+  assert.strictEqual(r.vi[0].text, "[vi]");
+  assert.strictEqual(r.en[0].text, "[en]");
+  assert.strictEqual(r.th[0].text, "[th]");
+  assert.deepStrictEqual(calls.map((c) => c.src), ["zh", "zh", "zh"]);
+  assert.deepStrictEqual(calls.map((c) => c.text), ["你好", "你好", "你好"]);
 });
 
-test("nhánh en lỗi -> vẫn có vi, enSegs rỗng", async () => {
+test("một ngôn ngữ phụ lỗi -> track đó rỗng, các ngôn ngữ khác vẫn có", async () => {
   const fake = async (segs, opts) => {
     if (opts.targetLang === "en") throw new Error("Gemini 429");
     return [{ ...segs[0], text: "chào" }];
   };
-  const r = await translateBoth(ZH, { apiKey: "k", secondLang: "en", translateFn: fake });
-  assert.strictEqual(r.viSegs[0].text, "chào");
-  assert.deepStrictEqual(r.enSegs, []);
+  const r = await translateAll(ZH, { apiKey: "k", langs: ["vi", "en"], translateFn: fake });
+  assert.strictEqual(r.vi[0].text, "chào");
+  assert.deepStrictEqual(r.en, []);
 });
 
-test("nhánh vi lỗi -> ném lỗi cho caller fallback", async () => {
+test("ngôn ngữ chính lỗi -> ném lỗi cho caller fallback", async () => {
   const fake = async (segs, opts) => {
     if (opts.targetLang === "vi") throw new Error("Gemini 500");
     return [{ ...segs[0], text: "hi" }];
   };
   await assert.rejects(
-    () => translateBoth(ZH, { apiKey: "k", secondLang: "en", translateFn: fake }),
+    () => translateAll(ZH, { apiKey: "k", langs: ["vi", "en"], translateFn: fake }),
     /Gemini 500/,
   );
 });
 
-test("secondLang rỗng -> chỉ dịch 1 nhánh", async () => {
+test("chỉ một ngôn ngữ -> chỉ gọi model một lần", async () => {
   let n = 0;
   const fake = async (segs) => { n++; return [{ ...segs[0], text: "x" }]; };
-  const r = await translateBoth(ZH, { apiKey: "k", secondLang: "", translateFn: fake });
+  const r = await translateAll(ZH, { apiKey: "k", langs: ["vi"], translateFn: fake });
   assert.strictEqual(n, 1);
-  assert.deepStrictEqual(r.enSegs, []);
+  assert.deepStrictEqual(Object.keys(r), ["vi"]);
+});
+
+test("ngôn ngữ phụ hụt -> dịch LẠI một lần, lần sau đạt thì vẫn có track", async () => {
+  let enCalls = 0;
+  const fake = async (segs, opts) => {
+    if (opts.targetLang === "en") {
+      enCalls++;
+      return [{ ...segs[0], text: enCalls === 1 ? "你好" : "Hello" }];
+    }
+    return [{ ...segs[0], text: "Chào" }];
+  };
+  const r = await translateTracks(ZH, { apiKey: "k", langs: ["vi", "en"], primary: "vi", translateFn: fake });
+  assert.strictEqual(r.ok, true);
+  assert.strictEqual(enCalls, 2, "phải dịch lại đúng một lần");
+  assert.strictEqual(r.accepted.en[0].text, "Hello");
+  assert.deepStrictEqual(r.dropped, []);
+});
+
+test("ngôn ngữ phụ hụt cả hai lần -> bỏ track đó, tập vẫn lên", async () => {
+  const fake = async (segs, opts) =>
+    [{ ...segs[0], text: opts.targetLang === "th" ? "你好" : "Chào" }];
+  const r = await translateTracks(ZH, { apiKey: "k", langs: ["vi", "th"], primary: "vi", translateFn: fake });
+  assert.strictEqual(r.ok, true);
+  assert.deepStrictEqual(Object.keys(r.accepted), ["vi"]);
+  assert.strictEqual(r.dropped[0].lang, "th");
+});
+
+test("ngôn ngữ chính hụt -> cả tập không đạt, không dịch lại lắt nhắt", async () => {
+  const fake = async (segs) => [{ ...segs[0], text: "你好" }];
+  const r = await translateTracks(ZH, { apiKey: "k", langs: ["vi", "en"], primary: "vi", translateFn: fake });
+  assert.strictEqual(r.ok, false);
+  assert.match(r.reason, /vi/);
 });
 
 const { hanRatio } = require("../util/autosub");
@@ -64,45 +97,40 @@ test("hanRatio: lẫn lộn -> đúng tỉ lệ", () => {
   assert.strictEqual(hanRatio([{ text: "你好" }, { text: "A" }, { text: "B" }, { text: "C" }]), 0.25);
 });
 
-const { acceptTranslation } = require("../util/autosub");
+const { acceptTracks } = require("../util/autosub");
 
 const VI3 = [{ text: "Một" }, { text: "Hai" }, { text: "Ba" }];
 const EN3 = [{ text: "One" }, { text: "Two" }, { text: "Three" }];
 
-test("nghiệm thu: đủ số cue, đã dịch -> đạt", () => {
-  const r = acceptTranslation({ zhCount: 3, viSegs: VI3, enSegs: EN3, secondLang: "en" });
+test("nghiệm thu: đủ số cue, đã dịch -> đạt cả hai track", () => {
+  const r = acceptTracks({ zhCount: 3, tracks: { vi: VI3, en: EN3 }, primary: "vi" });
   assert.strictEqual(r.ok, true);
-  assert.strictEqual(r.reason, "");
+  assert.deepStrictEqual(Object.keys(r.accepted).sort(), ["en", "vi"]);
 });
 
-test("nghiệm thu: một lô dịch hụt (34% còn chữ Hán) -> KHÔNG đạt", () => {
+test("nghiệm thu: ngôn ngữ chính dịch hụt -> cả tập không đạt", () => {
   const vi = [{ text: "Một" }, { text: "你好世界" }, { text: "Ba" }];
-  const r = acceptTranslation({ zhCount: 3, viSegs: vi, enSegs: EN3, secondLang: "en" });
+  const r = acceptTracks({ zhCount: 3, tracks: { vi, en: EN3 }, primary: "vi" });
   assert.strictEqual(r.ok, false);
   assert.match(r.reason, /vi/);
 });
 
-test("nghiệm thu: thiếu cue so với OCR -> KHÔNG đạt", () => {
-  const r = acceptTranslation({ zhCount: 4, viSegs: VI3, enSegs: EN3, secondLang: "en" });
+test("nghiệm thu: thiếu cue so với OCR -> không đạt", () => {
+  const r = acceptTracks({ zhCount: 4, tracks: { vi: VI3 }, primary: "vi" });
   assert.strictEqual(r.ok, false);
   assert.match(r.reason, /số cue/);
 });
 
-test("nghiệm thu: track phụ hụt -> KHÔNG đạt", () => {
+test("nghiệm thu: track phụ hụt -> tập vẫn đạt nhưng track đó bị loại", () => {
   const en = [{ text: "One" }, { text: "再见" }, { text: "Three" }];
-  const r = acceptTranslation({ zhCount: 3, viSegs: VI3, enSegs: en, secondLang: "en" });
-  assert.strictEqual(r.ok, false);
-  assert.match(r.reason, /en/);
+  const r = acceptTracks({ zhCount: 3, tracks: { vi: VI3, en }, primary: "vi" });
+  assert.strictEqual(r.ok, true);
+  assert.deepStrictEqual(Object.keys(r.accepted), ["vi"]);
+  assert.strictEqual(r.dropped[0].lang, "en");
 });
 
-test("nghiệm thu: không có ngôn ngữ phụ -> chỉ xét track chính", () => {
-  const r = acceptTranslation({ zhCount: 3, viSegs: VI3, enSegs: [], secondLang: "" });
+test("nghiệm thu: chỉ có ngôn ngữ chính -> đạt", () => {
+  const r = acceptTracks({ zhCount: 3, tracks: { vi: VI3 }, primary: "vi" });
   assert.strictEqual(r.ok, true);
-});
-
-test("nghiệm thu: 1 dòng lẫn chữ Hán trong 30 dòng (3%) -> vẫn đạt", () => {
-  const vi = Array.from({ length: 30 }, (_, i) => ({ text: i === 7 ? "你好" : "Dòng " + i }));
-  const en = Array.from({ length: 30 }, (_, i) => ({ text: "Line " + i }));
-  const r = acceptTranslation({ zhCount: 30, viSegs: vi, enSegs: en, secondLang: "en" });
-  assert.strictEqual(r.ok, true);
+  assert.deepStrictEqual(Object.keys(r.accepted), ["vi"]);
 });

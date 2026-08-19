@@ -89,6 +89,7 @@
   .tbl th, .tbl td { text-align:left; padding:8px 10px; border-bottom:1px solid var(--line); white-space:nowrap; }
   .tbl th { color:var(--mut); font-weight:600; text-transform:uppercase; font-size:11px; }
   .name-en { font-size:11px; color:var(--mut); margin:2px 0 4px; }
+  .mut { color:var(--mut); }
   .pill-warn { display:inline-block; font-size:10px; padding:1px 6px; border-radius:999px;
     background:rgba(255,176,32,.18); color:var(--warn); margin-left:6px; }
   .health-detail td { white-space:normal; background:rgba(255,255,255,.02); font-size:12px; }
@@ -168,7 +169,7 @@
         <table class="tbl">
           <thead>
             <tr>
-              <th>Tên</th><th>Tổng</th><th>Đã render</th><th>Sub vi</th><th>Sub en</th><th>Tập cũ</th><th>Vị trí sub</th><th>Cập nhật</th><th></th>
+              <th>Tên</th><th>Tổng</th><th>Đã render</th><th>Track sub</th><th>Tập cũ</th><th>Vị trí sub</th><th>Cập nhật</th><th></th>
             </tr>
           </thead>
           <tbody id="queueBody">
@@ -490,11 +491,21 @@ function fmtDate(s) {
   return new Date(t).toLocaleString("vi-VN", { dateStyle: "short", timeStyle: "short" });
 }
 
+// Số track phụ đề theo từng ngôn ngữ. Thêm ngôn ngữ mới thì ô này tự có thêm, không phải
+// sửa bảng: dữ liệu do backend đếm thẳng từ subTracks.
+function trackCell(r) {
+  const langs = r.langs || {};
+  const keys = Object.keys(langs).sort();
+  if (!keys.length) return '<span class="mut">—</span>';
+  return keys.map(function (l) { return esc(l) + ' ' + langs[l]; }).join(' · ');
+}
+
 // Tên phim + trạng thái dịch. Phim nhập từ 52api có tên tiếng Trung; dịch xong thì name là
 // tiếng Việt và nameEn là bản tiếng Anh trả cho người xem ngoài Việt Nam.
 function nameCell(r) {
   const en = r.nameEn ? '<div class="name-en">EN: ' + esc(r.nameEn) + '</div>' : '';
-  const flag = r.translated ? '' : ' <span class="pill-warn">chưa dịch</span>';
+  const missing = (r.missingLangs || []).length ? ' <span class="pill-warn">thiếu ' + esc(r.missingLangs.join(", ")) + '</span>' : '';
+  const flag = r.translated ? missing : ' <span class="pill-warn">chưa dịch</span>';
   return '<div>' + esc(r.name) + flag + '</div>' + en +
     '<button class="btn btn-ghost btn-sm btnTrans">' + (r.translated ? 'Dịch lại' : 'Dịch') + '</button>';
 }
@@ -510,7 +521,7 @@ function posCell(r) {
 
 function renderQueue(rows) {
   if (!rows.length) {
-    $("queueBody").innerHTML = '<tr><td colspan="9" class="empty">Chưa có phim nào.</td></tr>';
+    $("queueBody").innerHTML = '<tr><td colspan="8" class="empty">Chưa có phim nào.</td></tr>';
     return;
   }
   $("queueBody").innerHTML = rows.map(r => {
@@ -519,13 +530,12 @@ function renderQueue(rows) {
       '<td>' + nameCell(r) + '</td>' +
       '<td>' + (r.total || 0) + '</td>' +
       '<td>' + (r.rendered || 0) + '</td>' +
-      '<td>' + (r.vi || 0) + '</td>' +
-      '<td>' + (r.en || 0) + '</td>' +
+      '<td>' + trackCell(r) + '</td>' +
       '<td>' + posCell(r) + '</td>' +
       '<td>' + fmtDate(r.updatedAt) + '</td>' +
       '<td><button class="btn btn-ghost btn-sm btnHealth">Kiểm lệch</button></td>' +
       '</tr>' +
-      '<tr class="health-detail" style="display:none"><td colspan="9"></td></tr>';
+      '<tr class="health-detail" style="display:none"><td colspan="8"></td></tr>';
   }).join("");
 }
 

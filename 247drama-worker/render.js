@@ -135,15 +135,27 @@ async function renderEpisodeInner({ series, provider, sourceId, ep }) {
           { $set: { zhBottomRatio: r.chineseBottomRatio, zhBottomSource: "auto" } }
         ).catch(() => {});
       }
-      const wantLangs = [["vi", r.viSegs]];
-      if (subCfg.secondLang) wantLangs.push([subCfg.secondLang, r.enSegs]);
-      for (const [lang, segs] of wantLangs) {
+      // Track nào qua được nghi thức nghiệm thu thì có mặt trong r.tracks. Ngôn ngữ chính
+      // luôn phải có (autosub ném lỗi nếu hụt); ngôn ngữ phụ hụt thì tập vẫn lên, thiếu track đó.
+      const primary = subCfg.targetLang || "vi";
+      const entries = Object.entries(r.tracks || {});
+      if (!entries.some(([lang]) => lang === primary)) {
+        status.fail(tag);
+        const why = `soft-sub thiếu bản dịch ${primary}`;
+        console.error(`[render] ✗ ${tag}: ${why} -> bỏ tập, lần chạy sau render lại`);
+        return { ok: false, reason: why };
+      }
+      for (const [lang, segs] of entries) {
         const body = segsToVtt(segs, { offsetSec, topRatio });
         if (!body) {
-          status.fail(tag);
-          const why = `soft-sub thiếu bản dịch ${lang}`;
-          console.error(`[render] ✗ ${tag}: ${why} -> bỏ tập, lần chạy sau render lại`);
-          return { ok: false, reason: why };
+          if (lang === primary) {
+            status.fail(tag);
+            const why = `soft-sub thiếu bản dịch ${lang}`;
+            console.error(`[render] ✗ ${tag}: ${why} -> bỏ tập, lần chạy sau render lại`);
+            return { ok: false, reason: why };
+          }
+          console.warn(`[render] ⚠ ${tag}: bỏ track ${lang} (không dựng được .vtt)`);
+          continue;
         }
         softBodies.push([lang, body]);
       }

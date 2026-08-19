@@ -36,7 +36,12 @@ const duanju = createClient({
 async function getGeminiCfg() {
   const s = await Setting.findOne({}).select("subtitle").lean();
   const sub = (s && s.subtitle) || {};
-  return { apiKey: sub.geminiApiKey || "", model: sub.geminiModel || "gemini-2.5-flash" };
+  // Ngôn ngữ dịch tên/mô tả bám theo đúng danh sách ngôn ngữ phụ đề để app không rơi vào cảnh
+  // có phụ đề tiếng Thái mà tên phim vẫn tiếng Việt.
+  const langs = Array.isArray(sub.langs) && sub.langs.length
+    ? sub.langs
+    : [sub.targetLang || "vi", sub.secondLang || "en"];
+  return { apiKey: sub.geminiApiKey || "", model: sub.geminiModel || "gemini-2.5-flash", langs };
 }
 
 // Kiểm khoá vận hành đúng chưa (trang web dùng để mở khoá).
@@ -124,7 +129,7 @@ exports.importSeries = async (req, res) => {
     );
     const doc = buildSeriesDoc({ provider, sourceId, info, categoryId, languageId, type: Number(type), meta });
     const created = await MovieSeries.create(doc);
-    const warn = meta.ok ? "" : ` Chưa dịch được tên/mô tả (${meta.error}) — bấm "Dịch lại" ở bảng dưới.`;
+    const warn = meta.ok ? "" : ` Chưa dịch đủ tên/mô tả (${meta.error}) — bấm "Dịch lại" ở bảng dưới.`;
     return res.status(200).json({
       status: true,
       message: `Đã nhập "${created.name}" (${doc.sourceEpisodeCount} tập). Worker sẽ render ở vòng quét kế tiếp.${warn}`,
@@ -140,39 +145,54 @@ exports.importSeries = async (req, res) => {
 exports.queue = async (req, res) => {
   try {
     const series = await MovieSeries.find({ sourceProvider: /^52api-/ })
-      .select("_id name nameEn bookId sourceEpisodeCount updatedAt zhBottomRatio zhBottomSource metaTranslatedAt")
+      .select("_id name nameEn bookId sourceEpisodeCount updatedAt zhBottomRatio zhBottomSource metaTranslatedAt metaMissingLangs")
       .sort({ updatedAt: -1 })
       .lean();
 
-    const stats = await ShortVideo.aggregate([
-      { $match: { movieSeries: { $in: series.map((s) => s._id) } } },
-      {
-        $group: {
-          _id: "$movieSeries",
-          rendered: { $sum: 1 },
-          vi: { $sum: { $cond: [{ $in: ["vi", { $ifNull: ["$subTracks.lang", []] }] }, 1, 0] } },
-          en: { $sum: { $cond: [{ $in: ["en", { $ifNull: ["$subTracks.lang", []] }] }, 1, 0] } },
-          burned: { $sum: { $cond: [{ $eq: ["$burnedLang", "vi"] }, 1, 0] } },
+    const ids = series.map((s) => s._id);
+    const [stats, trackStats] = await Promise.all([
+      ShortVideo.aggregate([
+        { $match: { movieSeries: { $in: ids } } },
+        {
+          $group: {
+            _id: "$movieSeries",
+            rendered: { $sum: 1 },
+            burned: { $sum: { $cond: [{ $eq: ["$burnedLang", "vi"] }, 1, 0] } },
+          },
         },
-      },
+      ]),
+      // Đếm theo từng ngôn ngữ thay vì cứng vi/en: thêm tiếng Thái hay Indo là bảng tự có cột.
+      ShortVideo.aggregate([
+        { $match: { movieSeries: { $in: ids } } },
+        { $unwind: "$subTracks" },
+        { $group: { _id: { series: "$movieSeries", lang: "$subTracks.lang" }, n: { $sum: 1 } } },
+      ]),
     ]);
     const byId = new Map(stats.map((s) => [String(s._id), s]));
+    const langsById = new Map();
+    for (const t of trackStats) {
+      const key = String(t._id.series);
+      const cur = langsById.get(key) || {};
+      cur[t._id.lang] = t.n;
+      langsById.set(key, cur);
+    }
 
     return res.status(200).json({
       status: true,
       data: series.map((s) => {
-        const st = byId.get(String(s._id)) || { rendered: 0, vi: 0, en: 0, burned: 0 };
+        const st = byId.get(String(s._id)) || { rendered: 0, burned: 0 };
+        const langs = langsById.get(String(s._id)) || {};
         return {
           _id: s._id,
           name: s.name,
           bookId: s.bookId || "",
           total: s.sourceEpisodeCount || 0,
           rendered: st.rendered,
-          vi: st.vi,
-          en: st.en,
+          langs,
           burned: st.burned,
           nameEn: s.nameEn || "",
           translated: !!s.metaTranslatedAt,
+          missingLangs: s.metaMissingLangs || [],
           zhBottomRatio: typeof s.zhBottomRatio === "number" ? s.zhBottomRatio : null,
           zhBottomSource: s.zhBottomSource || "",
           updatedAt: s.updatedAt,
@@ -201,23 +221,32 @@ exports.translateMeta = async (req, res) => {
       description: doc.descriptionOriginal || doc.description || "",
     };
     const meta = await translateSeriesMeta(src, await getGeminiCfg());
-    if (!meta.ok) return res.status(502).json({ status: false, message: `Dịch không thành công: ${meta.error}` });
+    const got = Object.keys(meta.i18n || {});
+    if (!got.length) return res.status(502).json({ status: false, message: `Dịch không thành công: ${meta.error}` });
 
-    await MovieSeries.updateOne(
-      { bookId },
-      {
-        $set: {
-          name: meta.vi.name,
-          description: meta.vi.description,
-          nameEn: meta.en.name,
-          descriptionEn: meta.en.description,
-          nameOriginal: src.name,
-          descriptionOriginal: src.description,
-          metaTranslatedAt: new Date(),
-        },
-      }
-    );
-    return res.status(200).json({ status: true, message: `Đã dịch: "${meta.vi.name}" / "${meta.en.name}"` });
+    const vi = meta.i18n.vi || {};
+    const en = meta.i18n.en || {};
+    const set = {
+      i18n: meta.i18n,
+      metaMissingLangs: meta.missing || [],
+      nameOriginal: src.name,
+      descriptionOriginal: src.description,
+      metaTranslatedAt: new Date(),
+    };
+    // Chỉ ghi đè name/description khi có bản tiếng Việt mới, tránh xoá tên đang dùng.
+    if (vi.name) {
+      set.name = vi.name;
+      set.description = vi.description || "";
+    }
+    if (en.name) {
+      set.nameEn = en.name;
+      set.descriptionEn = en.description || "";
+    }
+    await MovieSeries.updateOne({ bookId }, { $set: set });
+
+    const shown = got.map((l) => `${l}: ${meta.i18n[l].name}`).join(" · ");
+    const missing = meta.missing && meta.missing.length ? ` (chưa được: ${meta.missing.join(", ")})` : "";
+    return res.status(200).json({ status: true, message: `Đã dịch ${shown}${missing}` });
   } catch (error) {
     console.error("ops translateMeta error:", error.message);
     return res.status(500).json({ status: false, message: "Không dịch được tên phim" });

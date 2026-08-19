@@ -31,9 +31,13 @@ test("mode soft khi setting ghi đúng chữ soft", () => {
   assert.strictEqual(buildSubtitleConfig({ subtitle: { mode: "soft" } }).mode, "soft");
 });
 
-test("secondLang mặc định en", () => {
-  assert.strictEqual(buildSubtitleConfig({}).secondLang, "en");
-  assert.strictEqual(buildSubtitleConfig({ subtitle: { secondLang: "th" } }).secondLang, "th");
+test("danh sách ngôn ngữ: mặc định vi+en, đọc được cấu hình nhiều thứ tiếng", () => {
+  assert.deepStrictEqual(buildSubtitleConfig({}).langs, ["vi", "en"]);
+  assert.deepStrictEqual(buildSubtitleConfig({ subtitle: { secondLang: "th" } }).langs, ["vi", "th"]);
+  assert.deepStrictEqual(buildSubtitleConfig({ subtitle: { langs: ["vi", "en", "th", "id"] } }).langs, ["vi", "en", "th", "id"]);
+  // mã lạ bị loại, trùng bị gộp, ngôn ngữ chính luôn đứng đầu
+  assert.deepStrictEqual(buildSubtitleConfig({ subtitle: { langs: ["en", "xx", "en", "vi"] } }).langs, ["vi", "en"]);
+  assert.deepStrictEqual(buildSubtitleConfig({ subtitle: { targetLang: "th", langs: ["en"] } }).langs, ["th", "en"]);
 });
 
 test("key phụ đề đi kèm tên file video, đổi đuôi theo lang (mặc định v1)", () => {

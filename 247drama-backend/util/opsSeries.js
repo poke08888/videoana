@@ -12,20 +12,23 @@ function buildSeriesDoc({ provider, sourceId, info, categoryId, languageId, type
   if (!categoryId) throw new Error("thiếu category");
   if (!languageId) throw new Error("thiếu language");
 
-  // meta = kết quả translateSeriesMeta. Không có (hoặc dịch hụt) thì giữ nguyên tiếng Trung
-  // và để metaTranslatedAt trống -> web vận hành hiện phim đó là "chưa dịch" để bấm dịch lại.
-  const vi = (meta && meta.vi) || {};
-  const en = (meta && meta.en) || {};
-  const translated = !!(meta && meta.ok);
+  // meta = kết quả translateSeriesMeta. Ngôn ngữ nào dịch được thì lưu ngôn ngữ đó; ngôn ngữ
+  // hụt nằm ở metaMissingLangs để web vận hành hiện nút dịch lại. Không dịch được chữ nào thì
+  // giữ nguyên tiếng Trung — vẫn nhập phim, không chặn.
+  const i18n = (meta && meta.i18n) || {};
+  const vi = i18n.vi || {};
+  const en = i18n.en || {};
 
   return {
     name: vi.name || info.name,
     description: vi.description || info.description || "",
-    nameEn: translated ? en.name || "" : "",
-    descriptionEn: translated ? en.description || "" : "",
+    nameEn: en.name || "",
+    descriptionEn: en.description || "",
+    i18n,
+    metaMissingLangs: (meta && meta.missing) || [],
     nameOriginal: info.name,
     descriptionOriginal: info.description || "",
-    metaTranslatedAt: translated ? new Date() : null,
+    metaTranslatedAt: Object.keys(i18n).length ? new Date() : null,
     thumbnail: info.cover || "",
     banner: info.cover || "",
     bookId: `${p}:${sourceId}`,

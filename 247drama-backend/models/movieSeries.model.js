@@ -28,6 +28,10 @@ const movieSeriesSchema = new mongoose.Schema(
     // *En là bản tiếng Anh, *Original giữ nguyên tiếng Trung của nguồn để đối chiếu và dịch lại.
     nameEn: { type: String, trim: true, default: "" },
     descriptionEn: { type: String, trim: true, default: "" },
+    // Bản dịch mọi ngôn ngữ: { vi: {name, description}, en: {...}, th: {...}, id: {...} }.
+    // name/description ở trên là bản tiếng Việt (app cũ đọc thẳng), i18n là nguồn đầy đủ.
+    i18n: { type: Object, default: {} },
+    metaMissingLangs: { type: [String], default: [] },
     nameOriginal: { type: String, trim: true, default: "" },
     descriptionOriginal: { type: String, trim: true, default: "" },
     metaTranslatedAt: { type: Date, default: null },
