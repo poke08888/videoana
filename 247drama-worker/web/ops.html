@@ -1,0 +1,561 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>247drama — Vận hành</title>
+<style>
+  :root { --bg:#0f1115; --card:#181b22; --line:#262b36; --tx:#e6e9ef; --mut:#8b93a3; --acc:#4ea1ff; --ok:#39d98a; --warn:#ffb020; --bad:#ff5d5d; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--tx); font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; padding:16px; }
+  h1 { font-size:18px; margin:0 0 2px; }
+  h3 { margin:0; }
+  .sub { color:var(--mut); font-size:12px; margin-bottom:14px; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:10px; margin-bottom:10px; }
+  .kpi { background:var(--bg); border:1px solid var(--line); border-radius:10px; padding:12px 14px; }
+  .kpi .n { font-size:22px; font-weight:700; }
+  .kpi .l { color:var(--mut); font-size:11px; text-transform:uppercase; letter-spacing:.04em; }
+  .bar { height:10px; background:var(--line); border-radius:6px; overflow:hidden; }
+  .bar > i { display:block; height:100%; background:linear-gradient(90deg,var(--acc),var(--ok)); }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:14px; margin-bottom:14px; }
+  .card h2 { font-size:13px; margin:0 0 10px; color:var(--mut); text-transform:uppercase; letter-spacing:.04em; }
+  .subh { font-size:11px; margin:14px 0 8px; color:var(--mut); text-transform:uppercase; letter-spacing:.04em; }
+  .movie { margin-bottom:11px; }
+  .movie .top { display:flex; justify-content:space-between; gap:8px; margin-bottom:4px; }
+  .movie .nm { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .movie .ct { color:var(--mut); font-variant-numeric:tabular-nums; flex:none; }
+  .movie.done .nm::before { content:"✓ "; color:var(--ok); }
+  .row { display:flex; align-items:center; gap:8px; padding:6px 0; border-top:1px solid var(--line); font-variant-numeric:tabular-nums; }
+  .row:first-child { border-top:0; }
+  .tag { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .badge { flex:none; font-size:11px; padding:2px 8px; border-radius:20px; font-weight:600; }
+  .b-tải { background:rgba(78,161,255,.15); color:var(--acc); }
+  .b-sub { background:rgba(255,176,32,.15); color:var(--warn); }
+  .b-upload { background:rgba(57,217,138,.15); color:var(--ok); }
+  .sec { color:var(--mut); flex:none; font-size:12px; }
+  .dot { width:8px; height:8px; border-radius:50%; background:var(--ok); display:inline-block; margin-right:6px; animation:pulse 1.4s infinite; }
+  .dot.off { background:var(--mut); animation:none; }
+  .dot.bad { background:var(--bad); animation:pulse 1.4s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
+  .empty { color:var(--mut); font-style:italic; }
+
+  /* dải cảnh báo cố định */
+  .warnbar { background:rgba(255,176,32,.12); border:1px solid var(--warn); color:var(--warn); padding:10px 12px; border-radius:8px; font-size:13px; margin-bottom:14px; font-weight:600; }
+
+  /* ô nhập khoá */
+  .gate { max-width:340px; margin:15vh auto 0; text-align:center; }
+  .gate .tt { font-size:16px; font-weight:700; margin-bottom:14px; }
+  .gate input { width:100%; margin-bottom:10px; }
+
+  /* control chung */
+  input[type=text], input[type=password], select {
+    background:var(--bg); border:1px solid var(--line); color:var(--tx);
+    border-radius:8px; padding:8px 10px; font-size:13px; font-family:inherit;
+  }
+  .btn { background:var(--acc); color:#fff; border:0; border-radius:8px; padding:9px 16px; font-size:13px; font-weight:600; cursor:pointer; }
+  .btn:disabled { opacity:.5; cursor:not-allowed; }
+  .btn-ghost { background:transparent; color:var(--tx); border:1px solid var(--line); }
+  .btn-sm { padding:5px 10px; font-size:12px; }
+  .msg-error { color:var(--bad); font-size:12px; margin:8px 0; }
+  .msg-ok { color:var(--ok); font-size:12px; margin:8px 0; }
+
+  /* khối 1: duyệt & nhập */
+  .toolbar { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-bottom:6px; }
+  .toolbar input[type=text] { flex:1; min-width:140px; }
+  .chips { display:flex; flex-wrap:wrap; gap:6px; margin:8px 0; }
+  .chip { padding:4px 10px; border-radius:20px; border:1px solid var(--line); background:var(--bg); color:var(--tx); font-size:12px; cursor:pointer; }
+  .chip.active { background:var(--acc); border-color:var(--acc); color:#fff; }
+  .cardsgrid { display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:12px; margin:10px 0; }
+  .mcard { background:var(--bg); border:1px solid var(--line); border-radius:10px; overflow:hidden; display:flex; flex-direction:column; }
+  .mcard img, .mcard .noimg { width:100%; aspect-ratio:3/4; object-fit:cover; background:var(--line); display:block; }
+  .mcard .body { padding:8px 10px 10px; display:flex; flex-direction:column; gap:6px; flex:1; }
+  .mcard .nm { font-weight:600; font-size:13px; }
+  .mcard .ds { color:var(--mut); font-size:12px;
+    display:-webkit-box; -webkit-line-clamp:3; line-clamp:3; -webkit-box-orient:vertical; overflow:hidden; }
+  .mcard .btn, .mcard .pill { margin-top:auto; text-align:center; }
+  .pill { background:var(--line); color:var(--mut); font-size:11px; font-weight:600; padding:6px 0; border-radius:8px; }
+  .pager { display:flex; justify-content:center; align-items:center; gap:12px; margin-top:10px; }
+
+  /* modal nhập phim */
+  .modal-overlay { position:fixed; inset:0; background:rgba(0,0,0,.6); display:flex; align-items:center; justify-content:center; padding:16px; z-index:50; }
+  .modal { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:18px; width:100%; max-width:360px; }
+  .modal label { display:block; font-size:12px; color:var(--mut); margin:10px 0 4px; }
+  .modal select { width:100%; }
+  .modal-actions { display:flex; gap:8px; margin-top:16px; justify-content:flex-end; }
+
+  /* khối 3: bảng sức khoẻ */
+  .tablewrap { overflow-x:auto; }
+  .tbl { width:100%; border-collapse:collapse; font-size:12px; }
+  .tbl th, .tbl td { text-align:left; padding:8px 10px; border-bottom:1px solid var(--line); white-space:nowrap; }
+  .tbl th { color:var(--mut); font-weight:600; text-transform:uppercase; font-size:11px; }
+  .health-detail td { white-space:normal; background:rgba(255,255,255,.02); font-size:12px; }
+
+  @media (prefers-color-scheme: light) {
+    :root { --bg:#f4f6fa; --card:#fff; --line:#e2e6ee; --tx:#1a1d24; --mut:#6b7280; }
+    .health-detail td { background:rgba(0,0,0,.02); }
+  }
+</style>
+</head>
+<body>
+  <h1>247drama — Vận hành</h1>
+  <div class="sub">Duyệt kho, nhập phim, theo dõi render và sức khoẻ kho phim</div>
+
+  <div class="warnbar">Chế độ soft — app chưa đọc subTracks, phim nhập mới sẽ chưa có phụ đề trên app.</div>
+
+  <!-- ô nhập khoá vận hành -->
+  <div class="gate" id="gate">
+    <div class="tt">Nhập khoá vận hành</div>
+    <input type="password" id="gateInput" placeholder="ops-key…" autocomplete="off">
+    <button class="btn" id="gateBtn" style="width:100%">Mở khoá</button>
+    <div class="msg-error" id="gateMsg" style="display:none"></div>
+  </div>
+
+  <!-- ứng dụng chính, ẩn cho tới khi mở khoá -->
+  <div id="app" style="display:none">
+
+    <!-- Khối 1: Duyệt & nhập -->
+    <div class="card">
+      <h2>Duyệt & nhập phim</h2>
+      <div class="toolbar">
+        <select id="provider">
+          <option value="hg">Nguồn HG</option>
+          <option value="hm">Nguồn HM</option>
+        </select>
+        <input type="text" id="keyword" placeholder="Tìm theo từ khoá…">
+        <button class="btn" id="btnSearch">Tìm</button>
+        <button class="btn btn-ghost" id="btnTop">Bảng xếp hạng</button>
+      </div>
+      <div class="chips" id="cats"></div>
+      <div class="chips" id="subcats"></div>
+      <div class="msg-error" id="catalogMsg" style="display:none"></div>
+      <div class="cardsgrid" id="cards"></div>
+      <div class="pager">
+        <button class="btn btn-ghost btn-sm" id="pgPrev">‹ Trang trước</button>
+        <span class="sub" id="pgNum" style="margin:0">Trang 1</span>
+        <button class="btn btn-ghost btn-sm" id="pgNext">Trang sau ›</button>
+      </div>
+    </div>
+
+    <!-- Khối 2: Đang chạy -->
+    <div class="card">
+      <h2>Đang chạy</h2>
+      <div class="sub"><span id="live"><span class="dot off"></span>chưa có dữ liệu…</span> · cập nhật <span id="upd">—</span></div>
+
+      <div class="grid">
+        <div class="kpi"><div class="n" id="k-pct">—</div><div class="l">Hoàn thành</div></div>
+        <div class="kpi"><div class="n" id="k-done">—</div><div class="l">Tập xong / mục tiêu</div></div>
+        <div class="kpi"><div class="n" id="k-failed">—</div><div class="l">Tập lỗi</div></div>
+        <div class="kpi"><div class="n" id="k-rate">—</div><div class="l">Tốc độ (tập/phút)</div></div>
+        <div class="kpi"><div class="n" id="k-eta">—</div><div class="l">Còn lại (ước tính)</div></div>
+      </div>
+      <div class="bar" style="margin-bottom:6px"><i id="k-barfill" style="width:0%"></i></div>
+
+      <div class="subh">Đang xử lý (<span id="inflight-n">0</span>)</div>
+      <div id="inflight"><div class="empty">—</div></div>
+
+      <div class="subh">Từng phim</div>
+      <div id="movies"><div class="empty">—</div></div>
+    </div>
+
+    <!-- Khối 3: Sức khoẻ kho phim -->
+    <div class="card">
+      <h2>Sức khoẻ kho phim</h2>
+      <div class="msg-error" id="queueMsg" style="display:none"></div>
+      <div class="tablewrap">
+        <table class="tbl">
+          <thead>
+            <tr>
+              <th>Tên</th><th>Tổng</th><th>Đã render</th><th>Sub vi</th><th>Sub en</th><th>Tập cũ</th><th>Cập nhật</th><th></th>
+            </tr>
+          </thead>
+          <tbody id="queueBody">
+            <tr><td colspan="8" class="empty">—</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- modal nhập phim -->
+  <div class="modal-overlay" id="modalOverlay" style="display:none">
+    <div class="modal">
+      <h3 id="modalTitle">Nhập phim</h3>
+      <label for="modalCategory">Danh mục</label>
+      <select id="modalCategory"></select>
+      <label for="modalLanguage">Ngôn ngữ</label>
+      <select id="modalLanguage"></select>
+      <div class="msg-error" id="modalMsg" style="display:none"></div>
+      <div class="modal-actions">
+        <button class="btn btn-ghost" id="modalCancel">Huỷ</button>
+        <button class="btn" id="modalConfirm">Nhập phim</button>
+      </div>
+    </div>
+  </div>
+
+<script>
+const OPS_KEY = "opsKey";
+const $ = (id) => document.getElementById(id);
+function esc(s) { return String(s == null ? "" : s).replace(/[&<>]/g, c => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;" }[c])); }
+function fmtEta(m) { if (m == null) return "—"; if (m < 60) return m + " phút"; const h = Math.floor(m / 60), r = m % 60; return h + "h" + (r ? (" " + r + "m") : ""); }
+
+// ---- lớp gọi API /api/ops/* : tự gắn header ops-key, 401 -> xoá khoá + hiện lại ô nhập ----
+async function opsFetch(path, opts) {
+  opts = opts || {};
+  const headers = Object.assign({}, opts.headers || {}, { "ops-key": localStorage.getItem(OPS_KEY) || "" });
+  if (opts.body && !headers["Content-Type"]) headers["Content-Type"] = "application/json";
+  let r;
+  try {
+    r = await fetch(path, Object.assign({}, opts, { headers }));
+  } catch (e) {
+    throw new Error(e && e.message ? e.message : "Mất kết nối tới server");
+  }
+  let body = null;
+  try { body = await r.json(); } catch (e) { /* thân rỗng hoặc không phải JSON */ }
+  if (r.status === 401) {
+    localStorage.removeItem(OPS_KEY);
+    const msg = (body && body.message) || "Sai khoá vận hành";
+    showGate(msg);
+    throw new Error(msg);
+  }
+  if (!r.ok || !body || body.status === false) {
+    throw new Error((body && body.message) || ("Lỗi HTTP " + r.status));
+  }
+  return body;
+}
+
+// ---- gate: mở khoá vận hành ----
+let appStarted = false;
+let renderTimer = null, queueTimer = null;
+
+function showGate(msg) {
+  if (renderTimer) { clearInterval(renderTimer); renderTimer = null; }
+  if (queueTimer) { clearInterval(queueTimer); queueTimer = null; }
+  appStarted = false;
+  $("app").style.display = "none";
+  $("gate").style.display = "block";
+  $("gateMsg").style.display = msg ? "block" : "none";
+  $("gateMsg").textContent = msg || "";
+  $("gateInput").value = "";
+  $("gateInput").focus();
+}
+function hideGate() {
+  $("gate").style.display = "none";
+  $("app").style.display = "block";
+}
+
+async function tryAuth(showErrorIfEmpty) {
+  const key = localStorage.getItem(OPS_KEY) || "";
+  if (!key) { showGate(showErrorIfEmpty ? "Nhập khoá vận hành trước." : ""); return; }
+  try {
+    await opsFetch("/api/ops/ping");
+    hideGate();
+    startApp();
+  } catch (e) {
+    // opsFetch đã tự xử lý 401 (xoá khoá + showGate). Với lỗi khác (mất mạng, 503...)
+    // giữ khoá lại (có thể đúng, chỉ là server tạm không tới được) và cho thử lại.
+    if (localStorage.getItem(OPS_KEY)) showGate(e.message);
+  }
+}
+
+$("gateBtn").addEventListener("click", submitGate);
+$("gateInput").addEventListener("keydown", (e) => { if (e.key === "Enter") submitGate(); });
+function submitGate() {
+  const v = $("gateInput").value.trim();
+  if (!v) return;
+  localStorage.setItem(OPS_KEY, v);
+  $("gateBtn").disabled = true;
+  tryAuth().finally(() => { $("gateBtn").disabled = false; });
+}
+
+// ================== Khối 1: Duyệt & nhập ==================
+const cat = { provider: "hg", mode: "top", keyword: "", cellId: "", subCellId: "", page: 1, categoriesCache: [] };
+let lastItems = [];
+let selectedItem = null;
+let optionsData = null;
+
+function renderCats() {
+  if (!cat.categoriesCache.length) { $("cats").innerHTML = ""; $("subcats").innerHTML = ""; return; }
+  $("cats").innerHTML = cat.categoriesCache.map(c =>
+    '<span class="chip' + (c.cellId === cat.cellId ? " active" : "") + '" data-cell="' + esc(c.cellId) + '">' + esc(c.name) + "</span>"
+  ).join("");
+  const cur = cat.categoriesCache.find(c => c.cellId === cat.cellId);
+  const subs = (cur && cur.subs) || [];
+  $("subcats").innerHTML = subs.map(s =>
+    '<span class="chip' + (s.cellId === cat.subCellId ? " active" : "") + '" data-sub="' + esc(s.cellId) + '">' + esc(s.name) + "</span>"
+  ).join("");
+}
+
+function renderCards() {
+  $("cards").innerHTML = lastItems.length ? lastItems.map(it => {
+    const img = it.cover ? '<img src="' + esc(it.cover) + '" loading="lazy" alt="">' : '<div class="noimg"></div>';
+    const action = it.imported
+      ? '<div class="pill">đã có</div>'
+      : '<button class="btn btnImport" data-sid="' + esc(it.sourceId) + '">Nhập</button>';
+    return '<div class="mcard">' + img +
+      '<div class="body"><div class="nm">' + esc(it.name) + '</div>' +
+      '<div class="ds">' + esc(it.description || "") + '</div>' +
+      action + '</div></div>';
+  }).join("") : '<div class="empty">Không có kết quả.</div>';
+}
+
+async function loadCatalog() {
+  $("catalogMsg").style.display = "none";
+  $("cards").innerHTML = '<div class="empty">Đang tải…</div>';
+  const params = new URLSearchParams({ provider: cat.provider, type: cat.mode, page: String(cat.page) });
+  if (cat.mode === "search") params.set("keyword", cat.keyword);
+  if (cat.mode === "top" && cat.cellId) {
+    params.set("cellId", cat.cellId);
+    if (cat.subCellId) params.set("subCellId", cat.subCellId);
+  }
+  try {
+    const body = await opsFetch("/api/ops/catalog?" + params.toString());
+    const data = body.data || { categories: [], items: [] };
+    // Theo hợp đồng: type=top && !cellId -> categories có dữ liệu, items rỗng; chọn cellId rồi
+    // thì ngược lại (categories rỗng). Vì vậy chỉ ghi đè cache lúc đang ở màn danh mục gốc.
+    if (cat.mode === "top" && !cat.cellId) cat.categoriesCache = data.categories || [];
+    lastItems = data.items || [];
+    renderCats();
+    renderCards();
+    $("pgNum").textContent = "Trang " + cat.page;
+    $("pgPrev").disabled = cat.page <= 1;
+  } catch (e) {
+    $("catalogMsg").textContent = e.message;
+    $("catalogMsg").style.display = "block";
+    $("cards").innerHTML = "";
+  }
+}
+
+$("provider").addEventListener("change", () => {
+  cat.provider = $("provider").value;
+  cat.mode = "top"; cat.keyword = ""; cat.cellId = ""; cat.subCellId = ""; cat.page = 1;
+  $("keyword").value = "";
+  loadCatalog();
+});
+$("btnSearch").addEventListener("click", doSearch);
+$("keyword").addEventListener("keydown", (e) => { if (e.key === "Enter") doSearch(); });
+function doSearch() {
+  const kw = $("keyword").value.trim();
+  if (!kw) return;
+  cat.mode = "search"; cat.keyword = kw; cat.cellId = ""; cat.subCellId = ""; cat.page = 1;
+  loadCatalog();
+}
+$("btnTop").addEventListener("click", () => {
+  cat.mode = "top"; cat.keyword = ""; cat.cellId = ""; cat.subCellId = ""; cat.page = 1;
+  $("keyword").value = "";
+  loadCatalog();
+});
+$("cats").addEventListener("click", (e) => {
+  const cell = e.target.getAttribute("data-cell");
+  if (cell == null) return;
+  cat.cellId = cell; cat.subCellId = ""; cat.page = 1;
+  loadCatalog();
+});
+$("subcats").addEventListener("click", (e) => {
+  const sub = e.target.getAttribute("data-sub");
+  if (sub == null) return;
+  cat.subCellId = sub; cat.page = 1;
+  loadCatalog();
+});
+$("pgPrev").addEventListener("click", () => { if (cat.page > 1) { cat.page--; loadCatalog(); } });
+$("pgNext").addEventListener("click", () => { cat.page++; loadCatalog(); });
+
+$("cards").addEventListener("click", (e) => {
+  const sid = e.target.getAttribute("data-sid");
+  if (sid == null) return;
+  const item = lastItems.find(it => String(it.sourceId) === sid);
+  if (item) openImportModal(item);
+});
+
+async function openImportModal(item) {
+  selectedItem = { provider: cat.provider, sourceId: item.sourceId, name: item.name };
+  $("modalTitle").textContent = "Nhập: " + item.name;
+  $("modalMsg").style.display = "none";
+  $("modalMsg").className = "msg-error";
+  $("modalConfirm").disabled = false;
+  $("modalConfirm").textContent = "Nhập phim";
+  $("modalOverlay").style.display = "flex";
+  if (!optionsData) {
+    try {
+      const body = await opsFetch("/api/ops/options");
+      optionsData = body.data;
+    } catch (e) {
+      $("modalMsg").textContent = e.message;
+      $("modalMsg").style.display = "block";
+      return;
+    }
+  }
+  $("modalCategory").innerHTML = (optionsData.categories || []).map(c => '<option value="' + esc(c._id) + '">' + esc(c.name) + "</option>").join("");
+  $("modalLanguage").innerHTML = (optionsData.languages || []).map(l => '<option value="' + esc(l._id) + '">' + esc(l.name) + "</option>").join("");
+}
+function closeModal() { $("modalOverlay").style.display = "none"; selectedItem = null; }
+$("modalCancel").addEventListener("click", closeModal);
+$("modalOverlay").addEventListener("click", (e) => { if (e.target === $("modalOverlay")) closeModal(); });
+
+$("modalConfirm").addEventListener("click", async () => {
+  if (!selectedItem) return;
+  const categoryId = $("modalCategory").value;
+  const languageId = $("modalLanguage").value;
+  if (!categoryId || !languageId) {
+    $("modalMsg").className = "msg-error";
+    $("modalMsg").textContent = "Chọn danh mục và ngôn ngữ trước.";
+    $("modalMsg").style.display = "block";
+    return;
+  }
+  $("modalConfirm").disabled = true;
+  $("modalConfirm").textContent = "Đang nhập…";
+  try {
+    // type cố định = 2 (WebSeries): mọi phim nhập qua kho 52api đều là phim bộ nhiều tập,
+    // trang không hỏi lại vì brief chỉ yêu cầu chọn category + language.
+    const body = await opsFetch("/api/ops/import", {
+      method: "POST",
+      body: JSON.stringify({ provider: selectedItem.provider, sourceId: selectedItem.sourceId, categoryId, languageId, type: 2 }),
+    });
+    $("modalMsg").className = "msg-ok";
+    $("modalMsg").textContent = body.message || "Đã nhập phim.";
+    $("modalMsg").style.display = "block";
+    $("modalConfirm").textContent = "Đã nhập";
+    setTimeout(() => { closeModal(); loadCatalog(); }, 1000);
+  } catch (e) {
+    $("modalMsg").className = "msg-error";
+    $("modalMsg").textContent = e.message;
+    $("modalMsg").style.display = "block";
+    $("modalConfirm").disabled = false;
+    $("modalConfirm").textContent = "Nhập phim";
+  }
+});
+
+// ================== Khối 2: Đang chạy (render-status.json, không cần khoá) ==================
+async function tickRender() {
+  try {
+    const r = await fetch("/uploads/render-status.json?t=" + Date.now(), { cache: "no-store" });
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    const d = await r.json();
+    const updMs = new Date(d.updatedAt).getTime();
+    const stale = !isFinite(updMs) || (Date.now() - updMs) > 60000;
+
+    const overall = d.overall || {};
+    const throughput = d.throughput || {};
+    $("k-pct").textContent = (overall.pct != null ? overall.pct : 0) + "%";
+    $("k-done").textContent = (overall.done != null ? overall.done : 0) + " / " + (overall.target != null ? overall.target : 0);
+    $("k-failed").textContent = overall.failed != null ? overall.failed : 0;
+    $("k-rate").textContent = throughput.perMin != null ? throughput.perMin : "—";
+    $("k-eta").textContent = (d.running && !stale) ? fmtEta(throughput.etaMin) : "—";
+    $("k-barfill").style.width = (overall.pct != null ? overall.pct : 0) + "%";
+    $("upd").textContent = isFinite(updMs) ? new Date(updMs).toLocaleTimeString("vi-VN") : "—";
+
+    const live = $("live");
+    if (stale) {
+      live.innerHTML = '<span class="dot bad"></span><span style="color:var(--bad)">worker đang tắt</span>';
+    } else if (d.running) {
+      live.innerHTML = '<span class="dot"></span>đang chạy · ' + (throughput.concurrency != null ? throughput.concurrency : "?") + " luồng";
+    } else {
+      live.innerHTML = '<span class="dot off"></span>đã dừng';
+    }
+
+    const inf = d.inflight || [];
+    $("inflight-n").textContent = inf.length;
+    $("inflight").innerHTML = inf.length ? inf.map(x =>
+      '<div class="row"><span class="tag">' + esc(x.tag) + '</span>' +
+      '<span class="badge b-' + esc(x.phase) + '">' + esc(x.phase) + '</span>' +
+      '<span class="sec">' + x.sec + 's</span></div>').join("")
+      : '<div class="empty">—</div>';
+
+    const movies = d.movies || [];
+    $("movies").innerHTML = movies.length ? movies.map(m => {
+      const pct = m.target ? Math.round(m.done / m.target * 100) : 0;
+      const done = m.target > 0 && m.done >= m.target;
+      return '<div class="movie' + (done ? " done" : "") + '">' +
+        '<div class="top"><span class="nm">' + esc(m.name) + '</span><span class="ct">' + m.done + '/' + (m.target || "?") + '</span></div>' +
+        '<div class="bar"><i style="width:' + pct + '%"></i></div></div>';
+    }).join("") : '<div class="empty">—</div>';
+  } catch (e) {
+    $("live").innerHTML = '<span class="dot off"></span>' + esc(e.message || "chưa có dữ liệu…");
+  }
+}
+
+// ================== Khối 3: Sức khoẻ kho phim (/api/ops/queue, /api/ops/health) ==================
+function fmtDate(s) {
+  const t = new Date(s).getTime();
+  if (!isFinite(t)) return "—";
+  return new Date(t).toLocaleString("vi-VN", { dateStyle: "short", timeStyle: "short" });
+}
+
+function renderQueue(rows) {
+  if (!rows.length) {
+    $("queueBody").innerHTML = '<tr><td colspan="8" class="empty">Chưa có phim nào.</td></tr>';
+    return;
+  }
+  $("queueBody").innerHTML = rows.map(r => {
+    const bookId = esc(r.bookId || "");
+    return '<tr data-bookid="' + bookId + '">' +
+      '<td>' + esc(r.name) + '</td>' +
+      '<td>' + (r.total || 0) + '</td>' +
+      '<td>' + (r.rendered || 0) + '</td>' +
+      '<td>' + (r.vi || 0) + '</td>' +
+      '<td>' + (r.en || 0) + '</td>' +
+      '<td>' + (r.burned || 0) + '</td>' +
+      '<td>' + fmtDate(r.updatedAt) + '</td>' +
+      '<td><button class="btn btn-ghost btn-sm btnHealth">Kiểm lệch</button></td>' +
+      '</tr>' +
+      '<tr class="health-detail" style="display:none"><td colspan="8"></td></tr>';
+  }).join("");
+}
+
+async function tickQueue() {
+  try {
+    const body = await opsFetch("/api/ops/queue");
+    $("queueMsg").style.display = "none";
+    renderQueue(body.data || []);
+  } catch (e) {
+    $("queueMsg").textContent = e.message;
+    $("queueMsg").style.display = "block";
+  }
+}
+
+$("queueBody").addEventListener("click", async (e) => {
+  if (!e.target.classList.contains("btnHealth")) return;
+  const row = e.target.closest("tr");
+  const bookId = row.getAttribute("data-bookid");
+  const detailRow = row.nextElementSibling;
+  const cell = detailRow.querySelector("td");
+  const visible = detailRow.style.display !== "none";
+  if (visible) { detailRow.style.display = "none"; return; }
+  detailRow.style.display = "table-row";
+  const btn = e.target;
+  btn.disabled = true;
+  btn.textContent = "Đang kiểm…";
+  cell.innerHTML = '<span class="empty">Đang kiểm lệch…</span>';
+  try {
+    const body = await opsFetch("/api/ops/health?bookId=" + encodeURIComponent(bookId));
+    const d = body.data || { rendered: 0, missing: [], drift: [] };
+    // episodeNumber 0-based (0 = trailer, theo quy ước có sẵn của worker) -> hiện đúng số thô,
+    // không cộng thêm 1 để tránh bịa ra quy ước hiển thị riêng của trang.
+    const missingTxt = (d.missing && d.missing.length) ? "tập " + d.missing.join(", ") : "không thiếu tập nào";
+    const driftTxt = (d.drift && d.drift.length)
+      ? d.drift.map(x => "tập " + x.index + ": đang lưu " + esc(x.storedVideoId) + " ≠ nguồn " + esc(x.sourceVideoId)).join("<br>")
+      : "không lệch";
+    cell.innerHTML = "<b>Đã render:</b> " + d.rendered + " · <b>Thiếu:</b> " + missingTxt + "<br><b>Lệch videoId:</b> " + driftTxt;
+  } catch (e2) {
+    cell.innerHTML = '<span class="msg-error">' + esc(e2.message) + "</span>";
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "Kiểm lệch";
+  }
+});
+
+// ================== khởi động ==================
+function startApp() {
+  if (appStarted) return;
+  appStarted = true;
+  loadCatalog();
+  tickRender();
+  renderTimer = setInterval(tickRender, 2000);
+  tickQueue();
+  queueTimer = setInterval(tickQueue, 15000);
+}
+
+tryAuth(false);
+</script>
+</body>
+</html>
