@@ -58,7 +58,8 @@ async function runPass() {
   // hiện đúng % suốt pass dài, không đứng hình ở target cũ.
   for (const it of work) status.setTarget(`${it.provider}:${it.sourceId}`, it.episodes.length);
   const totalMissing = work.reduce((n, w) => n + w.missing.length, 0);
-  console.log(`[worker] quét: ${work.length} phim, ${totalMissing} tập cần render`);
+  const totalDrift = work.reduce((n, w) => n + (w.drift ? w.drift.length : 0), 0);
+  console.log(`[worker] quét: ${work.length} phim, ${totalMissing} tập cần render` + (totalDrift ? `, ${totalDrift} tập lệch videoId` : ""));
   if (!totalMissing) return 0;
 
   const limit = pLimit(env.concurrency);

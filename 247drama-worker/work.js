@@ -23,9 +23,27 @@ function extract52apiSource(series) {
   return { provider, sourceId };
 }
 
-// Thuần: từ danh sách tập nguồn + tập đã có -> tập còn thiếu (theo episodeNumber = index).
-function computeMissingEpisodes(detailEpisodes, existingNumbers) {
-  return (detailEpisodes || []).filter((ep) => !existingNumbers.has(ep.index));
+// Thuần: đối chiếu danh sách tập nguồn với bản ghi đã có.
+// Số tập của ta là VỊ TRÍ trong danh sách nguồn (detail() gán index = i), nên nguồn chèn/xoá/
+// đảo một tập là mọi vị trí sau đó trỏ sai phim. Định danh ổn định duy nhất là videoId, đã lưu
+// trong ShortVideo.sourceVideoId -> dùng nó để phát hiện lệch và TỪ CHỐI ghi đè.
+// Bản ghi cũ chưa có sourceVideoId thì coi là hợp lệ (cả kho cũ nhập trước khi worker ghi field này).
+function classifyEpisodes(detailEpisodes, existingRows) {
+  const byIndex = new Map((existingRows || []).map((r) => [r.episodeNumber, r]));
+  const missing = [];
+  const drift = [];
+  for (const ep of detailEpisodes || []) {
+    const row = byIndex.get(ep.index);
+    if (!row) {
+      missing.push(ep);
+      continue;
+    }
+    const stored = row.sourceVideoId ? String(row.sourceVideoId) : "";
+    if (stored && stored !== String(ep.videoId)) {
+      drift.push({ index: ep.index, storedVideoId: stored, sourceVideoId: String(ep.videoId) });
+    }
+  }
+  return { missing, drift };
 }
 
 // Quét mọi phim 52api, trả về danh sách việc cần render (chỉ phim còn thiếu tập).
@@ -49,21 +67,27 @@ async function findPendingWork() {
     const episodes = info.episodes || [];
     if (!episodes.length) continue;
 
-    const existing = await ShortVideo.find({ movieSeries: m._id }).select("episodeNumber").lean();
-    const existingNumbers = new Set(existing.map((e) => e.episodeNumber));
-    const missing = computeMissingEpisodes(episodes, existingNumbers);
+    const existing = await ShortVideo.find({ movieSeries: m._id })
+      .select("episodeNumber sourceVideoId")
+      .lean();
+    const { missing, drift } = classifyEpisodes(episodes, existing);
 
-    if (missing.length) {
+    if (drift.length) {
+      console.warn(`[work] ${m.name}: ${drift.length} tập LỆCH videoId (nguồn đổi thứ tự) -> bỏ qua, không ghi đè`);
+    }
+
+    if (missing.length || drift.length) {
       work.push({
         series: { _id: m._id, name: m.name, thumbnail: m.thumbnail || "" },
         provider,
         sourceId,
         episodes,
         missing,
+        drift,
       });
     }
   }
   return work;
 }
 
-module.exports = { computeMissingEpisodes, findPendingWork, extract52apiSource };
+module.exports = { classifyEpisodes, findPendingWork, extract52apiSource };
