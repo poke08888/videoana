@@ -24,6 +24,34 @@ function hanRatio(segs) {
   return han / lines.length;
 }
 
+const HAN_LIMIT = 0.05; // quá 5% số dòng còn chữ Hán = một lô dịch hụt -> loại
+
+/**
+ * Nghi thức nghiệm thu trước khi publish một tập: bản dịch phải ĐỦ dòng và THẬT SỰ đã dịch.
+ * translateSegments giữ nguyên text gốc cho lô nào hụt, nên chỉ đếm "có kết quả" là không đủ.
+ */
+function acceptTranslation({ zhCount, viSegs, enSegs, secondLang }) {
+  const vi = viSegs || [];
+  const en = enSegs || [];
+  if (vi.length !== zhCount) {
+    return { ok: false, reason: `số cue vi (${vi.length}) khác số dòng OCR (${zhCount})` };
+  }
+  const viHan = hanRatio(vi);
+  if (viHan >= HAN_LIMIT) {
+    return { ok: false, reason: `bản dịch vi hụt: ${Math.round(viHan * 100)}% số dòng còn chữ Hán` };
+  }
+  if (secondLang) {
+    if (en.length !== zhCount) {
+      return { ok: false, reason: `số cue ${secondLang} (${en.length}) khác số dòng OCR (${zhCount})` };
+    }
+    const enHan = hanRatio(en);
+    if (enHan >= HAN_LIMIT) {
+      return { ok: false, reason: `bản dịch ${secondLang} hụt: ${Math.round(enHan * 100)}% số dòng còn chữ Hán` };
+    }
+  }
+  return { ok: true, reason: "" };
+}
+
 /**
  * Dịch zhSegs sang ngôn ngữ chính (targetLang) và ngôn ngữ phụ (secondLang) SONG SONG,
  * cả hai đều đi từ TIẾNG TRUNG GỐC (không dịch chuyền vi->en để khỏi tam sao thất bản).
@@ -115,13 +143,13 @@ async function subtitleVideoBuffer(buffer, cfg = {}) {
       batchSize: translateBatchSize,
     });
 
-    // Quá nửa số dòng vẫn là chữ Hán -> coi như CHƯA dịch (key chết, hết quota, model từ chối).
-    // Ném ra để rơi vào fallback: tập bị đánh dấu chưa có sub và sẽ được render lại,
-    // thay vì publish một tập phụ đề nguyên tiếng Trung.
-    const viHan = hanRatio(viSegs);
-    if (viHan > 0.5) {
-      throw new Error(`dịch ${targetLang} hụt: ${Math.round(viHan * 100)}% số dòng vẫn là chữ Hán`);
-    }
+    const verdict = acceptTranslation({
+      zhCount: zhSegs.length,
+      viSegs,
+      enSegs,
+      secondLang: mode === "soft" ? secondLang : "",
+    });
+    if (!verdict.ok) throw new Error(verdict.reason);
 
     const boxCfg = {
       yRatio: coverBoxYRatio,
@@ -132,12 +160,6 @@ async function subtitleVideoBuffer(buffer, cfg = {}) {
 
     // soft: video SẠCH (chỉ che sub Trung), phụ đề đi kèm file .vtt rời.
     if (mode === "soft") {
-      // Track phụ chưa dịch thì bỏ hẳn, để render.js coi là thiếu track và bỏ tập
-      // (thà render lại còn hơn publish track tiếng Trung dán nhãn tiếng Anh).
-      if (enSegs.length && hanRatio(enSegs) > 0.5) {
-        console.error(`[autosub] dịch ${secondLang} hụt (${Math.round(hanRatio(enSegs) * 100)}% còn chữ Hán) -> bỏ track phụ`);
-        enSegs.length = 0;
-      }
       const clean = await transcodeCleanBox(srcF, boxCfg);
       // chineseBottomRatio đi kèm để render.js canh track .vtt ngay dưới chữ Trung,
       // đúng quy tắc mà buildAss dùng cho đường burn.
@@ -161,4 +183,4 @@ async function subtitleVideoBuffer(buffer, cfg = {}) {
   }
 }
 
-module.exports = { subtitleVideoBuffer, translateBoth, hanRatio };
+module.exports = { subtitleVideoBuffer, translateBoth, hanRatio, acceptTranslation };

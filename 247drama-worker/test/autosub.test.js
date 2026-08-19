@@ -63,3 +63,46 @@ test("hanRatio: lẫn lộn -> đúng tỉ lệ", () => {
   assert.strictEqual(hanRatio([{ text: "你好" }, { text: "Xin chào" }]), 0.5);
   assert.strictEqual(hanRatio([{ text: "你好" }, { text: "A" }, { text: "B" }, { text: "C" }]), 0.25);
 });
+
+const { acceptTranslation } = require("../util/autosub");
+
+const VI3 = [{ text: "Một" }, { text: "Hai" }, { text: "Ba" }];
+const EN3 = [{ text: "One" }, { text: "Two" }, { text: "Three" }];
+
+test("nghiệm thu: đủ số cue, đã dịch -> đạt", () => {
+  const r = acceptTranslation({ zhCount: 3, viSegs: VI3, enSegs: EN3, secondLang: "en" });
+  assert.strictEqual(r.ok, true);
+  assert.strictEqual(r.reason, "");
+});
+
+test("nghiệm thu: một lô dịch hụt (34% còn chữ Hán) -> KHÔNG đạt", () => {
+  const vi = [{ text: "Một" }, { text: "你好世界" }, { text: "Ba" }];
+  const r = acceptTranslation({ zhCount: 3, viSegs: vi, enSegs: EN3, secondLang: "en" });
+  assert.strictEqual(r.ok, false);
+  assert.match(r.reason, /vi/);
+});
+
+test("nghiệm thu: thiếu cue so với OCR -> KHÔNG đạt", () => {
+  const r = acceptTranslation({ zhCount: 4, viSegs: VI3, enSegs: EN3, secondLang: "en" });
+  assert.strictEqual(r.ok, false);
+  assert.match(r.reason, /số cue/);
+});
+
+test("nghiệm thu: track phụ hụt -> KHÔNG đạt", () => {
+  const en = [{ text: "One" }, { text: "再见" }, { text: "Three" }];
+  const r = acceptTranslation({ zhCount: 3, viSegs: VI3, enSegs: en, secondLang: "en" });
+  assert.strictEqual(r.ok, false);
+  assert.match(r.reason, /en/);
+});
+
+test("nghiệm thu: không có ngôn ngữ phụ -> chỉ xét track chính", () => {
+  const r = acceptTranslation({ zhCount: 3, viSegs: VI3, enSegs: [], secondLang: "" });
+  assert.strictEqual(r.ok, true);
+});
+
+test("nghiệm thu: 1 dòng lẫn chữ Hán trong 30 dòng (3%) -> vẫn đạt", () => {
+  const vi = Array.from({ length: 30 }, (_, i) => ({ text: i === 7 ? "你好" : "Dòng " + i }));
+  const en = Array.from({ length: 30 }, (_, i) => ({ text: "Line " + i }));
+  const r = acceptTranslation({ zhCount: 30, viSegs: vi, enSegs: en, secondLang: "en" });
+  assert.strictEqual(r.ok, true);
+});
