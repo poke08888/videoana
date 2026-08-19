@@ -16,7 +16,7 @@ Sắp đến Giang Thành.
 
 Đặc điểm phải tôn trọng:
 
-- **`line:NN%` là bắt buộc giữ.** Video gốc vẫn còn dòng chữ Hán ở dưới; phụ đề của ta được tính toán để nằm ngay **dưới** dòng chữ Hán đó, cách khoảng 0,3 cm. Mỗi tập có giá trị riêng (thường 70–80%) vì vị trí chữ Hán khác nhau. Player **không được** ép vị trí phụ đề của riêng nó (kiểu "luôn dán đáy màn hình"), nếu ép thì chữ Việt sẽ chồng lên chữ Hán.
+- **`line:NN%` là bắt buộc giữ.** Video gốc vẫn còn dòng chữ Hán ở dưới; phụ đề của ta được tính để nằm ngay **dưới** dòng chữ Hán đó, cách khoảng 0,3 cm. Con số này **đo từ chính video bằng OCR**, không phải hằng số: mỗi phim đặt chữ Hán một độ cao khác nhau (phim đang render đo ra 73%, một phim khác đo ra 83%), và mức đo được ở tập đầu sẽ chốt cho cả phim để mọi tập trong cùng một phim đặt phụ đề cùng chỗ. Player **không được** ép vị trí riêng (kiểu "luôn dán đáy màn hình"), ép là chữ Việt chồng lên chữ Hán.
 - `align:center` — căn giữa theo chiều ngang.
 - Hai track `vi` và `en` có **cùng mốc thời gian, cùng số cue**, dịch từ cùng một câu gốc. Đổi ngôn ngữ giữa chừng không cần seek lại.
 - Mốc thời gian khớp đúng file mp4 tương ứng, không có độ trễ cần bù.
@@ -57,7 +57,9 @@ Chỉ gắn **một** track — track đã chọn — rồi tạo lại `MediaIt
 </video>
 ```
 
-**Chặn hiện tại: CDN chưa bật CORS.** Kiểm tra ngày 19/08/2026 trên `cdn.247tv.app`: request `OPTIONS` trả 403 và request `GET` kèm `Origin` không có header `Access-Control-Allow-Origin`. Trình duyệt vì vậy sẽ từ chối nạp `.vtt` qua `<track crossorigin>` hoặc `fetch`. Trước khi làm bản web phải thêm quy tắc CORS cho bucket R2 `247drama`: cho phép `GET`, `HEAD` từ origin của web, header `Origin` và `Range`. App native không bị ảnh hưởng.
+CORS trên CDN **đã bật ngày 19/08/2026**: bucket R2 `247drama` cho phép `GET` và `HEAD` từ mọi origin, nhận header `Range`, lộ ra `Content-Length`, `Content-Range`, `Content-Type`, `Accept-Ranges`, `ETag`, cache preflight 1 giờ. Kiểm chứng: `OPTIONS` trả 204 kèm `access-control-allow-origin: *`, `GET` kèm `Origin` trả đủ header. Mở cho mọi origin không lộ thêm gì vì nội dung bucket vốn đã công khai qua `cdn.247tv.app`.
+
+Trước đó preflight trả 403 nên `<track>` không nạp được — nếu gặp lại triệu chứng này thì kiểm tra quy tắc CORS của bucket trước khi nghi ngờ code.
 
 ## Bộ nhớ đệm
 
