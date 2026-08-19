@@ -28,6 +28,10 @@ import { readXlsxGrid } from "./xlsx.js";
 import { parseAdsGrid, buildCohort, type ScoredVideo } from "./adsAnalytics.js";
 import { searchVideos, rankEngagement, parseKeywords } from "./tiktokSearch.js";
 import { getProductKnowledge, saveProductKnowledge, finalizeCohortIfDone, productSlug } from "./cohort.js";
+import { studioRouter } from "./studio/routes.js";
+import { initStudioTables } from "./studio/db.js";
+import { bootStudioQueue } from "./studio/queue.js";
+import { makeEngines as makeStudioEngines } from "./studio/pipeline.js";
 import { buildSynthesisPrompt, type SourceVideo } from "./synthesize.js";
 import { buildSeedFramePrompt, isValidSeedPart, normalizeSeedForm, SEED_FRAME_PARTS, type SeedFramePart } from "./seedFrame.js";
 
@@ -43,6 +47,7 @@ const upload = multer({
 const app = express();
 app.use(cors());
 app.use(express.json({ limit: "16mb" })); // phiếu có nhúng ảnh frame thật (data-URL)
+app.use("/api/studio", studioRouter); // Xưởng — sản xuất video affiliate
 
 function resolveKey(reqKey?: string): string | null {
   const k = (reqKey || "").trim();
@@ -1154,6 +1159,8 @@ async function resumeSearchJobs() {
 
 async function startServer() {
   await connectDB();
+  await initStudioTables();
+  bootStudioQueue(makeStudioEngines((process.env.GEMINI_API_KEY || "").trim())).catch((e) => console.error("[xuong] khởi động hàng đợi:", e));
   startQueueProcessor(); // Khởi động hàng đợi chạy nền
   resumeSearchJobs();    // Chạy lại job tìm video còn dở (sống sót qua restart/deploy)
   app.listen(PORT, () => {
