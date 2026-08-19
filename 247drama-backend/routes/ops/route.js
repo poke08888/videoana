@@ -9,5 +9,7 @@ route.get("/options", opsAuth(), ops.options);
 route.get("/catalog", opsAuth(), ops.catalog);
 route.get("/detail", opsAuth(), ops.detail);
 route.post("/import", opsAuth(), ops.importSeries);
+route.get("/queue", opsAuth(), ops.queue);
+route.get("/health", opsAuth(), ops.health);
 
 module.exports = route;

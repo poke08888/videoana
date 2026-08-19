@@ -5,6 +5,9 @@ const MovieSeries = require("../../models/movieSeries.model");
 const Setting = require("../../models/setting.model");
 const { createClient } = require("../../util/duanju52");
 const { buildSeriesDoc } = require("../../util/opsSeries");
+const ShortVideo = require("../../models/shortVideo.model");
+const { diffEpisodes } = require("../../util/opsHealth");
+const axiosRaw = require("axios");
 
 // Key 52api nằm trong Setting (worker dùng chung) -> đọc mỗi lần gọi, đổi key không cần restart.
 let cachedKey = "";
@@ -114,5 +117,79 @@ exports.importSeries = async (req, res) => {
   } catch (error) {
     console.error("ops import error:", error.message);
     return res.status(error.is52api ? 502 : 400).json({ status: false, message: error.message });
+  }
+};
+
+// Bảng sức khoẻ: chỉ đọc Mongo, KHÔNG gọi 52api -> bấm bao nhiêu lần cũng không tốn quota.
+exports.queue = async (req, res) => {
+  try {
+    const series = await MovieSeries.find({ sourceProvider: /^52api-/ })
+      .select("_id name bookId sourceEpisodeCount updatedAt")
+      .sort({ updatedAt: -1 })
+      .lean();
+
+    const stats = await ShortVideo.aggregate([
+      { $match: { movieSeries: { $in: series.map((s) => s._id) } } },
+      {
+        $group: {
+          _id: "$movieSeries",
+          rendered: { $sum: 1 },
+          vi: { $sum: { $cond: [{ $in: ["vi", { $ifNull: ["$subTracks.lang", []] }] }, 1, 0] } },
+          en: { $sum: { $cond: [{ $in: ["en", { $ifNull: ["$subTracks.lang", []] }] }, 1, 0] } },
+          burned: { $sum: { $cond: [{ $eq: ["$burnedLang", "vi"] }, 1, 0] } },
+        },
+      },
+    ]);
+    const byId = new Map(stats.map((s) => [String(s._id), s]));
+
+    return res.status(200).json({
+      status: true,
+      data: series.map((s) => {
+        const st = byId.get(String(s._id)) || { rendered: 0, vi: 0, en: 0, burned: 0 };
+        return {
+          _id: s._id,
+          name: s.name,
+          bookId: s.bookId || "",
+          total: s.sourceEpisodeCount || 0,
+          rendered: st.rendered,
+          vi: st.vi,
+          en: st.en,
+          burned: st.burned,
+          updatedAt: s.updatedAt,
+        };
+      }),
+    });
+  } catch (error) {
+    console.error("ops queue error:", error.message);
+    return res.status(500).json({ status: false, message: "Không lấy được bảng sức khoẻ" });
+  }
+};
+
+// Kiểm lệch một phim: tốn 1 lượt 52api nên chỉ chạy khi bấm nút.
+exports.health = async (req, res) => {
+  try {
+    await getKey52();
+    const bookId = String(req.query.bookId || "");
+    const [provider, sourceId] = bookId.split(":");
+    if (!provider || !sourceId) {
+      return res.status(400).json({ status: false, message: "bookId phải dạng hg:123" });
+    }
+    const series = await MovieSeries.findOne({ bookId }).select("_id").lean();
+    if (!series) return res.status(404).json({ status: false, message: "Không thấy phim" });
+
+    const base = provider === "hm" ? "https://www.52api.cn/api/hm_duanju" : "https://www.52api.cn/api/hg_duanju";
+    const r = await axiosRaw.get(base, { params: { key: cachedKey, type: "detail", id: sourceId }, timeout: 60000 });
+    const body = r.data || {};
+    if (body.code && Number(body.code) !== 200) {
+      return res.status(502).json({ status: false, message: body.msg || "52api lỗi" });
+    }
+    const lists = ((body.data || body).lists) || [];
+    const sourceEpisodes = lists.map((ep, i) => ({ index: i, videoId: String(ep.video_id) }));
+
+    const rows = await ShortVideo.find({ movieSeries: series._id }).select("episodeNumber sourceVideoId").lean();
+    return res.status(200).json({ status: true, data: diffEpisodes(sourceEpisodes, rows) });
+  } catch (error) {
+    console.error("ops health error:", error.message);
+    return res.status(500).json({ status: false, message: error.message });
   }
 };
