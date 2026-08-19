@@ -110,6 +110,30 @@ exports.detail = async (req, res) => {
   }
 };
 
+// Dịch tên/mô tả sau khi đã trả lời người vận hành. Lỗi ở đây không ảnh hưởng phim đã nhập:
+// bản ghi vẫn giữ tên tiếng Trung kèm cờ chưa dịch để bấm "Dịch lại".
+async function translateSeriesInBackground(seriesId, info) {
+  const meta = await translateSeriesMeta({ name: info.name, description: info.description }, await getGeminiCfg());
+  const got = Object.keys(meta.i18n || {});
+  if (!got.length) {
+    console.error(`ops dịch nền: không dịch được phim ${seriesId} (${meta.error})`);
+    return;
+  }
+  const vi = meta.i18n.vi || {};
+  const en = meta.i18n.en || {};
+  const set = { i18n: meta.i18n, metaMissingLangs: meta.missing || [], metaTranslatedAt: new Date() };
+  if (vi.name) {
+    set.name = vi.name;
+    set.description = vi.description || "";
+  }
+  if (en.name) {
+    set.nameEn = en.name;
+    set.descriptionEn = en.description || "";
+  }
+  await MovieSeries.updateOne({ _id: seriesId }, { $set: set });
+  console.log(`ops dịch nền xong: ${seriesId} -> ${got.join(", ")}`);
+}
+
 // Nhập phim: tạo MovieSeries; worker Mac tự phát hiện và render ở vòng quét kế tiếp.
 exports.importSeries = async (req, res) => {
   try {
@@ -121,19 +145,16 @@ exports.importSeries = async (req, res) => {
       return res.status(409).json({ status: false, message: `Phim đã có trong hệ thống: ${existing.name}` });
     }
     const info = await duanju.detail(provider, sourceId);
-    // Dịch tên + mô tả sang Việt/Anh. Dịch hụt KHÔNG chặn nhập phim: phim vẫn vào kho với
-    // tên tiếng Trung và cờ "chưa dịch" để bấm Dịch lại trên web vận hành.
-    const meta = await translateSeriesMeta(
-      { name: info.name, description: info.description },
-      await getGeminiCfg()
-    );
-    const doc = buildSeriesDoc({ provider, sourceId, info, categoryId, languageId, type: Number(type), meta });
+    // Tạo phim NGAY với tên gốc rồi mới dịch ở nền: dịch mất ~5 giây, bắt người vận hành ngồi
+    // nhìn nút "Đang nhập..." chừng đó là vô ích — worker cũng chỉ cần bản ghi để bắt đầu tải.
+    // Dịch xong thì cập nhật vào chính bản ghi đó; bảng sức khoẻ tự làm mới 15 giây một lần.
+    const doc = buildSeriesDoc({ provider, sourceId, info, categoryId, languageId, type: Number(type) });
     const created = await MovieSeries.create(doc);
-    const warn = meta.ok ? "" : ` Chưa dịch đủ tên/mô tả (${meta.error}) — bấm "Dịch lại" ở bảng dưới.`;
+    translateSeriesInBackground(created._id, info).catch((e) => console.error("ops dịch nền lỗi:", e.message));
     return res.status(200).json({
       status: true,
-      message: `Đã nhập "${created.name}" (${doc.sourceEpisodeCount} tập). Worker sẽ render ở vòng quét kế tiếp.${warn}`,
-      data: { _id: created._id, bookId: created.bookId, translated: meta.ok },
+      message: `Đã nhập "${created.name}" (${doc.sourceEpisodeCount} tập). Worker sẽ render ở vòng quét kế tiếp, tên phim đang được dịch.`,
+      data: { _id: created._id, bookId: created.bookId },
     });
   } catch (error) {
     console.error("ops import error:", error.message);

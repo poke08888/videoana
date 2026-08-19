@@ -39,6 +39,11 @@ exports.retrieveMovieSeriesVideosForUser = async (req, res) => {
             movieSeries: new mongoose.Types.ObjectId(movieSeriesId),
           },
         },
+        // BẮT BUỘC: $group phía dưới đẩy tập vào mảng theo đúng thứ tự tài liệu đi vào, mà
+        // thứ tự tự nhiên của Mongo là thứ tự GHI — worker render 4 tập song song nên tập
+        // ghi xong trước nằm trước. Thiếu dòng này thì app hiện tập 3 trước tập 1.
+        // Hai endpoint bản web đã sắp xếp sẵn, chỉ đường của app bị sót.
+        { $sort: { episodeNumber: 1 } },
         {
           $lookup: {
             from: "movieseries",

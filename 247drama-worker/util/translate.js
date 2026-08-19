@@ -8,20 +8,39 @@ function endpoint(model, apiKey) {
 }
 
 // Gọi Gemini generateContent, trả text thô của phản hồi.
-async function callGemini({ apiKey, model, prompt, json = false, timeout = 60000 }) {
-  const body = {
-    contents: [{ role: "user", parts: [{ text: prompt }] }],
-    generationConfig: {
-      temperature: 0.2,
-      ...(json ? { responseMimeType: "application/json" } : {}),
-    },
+//
+// thinkingBudget=0: tắt phần "suy nghĩ" của gemini-2.5-flash. Dịch phụ đề là việc cơ học,
+// bật suy nghĩ chỉ tốn thêm ~6000 token và kéo mỗi lượt gọi từ 5 giây lên 35 giây.
+// Đặt null nếu muốn bật lại. Model nào không hiểu tham số này thì gọi lại không kèm nó.
+async function callGemini({ apiKey, model, prompt, json = false, timeout = 60000, thinkingBudget = 0 }) {
+  const gen = {
+    temperature: 0.2,
+    ...(json ? { responseMimeType: "application/json" } : {}),
   };
-  const { data } = await axios.post(endpoint(model, apiKey), body, {
-    timeout,
-    headers: { "Content-Type": "application/json" },
-  });
-  const parts = data?.candidates?.[0]?.content?.parts || [];
-  return parts.map((p) => p.text || "").join("").trim();
+  const withThinking = Number.isFinite(thinkingBudget)
+    ? { ...gen, thinkingConfig: { thinkingBudget } }
+    : gen;
+
+  const send = async (generationConfig) => {
+    const { data } = await axios.post(
+      endpoint(model, apiKey),
+      { contents: [{ role: "user", parts: [{ text: prompt }] }], generationConfig },
+      { timeout, headers: { "Content-Type": "application/json" } }
+    );
+    const parts = data?.candidates?.[0]?.content?.parts || [];
+    return parts.map((p) => p.text || "").join("").trim();
+  };
+
+  try {
+    return await send(withThinking);
+  } catch (e) {
+    const status = e?.response?.status;
+    if (withThinking !== gen && status === 400) {
+      console.warn("[translate] model không nhận thinkingConfig, gọi lại không kèm");
+      return send(gen);
+    }
+    throw e;
+  }
 }
 
 /**

@@ -39,16 +39,29 @@ function buildPrompt({ name, description }, langs) {
   );
 }
 
-function defaultAsk({ apiKey, model, timeout = 60000 }) {
-  return async (prompt) => {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`;
-    const r = await axios.post(
-      url,
-      { contents: [{ parts: [{ text: prompt }] }], generationConfig: { responseMimeType: "application/json" } },
-      { timeout, headers: { "Content-Type": "application/json" } }
-    );
+// thinkingBudget=0 tắt phần "suy nghĩ" của gemini-2.5-flash. Đo trên chính prompt này:
+// bật thì tốn ~6000 token nghĩ và mất 35 giây, tắt thì 5 giây mà bản dịch vẫn đạt.
+// Model nào không nhận tham số này (lỗi 400) thì gọi lại không kèm.
+function defaultAsk({ apiKey, model, timeout = 60000, thinkingBudget = 0 }) {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`;
+  const read = (r) => {
     const parts = ((((r.data || {}).candidates || [])[0] || {}).content || {}).parts || [];
     return parts.map((p) => p.text || "").join("");
+  };
+  const send = (generationConfig, prompt) =>
+    axios.post(url, { contents: [{ parts: [{ text: prompt }] }], generationConfig }, { timeout, headers: { "Content-Type": "application/json" } });
+
+  return async (prompt) => {
+    const gen = { responseMimeType: "application/json" };
+    try {
+      return read(await send({ ...gen, thinkingConfig: { thinkingBudget } }, prompt));
+    } catch (e) {
+      if (e && e.response && e.response.status === 400) {
+        console.warn("ops translateMeta: model không nhận thinkingConfig, gọi lại không kèm");
+        return read(await send(gen, prompt));
+      }
+      throw e;
+    }
   };
 }
 
