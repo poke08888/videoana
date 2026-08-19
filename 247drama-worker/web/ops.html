@@ -129,7 +129,7 @@
       <div class="chips" id="subcats"></div>
       <div class="msg-error" id="catalogMsg" style="display:none"></div>
       <div class="cardsgrid" id="cards"></div>
-      <div class="pager">
+      <div class="pager" id="pager">
         <button class="btn btn-ghost btn-sm" id="pgPrev">‹ Trang trước</button>
         <span class="sub" id="pgNum" style="margin:0">Trang 1</span>
         <button class="btn btn-ghost btn-sm" id="pgNext">Trang sau ›</button>
@@ -304,6 +304,9 @@ function renderCards() {
 async function loadCatalog() {
   $("catalogMsg").style.display = "none";
   $("cards").innerHTML = '<div class="empty">Đang tải…</div>';
+  // Bảng xếp hạng không phân trang được (52api cấm tham số page) -> ẩn nút phân trang
+  // ở chế độ "top", chỉ hiện khi đang tìm kiếm, để nút bấm không vô tác dụng.
+  $("pager").style.display = cat.mode === "search" ? "flex" : "none";
   const params = new URLSearchParams({ provider: cat.provider, type: cat.mode, page: String(cat.page) });
   if (cat.mode === "search") params.set("keyword", cat.keyword);
   if (cat.mode === "top" && cat.cellId) {
@@ -359,8 +362,9 @@ $("subcats").addEventListener("click", (e) => {
   cat.subCellId = sub; cat.page = 1;
   loadCatalog();
 });
-$("pgPrev").addEventListener("click", () => { if (cat.page > 1) { cat.page--; loadCatalog(); } });
-$("pgNext").addEventListener("click", () => { cat.page++; loadCatalog(); });
+// Chỉ tác dụng ở chế độ tìm kiếm — bảng xếp hạng không phân trang được (xem loadCatalog).
+$("pgPrev").addEventListener("click", () => { if (cat.mode === "search" && cat.page > 1) { cat.page--; loadCatalog(); } });
+$("pgNext").addEventListener("click", () => { if (cat.mode === "search") { cat.page++; loadCatalog(); } });
 
 $("cards").addEventListener("click", (e) => {
   const sid = e.target.getAttribute("data-sid");

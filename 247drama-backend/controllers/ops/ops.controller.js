@@ -54,12 +54,13 @@ exports.options = async (req, res) => {
 exports.catalog = async (req, res) => {
   try {
     await getKey52();
+    // page chỉ còn ý nghĩa với tìm kiếm: bảng xếp hạng (52api) cấm tham số page.
     const { provider = "hg", type = "top", keyword = "", cellId = "", subCellId = "", page = "1" } = req.query;
     const items =
       type === "search"
         ? await duanju.search(provider, keyword, Number(page) || 1)
         : cellId
-          ? await duanju.topList(cellId, subCellId, Number(page) || 1)
+          ? await duanju.topList(cellId, subCellId)
           : [];
     const categories = type === "top" && !cellId ? await duanju.topCategories() : [];
 
