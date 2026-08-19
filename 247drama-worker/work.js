@@ -49,7 +49,7 @@ function classifyEpisodes(detailEpisodes, existingRows) {
 // Quét mọi phim 52api, trả về danh sách việc cần render (chỉ phim còn thiếu tập).
 async function findPendingWork() {
   const movies = await MovieSeries.find({ sourceProvider: /^52api-/ })
-    .select("_id name thumbnail bookId sourceProvider sourceEpisodeCount")
+    .select("_id name thumbnail bookId sourceProvider sourceEpisodeCount zhBottomRatio zhBottomSource")
     .lean();
 
   const work = [];

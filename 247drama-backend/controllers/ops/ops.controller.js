@@ -125,7 +125,7 @@ exports.importSeries = async (req, res) => {
 exports.queue = async (req, res) => {
   try {
     const series = await MovieSeries.find({ sourceProvider: /^52api-/ })
-      .select("_id name bookId sourceEpisodeCount updatedAt")
+      .select("_id name bookId sourceEpisodeCount updatedAt zhBottomRatio zhBottomSource")
       .sort({ updatedAt: -1 })
       .lean();
 
@@ -156,6 +156,8 @@ exports.queue = async (req, res) => {
           vi: st.vi,
           en: st.en,
           burned: st.burned,
+          zhBottomRatio: typeof s.zhBottomRatio === "number" ? s.zhBottomRatio : null,
+          zhBottomSource: s.zhBottomSource || "",
           updatedAt: s.updatedAt,
         };
       }),
@@ -163,6 +165,33 @@ exports.queue = async (req, res) => {
   } catch (error) {
     console.error("ops queue error:", error.message);
     return res.status(500).json({ status: false, message: "Không lấy được bảng sức khoẻ" });
+  }
+};
+
+// Đặt tay vị trí đáy chữ Hán cho một phim (0-1 theo chiều cao khung hình).
+// Dùng khi muốn CHỐT TRƯỚC khi render, hoặc khi OCR đo sai. Số đặt tay luôn thắng OCR.
+exports.setSubPosition = async (req, res) => {
+  try {
+    const bookId = String((req.body && req.body.bookId) || "");
+    const ratio = Number((req.body && req.body.ratio) != null ? req.body.ratio : NaN);
+    if (!bookId.includes(":")) {
+      return res.status(400).json({ status: false, message: "Thiếu bookId" });
+    }
+    // Chữ Hán của phim dọc luôn nằm nửa dưới khung hình; ngoài dải này là gõ nhầm.
+    if (!isFinite(ratio) || ratio < 0.3 || ratio > 0.95) {
+      return res.status(400).json({ status: false, message: "Vị trí phải trong khoảng 0.30 - 0.95" });
+    }
+    const r = await MovieSeries.updateOne(
+      { bookId },
+      { $set: { zhBottomRatio: ratio, zhBottomSource: "manual" } }
+    );
+    if (!r.matchedCount) {
+      return res.status(404).json({ status: false, message: "Không tìm thấy phim" });
+    }
+    return res.status(200).json({ status: true, message: `Đã chốt vị trí ${Math.round(ratio * 100)}% cho phim.` });
+  } catch (error) {
+    console.error("ops setSubPosition error:", error.message);
+    return res.status(500).json({ status: false, message: "Không lưu được vị trí phụ đề" });
   }
 };
 

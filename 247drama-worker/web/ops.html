@@ -165,7 +165,7 @@
         <table class="tbl">
           <thead>
             <tr>
-              <th>Tên</th><th>Tổng</th><th>Đã render</th><th>Sub vi</th><th>Sub en</th><th>Tập cũ</th><th>Cập nhật</th><th></th>
+              <th>Tên</th><th>Tổng</th><th>Đã render</th><th>Sub vi</th><th>Sub en</th><th>Tập cũ</th><th>Vị trí sub</th><th>Cập nhật</th><th></th>
             </tr>
           </thead>
           <tbody id="queueBody">
@@ -487,9 +487,18 @@ function fmtDate(s) {
   return new Date(t).toLocaleString("vi-VN", { dateStyle: "short", timeStyle: "short" });
 }
 
+// Vị trí đáy chữ Hán của phim: mỗi phim một chỗ khác nhau nên phải chốt trước khi render
+// hàng loạt. "OCR" = worker đo ở tập đầu, "đặt tay" = người vận hành gõ vào (luôn thắng OCR).
+function posCell(r) {
+  const pct = typeof r.zhBottomRatio === "number" ? Math.round(r.zhBottomRatio * 100) + "%" : "chưa đo";
+  const src = r.zhBottomSource === "manual" ? " · đặt tay" : (r.zhBottomSource === "auto" ? " · OCR" : "");
+  return '<span class="posval">' + esc(pct + src) + '</span> ' +
+    '<button class="btn btn-ghost btn-sm btnPos">Đặt</button>';
+}
+
 function renderQueue(rows) {
   if (!rows.length) {
-    $("queueBody").innerHTML = '<tr><td colspan="8" class="empty">Chưa có phim nào.</td></tr>';
+    $("queueBody").innerHTML = '<tr><td colspan="9" class="empty">Chưa có phim nào.</td></tr>';
     return;
   }
   $("queueBody").innerHTML = rows.map(r => {
@@ -500,11 +509,11 @@ function renderQueue(rows) {
       '<td>' + (r.rendered || 0) + '</td>' +
       '<td>' + (r.vi || 0) + '</td>' +
       '<td>' + (r.en || 0) + '</td>' +
-      '<td>' + (r.burned || 0) + '</td>' +
+      '<td>' + posCell(r) + '</td>' +
       '<td>' + fmtDate(r.updatedAt) + '</td>' +
       '<td><button class="btn btn-ghost btn-sm btnHealth">Kiểm lệch</button></td>' +
       '</tr>' +
-      '<tr class="health-detail" style="display:none"><td colspan="8"></td></tr>';
+      '<tr class="health-detail" style="display:none"><td colspan="9"></td></tr>';
   }).join("");
 }
 
@@ -520,6 +529,30 @@ async function tickQueue() {
 }
 
 $("queueBody").addEventListener("click", async (e) => {
+  if (e.target.classList.contains("btnPos")) {
+    const row = e.target.closest("tr");
+    const bookId = row.getAttribute("data-bookid");
+    const cur = row.querySelector(".posval").textContent.replace(/[^0-9]/g, "");
+    const ans = prompt("Đáy dòng chữ Hán nằm ở bao nhiêu % chiều cao khung hình?\n(30-95, phụ đề Việt sẽ nằm ngay dưới mức này)", cur || "72");
+    if (ans === null) return;
+    const pct = Number(String(ans).replace(",", "."));
+    if (!isFinite(pct) || pct < 30 || pct > 95) { alert("Nhập số từ 30 đến 95."); return; }
+    e.target.disabled = true;
+    try {
+      const body = await opsFetch("/api/ops/sub-position", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ bookId, ratio: pct / 100 }),
+      });
+      alert(body.message || "Đã lưu.");
+      tickQueue();
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      e.target.disabled = false;
+    }
+    return;
+  }
   if (!e.target.classList.contains("btnHealth")) return;
   const row = e.target.closest("tr");
   const bookId = row.getAttribute("data-bookid");

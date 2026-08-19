@@ -18,7 +18,11 @@ const movieSeriesSchema = new mongoose.Schema(
     isActive: { type: Boolean, default: true },
     bookId: { type: String, unique: true, sparse: true }, // khoá dedup nguồn ngoài; 52api lưu dạng "hg:<id>" / "hm:<id>"
     sourceProvider: { type: String, default: "" }, // "dramabox" | "52api-hg" | "52api-hm"
-    sourceEpisodeCount: { type: Number, default: 0 } // tổng số tập bên nguồn (biết khi nào import xong -> auto-resume sau restart)
+    sourceEpisodeCount: { type: Number, default: 0 }, // tổng số tập bên nguồn (biết khi nào import xong -> auto-resume sau restart)
+    // Đáy dòng chữ Hán của phim này (0-1 theo chiều cao khung hình), đo bằng OCR ở tập đầu
+    // rồi chốt cho cả phim -> mọi tập đặt phụ đề cùng một chỗ. Mỗi phim một giá trị khác nhau.
+    zhBottomRatio: { type: Number, default: null },
+    zhBottomSource: { type: String, default: "" } // "auto" = OCR đo, "manual" = người vận hành đặt tay
   },
   {
     timestamps: true,

@@ -5,8 +5,9 @@ const duanju = require("./util/duanjuProvider");
 const { subtitleVideoBuffer } = require("./util/autosub");
 const { uploadToR2, uploadAndVerify } = require("./util/r2");
 const { segsToVtt } = require("./util/vtt");
+const { resolveSubPosition } = require("./util/subPosition");
 const { env, buildFilename, buildR2Key, buildVideoUrl, buildSubtitleConfig, buildSubKey, buildSubUrl } = require("./config");
-const { ShortVideo } = require("./db");
+const { ShortVideo, MovieSeries } = require("./db");
 const status = require("./status");
 
 function run(cmd, args, opts = {}) {
@@ -105,15 +106,35 @@ async function renderEpisodeInner({ series, provider, sourceId, ep }) {
       // nếu không segsToVtt sinh timestamp NaN mà vẫn ra chuỗi khác rỗng -> file phụ đề hỏng.
       const rawOffset = ((global.settingJSON && global.settingJSON.subtitle) || {}).subStartOffsetMs;
       const offsetSec = (typeof rawOffset === "number" && isFinite(rawOffset) ? rawOffset : 0) / 1000;
-      // Vị trí dòng: ngay dưới đáy chữ Trung do OCR phát hiện, cách một khoảng subGapRatio
-      // (~0.3cm) — cùng công thức buildAss dùng cho đường burn. Không có số OCR thì theo
-      // setting cố định như buildAss.
+      // Vị trí dòng: ngay dưới đáy chữ Trung do OCR đo được, cách một khoảng subGapRatio
+      // (~0,3cm). Mỗi phim đặt chữ Hán một độ cao khác nhau nên KHÔNG có hằng số chung:
+      // tập đầu đo được sẽ chốt mức cho cả phim, tập sau bám mức đó. Không có số nào ->
+      // bỏ tập để lần sau làm lại, thay vì đoán bừa rồi đè chữ Việt lên chữ Hán.
       const S = (global.settingJSON && global.settingJSON.subtitle) || {};
       const num = (v, d) => (typeof v === "number" && !isNaN(v) ? v : d);
       const gapRatio = num(S.subGapRatio, 0.012);
-      const topRatio = typeof r.chineseBottomRatio === "number" && r.chineseBottomRatio > 0
-        ? Math.min(0.88, r.chineseBottomRatio + gapRatio)
-        : num(S.subTopRatio, num(S.coverBoxYRatio, 0.66) + 0.06);
+      const pos = resolveSubPosition({
+        episodeRatio: r.chineseBottomRatio,
+        seriesRatio: series.zhBottomRatio,
+        seriesSource: series.zhBottomSource,
+        gapRatio,
+      });
+      if (!pos) {
+        status.fail(tag);
+        const why = "chưa xác định được vị trí chữ Hán (OCR không đo được, phim chưa chốt mức)";
+        console.error(`[render] ✗ ${tag}: ${why} -> bỏ tập, lần chạy sau làm lại`);
+        return { ok: false, reason: why };
+      }
+      if (pos.warn) console.warn(`[render] ⚠ ${tag}: ${pos.warn}`);
+      const topRatio = pos.topRatio;
+      // Chốt mức cho phim ngay khi tập đầu đo được. Điều kiện lọc zhBottomRatio còn trống để
+      // 4 tập chạy song song không ghi đè nhau: tập nào xong trước thì tập đó chốt.
+      if (pos.pin) {
+        await MovieSeries.updateOne(
+          { _id: series._id, $or: [{ zhBottomRatio: null }, { zhBottomRatio: { $exists: false } }] },
+          { $set: { zhBottomRatio: r.chineseBottomRatio, zhBottomSource: "auto" } }
+        ).catch(() => {});
+      }
       const wantLangs = [["vi", r.viSegs]];
       if (subCfg.secondLang) wantLangs.push([subCfg.secondLang, r.enSegs]);
       for (const [lang, segs] of wantLangs) {

@@ -21,7 +21,11 @@ const movieSeriesSchema = new mongoose.Schema(
     sourceProvider: { type: String, trim: true },
     sourceEpisodeCount: { type: Number, default: 0 },
     // Phim do web vận hành tạo -> chỉ những phim này mới được xoá qua /api/ops.
-    createdByOps: { type: Boolean, default: false }
+    createdByOps: { type: Boolean, default: false },
+    // Đáy dòng chữ Hán của phim (0-1 theo chiều cao khung hình). Worker đo bằng OCR ở tập
+    // đầu rồi chốt cho cả phim; người vận hành có thể đặt tay ("manual") để chốt trước khi chạy.
+    zhBottomRatio: { type: Number, default: null },
+    zhBottomSource: { type: String, default: "" }
   },
   {
     timestamps: true,
