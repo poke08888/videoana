@@ -55,6 +55,15 @@ function createClient({ getKey, httpGet, minIntervalMs = 3200, cacheTtlMs = 6000
     };
   }
 
+  // Chuẩn hoá một danh mục (cha hoặc con): lọc null, xử lý số 0 đúng.
+  function normalizeCategory(cat) {
+    if (cat == null || typeof cat !== "object") return null;
+    return {
+      cellId: String(cat.cell_id != null ? cat.cell_id : (cat.cellId != null ? cat.cellId : "")),
+      name: cat.cell_name || cat.name || "",
+    };
+  }
+
   return {
     async search(provider, keyword, page = 1) {
       const data = await call(baseOf(provider), { type: "search", keyword, page });
@@ -62,14 +71,19 @@ function createClient({ getKey, httpGet, minIntervalMs = 3200, cacheTtlMs = 6000
     },
     async topCategories() {
       const data = await call(TOP_BASE, { type: "top" });
-      return ((data && data.lists) || []).map((c) => ({
-        cellId: String(c.cell_id || c.cellId || ""),
-        name: c.cell_name || c.name || "",
-        subs: ((c.sub_cell || c.subs) || []).map((s) => ({
-          cellId: String(s.cell_id || s.cellId || ""),
-          name: s.cell_name || s.name || "",
-        })),
-      }));
+      return ((data && data.lists) || [])
+        .map((c) => {
+          const normalized = normalizeCategory(c);
+          if (!normalized) return null;
+          return {
+            cellId: normalized.cellId,
+            name: normalized.name,
+            subs: ((c.sub_cell || c.subs) || [])
+              .map(normalizeCategory)
+              .filter((s) => s != null),
+          };
+        })
+        .filter((c) => c != null);
     },
     async topList(cellId, subCellId = "", page = 1) {
       const data = await call(TOP_BASE, { type: "list", cell_id: cellId, sub_cell_id: subCellId, page });

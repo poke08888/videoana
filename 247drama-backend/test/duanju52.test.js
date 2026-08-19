@@ -216,3 +216,85 @@ test("id: 0 phải ra sourceId '0'", async () => {
     { sourceId: "0", name: "Phim Zero", description: "z", cover: "" }
   ]);
 });
+
+test("topCategories phần tử null trong lists -> bỏ qua, không ném lỗi", async () => {
+  const s = stub([{
+    lists: [
+      { cell_id: "100", cell_name: "Hành động", sub_cell: [] },
+      null,
+      { cell_id: "200", cell_name: "Tình cảm", sub_cell: [] }
+    ]
+  }]);
+  const c = createClient({ getKey: () => "K", httpGet: s.httpGet, minIntervalMs: 0 });
+  const out = await c.topCategories();
+  assert.deepStrictEqual(out, [
+    { cellId: "100", name: "Hành động", subs: [] },
+    { cellId: "200", name: "Tình cảm", subs: [] }
+  ]);
+});
+
+test("topCategories phần tử null trong sub_cell -> bỏ qua, giữ danh mục", async () => {
+  const s = stub([{
+    lists: [
+      {
+        cell_id: "300",
+        cell_name: "Võ thuật",
+        sub_cell: [
+          { cell_id: "301", cell_name: "Chiến tranh" },
+          null,
+          { cell_id: "302", cell_name: "Truyền thuyết" }
+        ]
+      }
+    ]
+  }]);
+  const c = createClient({ getKey: () => "K", httpGet: s.httpGet, minIntervalMs: 0 });
+  const out = await c.topCategories();
+  assert.deepStrictEqual(out, [
+    {
+      cellId: "300",
+      name: "Võ thuật",
+      subs: [
+        { cellId: "301", name: "Chiến tranh" },
+        { cellId: "302", name: "Truyền thuyết" }
+      ]
+    }
+  ]);
+});
+
+test("topCategories cell_id: 0 ở tầng cha -> cellId '0' không rỗng", async () => {
+  const s = stub([{
+    lists: [
+      { cell_id: 0, cell_name: "Zero Cat", sub_cell: [] }
+    ]
+  }]);
+  const c = createClient({ getKey: () => "K", httpGet: s.httpGet, minIntervalMs: 0 });
+  const out = await c.topCategories();
+  assert.deepStrictEqual(out, [
+    { cellId: "0", name: "Zero Cat", subs: [] }
+  ]);
+});
+
+test("topCategories cell_id: 0 ở tầng con -> cellId '0' không rỗng", async () => {
+  const s = stub([{
+    lists: [
+      {
+        cell_id: "400",
+        cell_name: "Tìm kiếm",
+        sub_cell: [
+          { cell_id: 0, cell_name: "Zero Sub" }
+        ]
+      }
+    ]
+  }]);
+  const c = createClient({ getKey: () => "K", httpGet: s.httpGet, minIntervalMs: 0 });
+  const out = await c.topCategories();
+  assert.deepStrictEqual(out, [
+    {
+      cellId: "400",
+      name: "Tìm kiếm",
+      subs: [
+        { cellId: "0", name: "Zero Sub" }
+      ]
+    }
+  ]);
+});
