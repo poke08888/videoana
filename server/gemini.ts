@@ -138,7 +138,7 @@ export async function generateJSON(apiKey: string, model: string | undefined, pr
   return json;
 }
 
-function extractJSON(text: string): any | null {
+export function extractJSON(text: string): any | null {
   if (!text) return null;
   let t = text.trim().replace(/^```(?:json)?/i, "").replace(/```$/i, "").trim();
   const i = t.indexOf("{");
