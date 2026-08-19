@@ -30,6 +30,26 @@
 5. Nhạc nền **không đóng gói** trong repo (bản quyền): người vận hành thả file mp3 vào `<STUDIO_DATA_DIR>/_music/`, API liệt kê.
 6. `ffmpeg-static` không có `ffprobe` → đo thời lượng bằng cách parse `Duration:` trong stderr của `ffmpeg -i`.
 
+## Đính chính phát hiện khi thực thi (19/08/2026 — đã sửa trong code)
+
+1. **`server/studio/script.ts` import sai tầng**: plan ghi `from "../errors.js"` → trỏ ra
+   `server/errors.js` không tồn tại. Đúng là `"./errors.js"`. (`../db.js` và `../gemini.js`
+   trong `db.ts`/`store.ts`/`script.ts` thì ĐÚNG — đó là module cấp app.)
+2. **Task 13 sửa `src/App.tsx` 8 chỗ, không phải 4**: nav desktop và nav mobile mỗi bên có
+   gating + map icon riêng. Xưởng được gate ở **cả hai** (plan chỉ nêu desktop) vì mỗi lệnh
+   tiêu tiền thật. `CampaignView`/`SeedFrameView` định nghĩa ngay trong App.tsx nên chỉ
+   `StudioView` cần dòng import.
+3. **Số dòng tham chiếu đã cũ**: `extractJSON` ở `server/gemini.ts:141` (plan ghi 125);
+   `server/index.ts` 1167 dòng (spec ghi 911); các mốc App.tsx lệch ~60 dòng. Tìm theo nội dung.
+4. **`npm test` cần Node 22**: `node --test` chỉ nhận glob `"server/studio/**/*.test.ts"` từ
+   v22 trở lên. Prod đã là `node:22-alpine`; máy lập trình phải `nvm use 22` (mặc định là 20).
+   sqlite3 dùng N-API nên không cần build lại khi đổi phiên bản Node.
+5. Task 1 Step 8 ghi kỳ vọng `# pass 11` — đúng là **10** (6 pricing + 4 errors, như chính chú
+   thích của nó). Tổng cuối Giai đoạn 1: **58 test**.
+6. Task 11 phần Interfaces thiếu `bootStudioQueue` — hàm này có thật và Task 12 dùng để mount.
+7. `DEFAULT_MODEL` trong repo là `gemini-2.5-flash` (spec mục 13 đã cảnh báo lệch). Khâu sinh
+   kịch bản phải *nhìn ảnh* nên cần đặt `STUDIO_SCRIPT_MODEL` tường minh trước khi dùng thật.
+
 ## Sơ đồ file
 
 ```
