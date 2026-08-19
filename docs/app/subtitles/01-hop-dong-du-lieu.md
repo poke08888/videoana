@@ -72,6 +72,21 @@ Trong `data.videos[]` (và trong nhóm của `getVideosGroupedByMovieSeries`), m
 
 Trường này luôn tồn tại (mặc định `""` trong schema), nhưng app vẫn nên đọc phòng thủ vì bản ghi cũ có thể thiếu.
 
+## Tên và mô tả phim cũng theo quốc gia
+
+Từ 19/08/2026, phim nhập từ 52api được dịch tên và mô tả ngay lúc nhập: `name` và `description` trả về là **bản tiếng Việt**, `nameEn` / `descriptionEn` giữ bản tiếng Anh, `nameOriginal` / `descriptionOriginal` giữ nguyên tiếng Trung của nguồn.
+
+**App không phải làm gì thêm.** Backend tự đổi: người xem ngoài Việt Nam nhận luôn tên và mô tả tiếng Anh trong `name` / `description` của mọi endpoint client, dùng đúng quy tắc IP của `subDefault`. Cùng một phim:
+
+| IP người xem | `name` trả về |
+| --- | --- |
+| `113.161.0.1` (VN) | Chiến Thần Phương Bắc 2 |
+| `8.8.8.8` (ngoài VN) | God of War of the Northern Realm 2 |
+
+Phim chưa dịch được (Gemini lỗi lúc nhập) vẫn giữ tên gốc cho tới khi người vận hành bấm "Dịch lại" — app cứ hiển thị những gì server trả về, không cần xử lý riêng.
+
+Ảnh bìa và banner thì **chưa** xử lý: chữ trên ảnh vẫn là tiếng Trung. Việc này nằm ở giai đoạn sau.
+
 ## Tương thích ngược
 
 Bản app hiện tại không biết hai trường này vẫn chạy bình thường: nó bỏ qua `subTracks` và phát video sạch không phụ đề. Vì vậy **tập soft-sub sẽ trông như mất phụ đề trên app cũ** — cần ép nâng cấp hoặc chỉ bật soft-sub cho phim mới cho tới khi app mới phủ hết người dùng.

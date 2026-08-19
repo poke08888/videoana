@@ -18,6 +18,8 @@ Kho phim đang có **hai thế hệ tập phim**, app phải xử lý được c
 
 Mỗi phản hồi API kèm trường **`subDefault`** (`"vi"` hoặc `"en"`) — server đã tra IP người xem: ở Việt Nam trả `vi`, ngoài Việt Nam trả `en`. App chỉ việc dùng giá trị này làm lựa chọn mặc định, **không tự đoán theo ngôn ngữ máy**.
 
+Tên và mô tả phim cũng đi theo quy tắc IP đó, nhưng **server tự đổi trước khi trả về** nên app không cần code gì thêm — chi tiết ở [01-hop-dong-du-lieu.md](01-hop-dong-du-lieu.md).
+
 ## Bảng quyết định
 
 | `subTracks` | `burnedLang` | App phải làm gì | Nút chọn phụ đề |
