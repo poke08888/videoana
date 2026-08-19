@@ -12,6 +12,8 @@ import type { FileRef } from "./engines/types.js";
 export const PURPOSES = ["hook", "packaging", "product", "label", "interaction", "cta"] as const;
 export const CAMERAS = ["wide", "medium", "close"] as const;
 export const MOTIONS = ["low", "medium", "high"] as const;
+/** Cảnh mà nhãn/bao bì phải đọc được → ép biên độ thấp (bench Bước 0). */
+export const LOW_MOTION_PURPOSES = new Set<string>(["packaging", "label"]);
 export interface ScriptShot { purpose: (typeof PURPOSES)[number]; camera: (typeof CAMERAS)[number]; dialog: string; image_prompt: string; motion_prompt: string; motion_level: (typeof MOTIONS)[number] }
 export interface Script { shots: ScriptShot[]; caption: string; hashtags: string[]; cover_idx: number }
 
@@ -31,7 +33,12 @@ export function validateScript(raw: any, o: { maxSyllables: number }): { ok: tru
       dialog,
       image_prompt: String(s?.image_prompt || "").trim(),
       motion_prompt: String(s?.motion_prompt || "").trim(),
-      motion_level: pick(MOTIONS, s?.motion_level, "medium"),
+      // Cảnh khoe bao bì/nhãn LUÔN bị ép về biên độ thấp, không cho AI lẫn người chọn khác.
+      // Bench Bước 0: chữ trên nhãn hỏng khi sản phẩm tiến sát camera và xoay; biên độ thấp
+      // là chốt chặn hiệu quả hơn cả việc đổi sang model đắt gấp 3.
+      motion_level: LOW_MOTION_PURPOSES.has(pick(PURPOSES, s?.purpose, "product"))
+        ? "low"
+        : pick(MOTIONS, s?.motion_level, "medium"),
     };
   });
   if (errors.length) return { ok: false, errors };
@@ -49,6 +56,7 @@ Quy tắc:
 - Cảnh 1 luôn là hook (purpose "hook"). Có ít nhất một cảnh "interaction" (tay bóc/cầm/chấm/rót). Cảnh cuối là "cta".
 - Mỗi "dialog" (lời đọc tiếng Việt, tự nhiên như người thật nói) TỐI ĐA ${a.maxSyllables} âm tiết. Không vượt.
 - "image_prompt": tiếng Anh, mô tả một khung hình tĩnh photorealistic: sản phẩm ĐÚNG như ảnh tham chiếu (giữ nguyên bao bì, chữ, màu), đặt trong bối cảnh tham chiếu, ánh sáng, góc máy (${CAMERAS.join("/")}), bàn tay nếu có.
+  TUYỆT ĐỐI KHÔNG trích, chép hay viết lại bất kỳ chữ nào in trên nhãn vào image_prompt. Chỉ viết "reproduce the label exactly as in the reference image". Prompt mà khẳng định nội dung nhãn sẽ ĐÈ LÊN ảnh tham chiếu và model in sai chữ lên sản phẩm.
 - "motion_prompt": tiếng Anh, mô tả chuyển động trong ${a.clipLen}s bắt đầu từ đúng khung hình đó (camera + hành động tay).
 - "motion_level": "low" cho cảnh nhìn rõ nhãn/chữ trên bao bì (packaging/label), "medium" mặc định, "high" chỉ khi hành động mạnh.
 - "camera": một trong ${CAMERAS.join(", ")}. "purpose": một trong ${PURPOSES.join(", ")}.

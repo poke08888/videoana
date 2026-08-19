@@ -33,3 +33,21 @@ test("buildScriptPrompt nêu ngưỡng âm tiết, số cảnh, ngành, và yêu
   assert.match(p, /"shots"/);
   assert.match(p, /motion_level/);
 });
+
+// ── Bài học từ bench Bước 0 (19/08/2026) ────────────────────────────────────
+test("ép motion_level='low' cho cảnh packaging/label — chốt chặn chống méo chữ", () => {
+  const v = validateScript({ shots: [
+    { purpose: "label", camera: "close", dialog: "Nhãn ghi rõ", image_prompt: "a", motion_prompt: "b", motion_level: "high" },
+    { purpose: "packaging", camera: "close", dialog: "Hộp đẹp", image_prompt: "c", motion_prompt: "d", motion_level: "medium" },
+    { purpose: "cta", camera: "wide", dialog: "Mua ngay", image_prompt: "e", motion_prompt: "f", motion_level: "high" },
+  ] }, { maxSyllables: 38 });
+  assert.ok(v.ok, JSON.stringify(v));
+  assert.equal(v.script.shots[0].motion_level, "low", "cảnh label phải bị ép về low");
+  assert.equal(v.script.shots[1].motion_level, "low", "cảnh packaging phải bị ép về low");
+  assert.equal(v.script.shots[2].motion_level, "high", "cảnh khác giữ nguyên lựa chọn");
+});
+
+test("buildScriptPrompt cấm trích dẫn chữ trên nhãn (prompt đè lên ảnh tham chiếu)", () => {
+  const p = buildScriptPrompt({ productName: "X", industry: "food", shots: 3, clipLen: 8, maxSyllables: 38, hasBackground: true });
+  assert.match(p, /KHÔNG.*(trích|chép|ghi lại|viết lại).*chữ/i);
+});
