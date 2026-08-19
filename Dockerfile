@@ -3,7 +3,8 @@ FROM node:22-alpine
 WORKDIR /app
 
 # Công cụ build cho native module sqlite3 (alpine/musl) + ffmpeg cho trích frame.
-RUN apk add --no-cache python3 make g++ ffmpeg
+# + ttf-dejavu/fontconfig: font có glyph tiếng Việt cho burn phụ đề (Xưởng)
+RUN apk add --no-cache python3 make g++ ffmpeg ttf-dejavu fontconfig
 
 # Copy package definition
 COPY package*.json ./

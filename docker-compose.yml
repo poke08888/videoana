@@ -13,6 +13,10 @@ services:
       - DB_PATH=/app/data/db.sqlite
       # ffmpeg hệ thống (cài trong image) để trích frame ổn định trên alpine.
       - FFMPEG_PATH=/usr/bin/ffmpeg
+      # Xưởng: file ảnh/clip/mp4 nằm trên ổ dữ liệu 150GB (/data), KHÔNG trên ổ hệ thống
+      - STUDIO_DATA_DIR=/app/data/studio
+      - STUDIO_SUB_FONT=DejaVu Sans
     volumes:
       - ./data:/app/data
+      - /data/videoana-studio:/app/data/studio
     restart: unless-stopped

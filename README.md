@@ -64,6 +64,20 @@ Gemini **thật sự xem video** (không chỉ suy luận từ mô tả) — đ�
 
 ---
 
+## Xưởng — sản xuất video affiliate từ ảnh sản phẩm
+
+Menu **Xưởng** (Biên tập/Quản trị): ảnh sản phẩm + bối cảnh → kịch bản (AI nhìn ảnh, hoặc nhập tay)
+→ ảnh khoá (Nano Banana Pro) → **chốt duyệt** → clip (Veo 3.1, nháp/chốt) → ghép giọng Việt +
+phụ đề + nhạc → mp4 9:16 + ảnh bìa + caption. Chi phí ghi sổ từng bước.
+
+- Cấu hình: khối `STUDIO_*` trong `.env.example`. Engine `fake` để chạy thử không tốn tiền.
+- Nhạc nền: thả mp3 vào `<STUDIO_DATA_DIR>/_music/`.
+- Bench engine (Bước 0): `npm run studio:bench -- --product a.jpg --background b.jpg --prompt "..."`.
+- Test: `npm test` (không gọi API thật). **Cần Node 22** — `node --test` chỉ nhận glob từ v22.
+- Thiết kế: `docs/superpowers/specs/2026-08-19-xuong-san-xuat-video-affiliate-design.md`.
+
+---
+
 ## Kiến thức Nonelab nằm ở đâu
 
 | Nơi | Nội dung |
