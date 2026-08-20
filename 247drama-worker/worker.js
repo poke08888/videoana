@@ -193,6 +193,19 @@ async function main() {
 
   const pushTimer = setInterval(() => status.pushToServer(), 3000);
 
+  // Dọn phần nhận quá hạn theo giờ, KHÔNG chỉ ở đầu mỗi vòng quét: một vòng có thể kéo dài
+  // nhiều giờ (hàng nghìn tập), nên tập do máy chết bỏ lại sẽ bị khoá suốt chừng đó thời gian
+  // dù hạn giữ chỉ 20 phút. Thực tế đã gặp: 6 tập kẹt 40 phút vì máy kia tắt giữa chừng.
+  const sweepTimer = setInterval(async () => {
+    try {
+      const claims = db.mongoose.connection.db.collection("renderclaims");
+      const n = await sweepExpired(claims);
+      if (n) console.log(`[việc] dọn ${n} phần nhận quá hạn`);
+    } catch (e) {
+      console.error("[việc] dọn phần nhận lỗi:", e.message);
+    }
+  }, 5 * 60 * 1000);
+
   // Vòng lặp daemon: quét -> render -> chờ -> lặp. Không thoát (phim mới tự nhặt).
   // Mỗi pass bọc try/catch để 1 lỗi không giết daemon.
   for (;;) {
