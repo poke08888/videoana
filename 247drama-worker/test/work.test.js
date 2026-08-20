@@ -56,3 +56,19 @@ test("đầu vào rỗng/null -> không nổ", () => {
   assert.deepStrictEqual(classifyEpisodes(null, null), { missing: [], drift: [] });
   assert.deepStrictEqual(classifyEpisodes([], []), { missing: [], drift: [] });
 });
+
+const { extract52apiSource } = require("../work");
+
+test("nhận ra phim nguồn dl (东梨), không bỏ qua như trước", () => {
+  assert.deepStrictEqual(extract52apiSource({ bookId: "dl:10959", sourceProvider: "52api-dl" }), { provider: "dl", sourceId: "10959" });
+});
+
+test("thiếu bookId thì lấy nguồn từ sourceProvider, đủ cả ba nguồn", () => {
+  for (const p of ["hg", "hm", "dl"]) {
+    assert.strictEqual(extract52apiSource({ sourceProvider: `52api-${p}` }).provider, p);
+  }
+});
+
+test("nguồn lạ vẫn bị bỏ qua, không đoán bừa", () => {
+  assert.strictEqual(extract52apiSource({ bookId: "xx:1", sourceProvider: "52api-xx" }).provider, null);
+});

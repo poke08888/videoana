@@ -2,7 +2,7 @@ const duanju = require("./util/duanjuProvider");
 const { MovieSeries, ShortVideo } = require("./db");
 const { env } = require("./config");
 
-const PROVIDERS = ["hg", "hm"];
+const PROVIDERS = ["hg", "hm", "dl"];
 function normalizeProvider(p) {
   const v = String(p || "").toLowerCase();
   return PROVIDERS.includes(v) ? v : null;
@@ -18,7 +18,7 @@ function extract52apiSource(series) {
     sourceId = sid;
   }
   if (!provider && series && series.sourceProvider) {
-    const m = String(series.sourceProvider).match(/^52api-(hg|hm)$/);
+    const m = String(series.sourceProvider).match(/^52api-(hg|hm|dl)$/);
     if (m) provider = m[1];
   }
   return { provider, sourceId };

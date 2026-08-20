@@ -5,10 +5,21 @@ const ALL_PROVIDERS = ["hg", "hm", "dl"];
 
 // "hm" -> ["hm"]; "hg,hm" -> cả hai; rỗng/sai -> cả hai (đừng để máy đứng im vì gõ nhầm).
 function parseProviders(raw) {
-  const list = String(raw || "")
+  const asked = String(raw || "")
     .split(",")
     .map((x) => x.trim().toLowerCase())
-    .filter((x) => ALL_PROVIDERS.includes(x));
+    .filter(Boolean);
+  const list = asked.filter((x) => ALL_PROVIDERS.includes(x));
+  const la = asked.filter((x) => !ALL_PROVIDERS.includes(x));
+  // Mã nguồn lạ trước đây bị bỏ im lặng rồi quay về nhận TẤT CẢ nguồn — máy đặt
+  // WORKER_PROVIDERS=dl trên bản mã nguồn cũ (chưa biết dl) vẫn lẳng lặng bốc phim hg, không
+  // ai hiểu vì sao. Phải báo to: gần như luôn là dấu hiệu máy chạy bản cũ.
+  if (la.length) {
+    console.error(
+      `[cấu hình] WORKER_PROVIDERS có mã không nhận ra: ${la.join(", ")} — bản mã nguồn này chỉ ` +
+        `biết ${ALL_PROVIDERS.join(", ")}. Nhiều khả năng máy đang chạy bản cũ, hãy chạy lại bộ cài.`
+    );
+  }
   return list.length ? [...new Set(list)] : [...ALL_PROVIDERS];
 }
 
