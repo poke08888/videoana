@@ -11,7 +11,7 @@ const MovieSeries = require("../models/movieSeries.model");
 const Setting = require("../models/setting.model");
 const { CATEGORIES, TAGS } = require("../util/taxonomy");
 const { classifySeries } = require("../util/classifySeries");
-const generateCategoryUniqueId = require("../util/generateCategoryUniqueId");
+const { generateCategoryUniqueId } = require("../util/generateCategoryUniqueId");
 
 const DRY = process.argv.includes("--dry");
 const CONCURRENCY = 3;

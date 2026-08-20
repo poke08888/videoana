@@ -15,15 +15,22 @@ function stripFence(s) {
   return String(s || "").replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/i, "").trim();
 }
 
-function buildPrompt({ name, description }, categories, tags) {
+function buildPrompt({ name, description }, categories, tags, force = false) {
   const cats = categories.map((c, i) => `${i + 1}. ${c.name}: ${c.hint || ""}`).join("\n");
+  // Lượt đầu cho phép bỏ trống nếu thật sự không hợp. Lượt hai (force) BẮT BUỘC chọn: phim
+  // ngắn Trung hay dính hai mô-típ cùng lúc (vừa tu tiên vừa cao nhân giấu mặt), lượt đầu
+  // model hay chọn cách an toàn là bỏ trống, để vậy thì phim rơi ra ngoài mọi hàng trong app.
+  const rule = force
+    ? "Phim này dính nhiều mô-típ nên khó xếp. BẮT BUỘC chọn thể loại GẦN NHẤT theo trục " +
+      "chính của câu chuyện — tuyệt đối không bỏ trống."
+    : "Chọn thể loại theo trục chính của câu chuyện, không theo chi tiết phụ. " +
+      "Thật sự không hợp thể loại nào thì để category rỗng.";
   return (
     "Bạn là biên tập viên kho phim ngắn. Đọc phim dưới đây rồi xếp vào ĐÚNG MỘT thể loại " +
     "trong danh sách, và gắn 3-6 thẻ mô tả nội dung.\n\n" +
     `THỂ LOẠI (chọn đúng một, chép nguyên tên):\n${cats}\n\n` +
     `THẺ (chỉ chọn trong danh sách này, chép nguyên chữ):\n${tags.join(", ")}\n\n` +
-    "Chọn thể loại theo trục chính của câu chuyện, không theo chi tiết phụ. " +
-    "Không chắc thì để category rỗng.\n" +
+    rule + "\n" +
     'CHỈ trả JSON: {"category":"","tags":[""]}\n\n' +
     `Tên phim: ${name}\nNội dung: ${description || "(không có)"}`
   );
@@ -66,28 +73,37 @@ async function classifySeries(src, opts = {}) {
   const call = ask || (apiKey ? defaultAsk({ apiKey, model }) : null);
   if (!call) return fail("thiếu geminiApiKey");
 
-  let parsed;
-  try {
-    parsed = JSON.parse(stripFence(await call(buildPrompt(base, categories, tags))));
-  } catch (e) {
-    return fail(`Gemini lỗi: ${e.message}`);
-  }
-
-  // Chỉ nhận tên có thật trong danh sách; so sánh không phân biệt hoa thường và khoảng trắng thừa.
   const norm = (s) => clean(s).toLowerCase();
-  const catMatch = categories.find((c) => norm(c.name) === norm(parsed && parsed.category));
   const tagSet = new Map(tags.map((t) => [norm(t), t]));
-  const picked = [];
-  for (const t of Array.isArray(parsed && parsed.tags) ? parsed.tags : []) {
-    const hit = tagSet.get(norm(t));
-    if (hit && !picked.includes(hit) && picked.length < MAX_TAGS) picked.push(hit);
+
+  const attempt = async (force) => {
+    let parsed;
+    try {
+      parsed = JSON.parse(stripFence(await call(buildPrompt(base, categories, tags, force))));
+    } catch (e) {
+      return { err: `Gemini lỗi: ${e.message}`, category: "", tags: [] };
+    }
+    const catMatch = categories.find((c) => norm(c.name) === norm(parsed && parsed.category));
+    const picked = [];
+    for (const t of Array.isArray(parsed && parsed.tags) ? parsed.tags : []) {
+      const hit = tagSet.get(norm(t));
+      if (hit && !picked.includes(hit) && picked.length < MAX_TAGS) picked.push(hit);
+    }
+    return {
+      err: catMatch ? "" : `không xếp được thể loại (máy trả "${clean(parsed && parsed.category)}")`,
+      category: catMatch ? catMatch.name : "",
+      tags: picked,
+    };
+  };
+
+  let r = await attempt(false);
+  if (!r.category) {
+    const forced = await attempt(true);
+    // Lượt hai chỉ được dùng khi nó thật sự xếp được; hỏng thì giữ kết quả lượt đầu (còn thẻ).
+    if (forced.category) r = { ...forced, tags: forced.tags.length ? forced.tags : r.tags };
   }
 
-  return {
-    category: catMatch ? catMatch.name : "",
-    tags: picked,
-    error: catMatch ? "" : `không xếp được thể loại (máy trả "${clean(parsed && parsed.category)}")`,
-  };
+  return { category: r.category, tags: r.tags, error: r.err };
 }
 
 module.exports = { classifySeries, buildPrompt, MAX_TAGS };

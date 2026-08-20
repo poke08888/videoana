@@ -55,3 +55,38 @@ test("thiếu tên phim, thiếu danh sách thể loại, thiếu key -> báo đ
   assert.strictEqual((await classifySeries(SRC, { ask: async () => "{}", categories: [] })).error, "chưa có thể loại nào để xếp");
   assert.strictEqual((await classifySeries(SRC, { categories: CATEGORIES })).error, "thiếu geminiApiKey");
 });
+
+test("lượt đầu bỏ trống -> hỏi lại lần hai bắt buộc chọn", async () => {
+  let n = 0;
+  const r = await classifySeries(SRC, {
+    categories: CATEGORIES,
+    ask: async (prompt) => {
+      n++;
+      if (n === 1) return JSON.stringify({ category: "", tags: ["Chiến thần"] });
+      assert.ok(prompt.includes("BẮT BUỘC"), "lượt hai phải ép chọn");
+      return JSON.stringify({ category: "Cao nhân xuống núi", tags: ["Chiến thần", "Đô thị"] });
+    },
+  });
+  assert.strictEqual(n, 2);
+  assert.strictEqual(r.category, "Cao nhân xuống núi");
+  assert.strictEqual(r.error, "");
+});
+
+test("xếp được ngay lượt đầu thì KHÔNG hỏi lại", async () => {
+  let n = 0;
+  await classifySeries(SRC, {
+    categories: CATEGORIES,
+    ask: async () => { n++; return JSON.stringify({ category: "Cao nhân xuống núi", tags: [] }); },
+  });
+  assert.strictEqual(n, 1);
+});
+
+test("cả hai lượt đều hụt -> giữ thẻ của lượt đầu, báo chưa xếp được", async () => {
+  const r = await classifySeries(SRC, {
+    categories: CATEGORIES,
+    ask: async () => JSON.stringify({ category: "Thể loại tự chế", tags: ["Chiến thần"] }),
+  });
+  assert.strictEqual(r.category, "");
+  assert.deepStrictEqual(r.tags, ["Chiến thần"]);
+  assert.ok(r.error.includes("không xếp được"));
+});

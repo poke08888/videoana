@@ -27,8 +27,12 @@ test("thiếu tên nguồn -> ném lỗi thay vì tạo phim vô danh", () => {
   );
 });
 
-test("thiếu category hoặc language -> ném lỗi", () => {
-  assert.throws(() => buildSeriesDoc({ provider: "hg", sourceId: "1", info: INFO, categoryId: "", languageId: "l1", type: 2 }), /category/);
+test("để trống category -> hợp lệ, chờ máy xếp theo nội dung", () => {
+  const d = buildSeriesDoc({ provider: "hg", sourceId: "1", info: INFO, categoryId: "", languageId: "l1", type: 2 });
+  assert.strictEqual(d.category, null);
+});
+
+test("thiếu language -> ném lỗi", () => {
   assert.throws(() => buildSeriesDoc({ provider: "hg", sourceId: "1", info: INFO, categoryId: "c1", languageId: "", type: 2 }), /language/);
 });
 

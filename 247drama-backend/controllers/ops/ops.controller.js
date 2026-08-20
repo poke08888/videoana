@@ -8,6 +8,8 @@ const { buildSeriesDoc } = require("../../util/opsSeries");
 const ShortVideo = require("../../models/shortVideo.model");
 const { diffEpisodes } = require("../../util/opsHealth");
 const { translateSeriesMeta } = require("../../util/translateMeta");
+const { classifySeries } = require("../../util/classifySeries");
+const { TAGS } = require("../../util/taxonomy");
 const axiosRaw = require("axios");
 
 // Key 52api nằm trong Setting (worker dùng chung) -> đọc mỗi lần gọi, đổi key không cần restart.
@@ -53,7 +55,7 @@ exports.ping = async (req, res) => {
 exports.options = async (req, res) => {
   try {
     const [categories, languages] = await Promise.all([
-      Category.find({}).select("_id name").sort({ name: 1 }).lean(),
+      Category.find({ isActive: true }).select("_id name").sort({ sortOrder: 1, name: 1 }).lean(),
       Language.find({}).select("_id name").sort({ name: 1 }).lean(),
     ]);
     return res.status(200).json({ status: true, data: { categories, languages } });
@@ -112,26 +114,50 @@ exports.detail = async (req, res) => {
 
 // Dịch tên/mô tả sau khi đã trả lời người vận hành. Lỗi ở đây không ảnh hưởng phim đã nhập:
 // bản ghi vẫn giữ tên tiếng Trung kèm cờ chưa dịch để bấm "Dịch lại".
-async function translateSeriesInBackground(seriesId, info) {
-  const meta = await translateSeriesMeta({ name: info.name, description: info.description }, await getGeminiCfg());
+async function enrichSeriesInBackground(seriesId, info, hasCategory) {
+  const cfg = await getGeminiCfg();
+  const src = { name: info.name, description: info.description };
+  const cats = hasCategory ? [] : await Category.find({ isActive: true }).select("name hint").lean();
+
+  // Dịch và xếp thể loại chạy song song, cả hai đều đọc bản gốc tiếng Trung.
+  const [meta, cls] = await Promise.all([
+    translateSeriesMeta(src, cfg),
+    cats.length
+      ? classifySeries(src, { apiKey: cfg.apiKey, model: cfg.model, categories: cats, tags: TAGS })
+      : Promise.resolve({ category: "", tags: [], error: "" }),
+  ]);
+
+  const set = {};
   const got = Object.keys(meta.i18n || {});
-  if (!got.length) {
-    console.error(`ops dịch nền: không dịch được phim ${seriesId} (${meta.error})`);
-    return;
+  if (got.length) {
+    const vi = meta.i18n.vi || {};
+    const en = meta.i18n.en || {};
+    set.i18n = meta.i18n;
+    set.metaMissingLangs = meta.missing || [];
+    set.metaTranslatedAt = new Date();
+    if (vi.name) {
+      set.name = vi.name;
+      set.description = vi.description || "";
+    }
+    if (en.name) {
+      set.nameEn = en.name;
+      set.descriptionEn = en.description || "";
+    }
+  } else {
+    console.error(`ops nền: không dịch được phim ${seriesId} (${meta.error})`);
   }
-  const vi = meta.i18n.vi || {};
-  const en = meta.i18n.en || {};
-  const set = { i18n: meta.i18n, metaMissingLangs: meta.missing || [], metaTranslatedAt: new Date() };
-  if (vi.name) {
-    set.name = vi.name;
-    set.description = vi.description || "";
+
+  if (cls.tags && cls.tags.length) set.tags = cls.tags;
+  if (cls.category) {
+    const c = cats.find((x) => x.name === cls.category);
+    if (c) set.category = c._id;
+  } else if (cats.length) {
+    console.error(`ops nền: không xếp được thể loại cho ${seriesId} (${cls.error})`);
   }
-  if (en.name) {
-    set.nameEn = en.name;
-    set.descriptionEn = en.description || "";
-  }
+
+  if (!Object.keys(set).length) return;
   await MovieSeries.updateOne({ _id: seriesId }, { $set: set });
-  console.log(`ops dịch nền xong: ${seriesId} -> ${got.join(", ")}`);
+  console.log(`ops nền xong: ${seriesId} -> dịch [${got.join(", ")}]${cls.category ? `, thể loại "${cls.category}"` : ""}`);
 }
 
 // Nhập phim: tạo MovieSeries; worker Mac tự phát hiện và render ở vòng quét kế tiếp.
@@ -150,10 +176,10 @@ exports.importSeries = async (req, res) => {
     // Dịch xong thì cập nhật vào chính bản ghi đó; bảng sức khoẻ tự làm mới 15 giây một lần.
     const doc = buildSeriesDoc({ provider, sourceId, info, categoryId, languageId, type: Number(type) });
     const created = await MovieSeries.create(doc);
-    translateSeriesInBackground(created._id, info).catch((e) => console.error("ops dịch nền lỗi:", e.message));
+    enrichSeriesInBackground(created._id, info, !!categoryId).catch((e) => console.error("ops xử lý nền lỗi:", e.message));
     return res.status(200).json({
       status: true,
-      message: `Đã nhập "${created.name}" (${doc.sourceEpisodeCount} tập). Worker sẽ render ở vòng quét kế tiếp, tên phim đang được dịch.`,
+      message: `Đã nhập "${created.name}" (${doc.sourceEpisodeCount} tập). Worker sẽ render ở vòng quét kế tiếp; tên phim và thể loại đang được xử lý.`,
       data: { _id: created._id, bookId: created.bookId },
     });
   } catch (error) {

@@ -38,6 +38,10 @@ const CATEGORIES = [
     hint: "Chuyện tình yêu là trục chính: tổng tài, thiên kim, hôn nhân hợp đồng, cưới trước yêu sau, ngọt sủng hoặc ngược tâm. Yếu tố báo thù và làm giàu chỉ là nền.",
   },
   {
+    name: "Xuyên không & cổ trang",
+    hint: "Bối cảnh cổ đại là chính, dù có xuyên không hay không: người hiện đại xuyên về cổ đại hoặc xuyên vào sách, đích nữ trong phủ, cung đấu, vương gia - vương phi, nữ cường cổ trang, tiểu thư bỏ nhà khuynh đảo kinh thành. Nếu trục chính là tu luyện phép thuật thì thuộc Tu tiên huyền huyễn, không thuộc nhóm này.",
+  },
+  {
     name: "Tây Du & thần thoại",
     hint: "Lấy nhân vật và tích truyện từ Tây Du Ký, Phong Thần, Na Tra hoặc thần thoại Trung Hoa, kể lại hoặc dựng mới.",
   },

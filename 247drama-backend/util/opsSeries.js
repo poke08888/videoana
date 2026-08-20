@@ -9,7 +9,8 @@ function buildSeriesDoc({ provider, sourceId, info, categoryId, languageId, type
   if (!PROVIDERS.includes(p)) throw new Error(`provider không hợp lệ: ${provider}`);
   if (!sourceId) throw new Error("thiếu sourceId");
   if (!info || !info.name) throw new Error("nguồn không trả về tên phim");
-  if (!categoryId) throw new Error("thiếu category");
+  // categoryId để trống = chọn "tự động theo nội dung": máy xếp thể loại ngay sau khi nhập,
+  // nên bản ghi tạm thời chưa có thể loại. language thì vẫn bắt buộc vì không đoán được.
   if (!languageId) throw new Error("thiếu language");
 
   // meta = kết quả translateSeriesMeta. Ngôn ngữ nào dịch được thì lưu ngôn ngữ đó; ngôn ngữ
@@ -34,7 +35,7 @@ function buildSeriesDoc({ provider, sourceId, info, categoryId, languageId, type
     bookId: `${p}:${sourceId}`,
     sourceProvider: `52api-${p}`,
     sourceEpisodeCount: info.episodeCount || 0,
-    category: categoryId,
+    category: categoryId || null,
     language: languageId,
     type,
     maxAdsForFreeView: 0,

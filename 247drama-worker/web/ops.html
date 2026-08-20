@@ -420,7 +420,9 @@ async function openImportModal(item) {
       return;
     }
   }
-  $("modalCategory").innerHTML = (optionsData.categories || []).map(c => '<option value="' + esc(c._id) + '">' + esc(c.name) + "</option>").join("");
+  // Mặc định để máy tự xếp theo nội dung phim; chọn tay chỉ khi muốn ép vào đúng một mục.
+  $("modalCategory").innerHTML = '<option value="">Tự động theo nội dung</option>' +
+    (optionsData.categories || []).map(c => '<option value="' + esc(c._id) + '">' + esc(c.name) + "</option>").join("");
   $("modalLanguage").innerHTML = (optionsData.languages || []).map(l => '<option value="' + esc(l._id) + '">' + esc(l.name) + "</option>").join("");
 }
 function closeModal() { $("modalOverlay").style.display = "none"; selectedItem = null; }
@@ -431,9 +433,9 @@ $("modalConfirm").addEventListener("click", async () => {
   if (!selectedItem) return;
   const categoryId = $("modalCategory").value;
   const languageId = $("modalLanguage").value;
-  if (!categoryId || !languageId) {
+  if (!languageId) {
     $("modalMsg").className = "msg-error";
-    $("modalMsg").textContent = "Chọn danh mục và ngôn ngữ trước.";
+    $("modalMsg").textContent = "Chọn ngôn ngữ trước.";
     $("modalMsg").style.display = "block";
     return;
   }

@@ -53,29 +53,54 @@ async function refreshMovieRows() {
 // Ảnh bìa 52api trỏ vào CDN ByteDance — ngoài tầm kiểm soát, nhà mạng chặn là phim mất ảnh.
 // Mỗi vòng sao vài phim về R2 rồi trỏ lại link của mình, cả bản ghi phim lẫn ảnh từng tập.
 // Giới hạn mỗi vòng để không kéo dài pass; phim mới nhập chậm nhất vài vòng là có ảnh.
-const COVERS_PER_PASS = 8;
+const COVERS_PER_PASS = 40; // đủ dọn hết tồn đọng trong 1-2 vòng, mà không kéo dài pass
+const COVER_CONCURRENCY = 3;
+
+// Khoá ảnh cho phim KHÔNG phải nguồn 52api (nhập tay, nguồn cũ): dùng chính id phim.
+function coverIdOf(m) {
+  const { provider, sourceId } = extract52apiSource(m);
+  if (provider && sourceId) return { provider, sourceId };
+  return { provider: "ms", sourceId: String(m._id) };
+}
+
 async function mirrorPendingCovers() {
-  const movies = await db.MovieSeries.find({ sourceProvider: /^52api-/ })
-    .select("_id name thumbnail bookId sourceProvider")
-    .lean();
-  const todo = movies.filter((m) => m.thumbnail && !isMirrored(m.thumbnail)).slice(0, COVERS_PER_PASS);
-  for (const m of todo) {
-    const { provider, sourceId } = extract52apiSource(m);
-    if (!provider || !sourceId) continue;
-    try {
-      const r = await mirrorCover({
-        provider,
-        sourceId,
-        url: m.thumbnail,
-        download: (u) => duanju.downloadToBuffer(u, { timeout: 30000, retries: 2 }),
-      });
-      await db.MovieSeries.updateOne({ _id: m._id }, { $set: { thumbnail: r.url, banner: r.url } });
-      const up = await db.ShortVideo.updateMany({ movieSeries: m._id }, { $set: { videoImage: r.url } });
-      console.log(`[cover] ${m.name}: đã sao ảnh về (${Math.round(r.bytes / 1024)}KB, ${up.modifiedCount} tập cập nhật)`);
-    } catch (e) {
-      console.error(`[cover] ${m.name}: ${e.message}`);
-    }
+  // MỌI phim, không riêng phim 52api: link ảnh nằm ngoài hệ thống (CDN ByteDance, hay chính
+  // http://<ip>/uploads trên máy chủ) đều là chỗ có thể hỏng mà mình không sửa được.
+  const movies = await db.MovieSeries.find({}).select("_id name thumbnail bookId sourceProvider").lean();
+  const pending = movies.filter((m) => m.thumbnail && !isMirrored(m.thumbnail));
+  const noCover = movies.filter((m) => !m.thumbnail);
+  if (!pending.length) {
+    if (noCover.length) console.log(`[cover] ${noCover.length} phim không có ảnh bìa ở nguồn: ${noCover.slice(0, 3).map((m) => m.name).join(", ")}`);
+    return;
   }
+
+  const todo = pending.slice(0, COVERS_PER_PASS);
+  let ok = 0, fail = 0, i = 0;
+  await Promise.all(
+    Array.from({ length: Math.min(COVER_CONCURRENCY, todo.length) }, async () => {
+      while (i < todo.length) {
+        const m = todo[i++];
+        const { provider, sourceId } = coverIdOf(m);
+        try {
+          const r = await mirrorCover({
+            provider,
+            sourceId,
+            url: m.thumbnail,
+            download: (u) => duanju.downloadToBuffer(u, { timeout: 30000, retries: 2 }),
+          });
+          await db.MovieSeries.updateOne({ _id: m._id }, { $set: { thumbnail: r.url, banner: r.url } });
+          const up = await db.ShortVideo.updateMany({ movieSeries: m._id }, { $set: { videoImage: r.url } });
+          ok++;
+          console.log(`[cover] ${m.name}: đã sao ảnh về (${Math.round(r.bytes / 1024)}KB, ${up.modifiedCount} tập)`);
+        } catch (e) {
+          fail++;
+          console.error(`[cover] ${m.name}: ${e.message}`);
+        }
+      }
+    })
+  );
+  const left = pending.length - todo.length;
+  console.log(`[cover] vòng này: ${ok} xong, ${fail} lỗi${left ? `, còn ${left} phim chờ vòng sau` : ", đã hết tồn đọng"}`);
 }
 
 // 1 vòng quét: tìm việc còn thiếu -> render hết. Trả về số tập đã xử lý trong vòng.
