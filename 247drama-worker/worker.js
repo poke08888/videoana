@@ -6,6 +6,8 @@ process.env.TMPDIR = env.tmpDir;
 const pLimit = require("p-limit");
 const db = require("./db");
 const { findPendingWork, extract52apiSource } = require("./work");
+const { mirrorCover, isMirrored } = require("./util/cover");
+const duanju = require("./util/duanjuProvider");
 const { renderEpisode } = require("./render");
 const status = require("./status");
 
@@ -48,10 +50,39 @@ async function refreshMovieRows() {
   status.setNeedsRedo(needsRedo);
 }
 
+// Ảnh bìa 52api trỏ vào CDN ByteDance — ngoài tầm kiểm soát, nhà mạng chặn là phim mất ảnh.
+// Mỗi vòng sao vài phim về R2 rồi trỏ lại link của mình, cả bản ghi phim lẫn ảnh từng tập.
+// Giới hạn mỗi vòng để không kéo dài pass; phim mới nhập chậm nhất vài vòng là có ảnh.
+const COVERS_PER_PASS = 8;
+async function mirrorPendingCovers() {
+  const movies = await db.MovieSeries.find({ sourceProvider: /^52api-/ })
+    .select("_id name thumbnail bookId sourceProvider")
+    .lean();
+  const todo = movies.filter((m) => m.thumbnail && !isMirrored(m.thumbnail)).slice(0, COVERS_PER_PASS);
+  for (const m of todo) {
+    const { provider, sourceId } = extract52apiSource(m);
+    if (!provider || !sourceId) continue;
+    try {
+      const r = await mirrorCover({
+        provider,
+        sourceId,
+        url: m.thumbnail,
+        download: (u) => duanju.downloadToBuffer(u, { timeout: 30000, retries: 2 }),
+      });
+      await db.MovieSeries.updateOne({ _id: m._id }, { $set: { thumbnail: r.url, banner: r.url } });
+      const up = await db.ShortVideo.updateMany({ movieSeries: m._id }, { $set: { videoImage: r.url } });
+      console.log(`[cover] ${m.name}: đã sao ảnh về (${Math.round(r.bytes / 1024)}KB, ${up.modifiedCount} tập cập nhật)`);
+    } catch (e) {
+      console.error(`[cover] ${m.name}: ${e.message}`);
+    }
+  }
+}
+
 // 1 vòng quét: tìm việc còn thiếu -> render hết. Trả về số tập đã xử lý trong vòng.
 async function runPass() {
   await db.loadSettings(); // refresh settings mỗi vòng (đề phòng admin đổi)
   await refreshMovieRows();
+  await mirrorPendingCovers().catch((e) => console.error("[cover] lỗi:", e.message));
 
   const work = await findPendingWork();
   // Cập nhật target thật NGAY khi biết số tập (phim mới đầu pass còn epCount=0) -> dashboard

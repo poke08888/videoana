@@ -23,14 +23,21 @@ async function main() {
   for (const bk of books) {
     const ms = await conn.collection("movieseries").findOne({ bookId: bk });
     if (!ms) { console.log(`⚠️  không thấy phim ${bk}`); continue; }
-    const eps = await conn.collection("shortvideos").find({ movieSeries: ms._id }).project({ videoUrl: 1 }).toArray();
+    const eps = await conn.collection("shortvideos").find({ movieSeries: ms._id }).project({ videoUrl: 1, subTracks: 1 }).toArray();
     const keys = [];
     for (const e of eps) {
       const file = (e.videoUrl || "").split("/").pop();
       if (file) { keys.push(`${env.r2.keyPrefix}/${file}`); keys.push(`${env.r2.keyPrefix}/${file.replace(/\.mp4$/, ".vi.json")}`); }
+      // File phụ đề rời lấy THẲNG từ subTracks: tên có số phiên bản và mã ngôn ngữ
+      // (…_ep5.v2.th.vtt) nên đoán theo mẫu là sót, mà sót thì R2 ôm rác vĩnh viễn.
+      for (const t of e.subTracks || []) {
+        const f = String(t.url || "").split("/").pop();
+        if (f) keys.push(`${env.r2.keyPrefix}/${f}`);
+      }
     }
+    const nSub = keys.length - eps.length * 2;
     console.log(`\n"${ms.name}" (${bk})`);
-    console.log(`  ShortVideo: ${eps.length} | R2 objects (mp4+sidecar): ${keys.length}`);
+    console.log(`  ShortVideo: ${eps.length} | R2: ${eps.length} mp4 + ${nSub} file phụ đề (+${eps.length} sidecar cũ nếu còn)`);
     if (mode !== "yes") continue;
 
     // 1) xoá R2 (theo lô 1000)

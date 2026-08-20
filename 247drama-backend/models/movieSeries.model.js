@@ -31,6 +31,8 @@ const movieSeriesSchema = new mongoose.Schema(
     // Bản dịch mọi ngôn ngữ: { vi: {name, description}, en: {...}, th: {...}, id: {...} }.
     // name/description ở trên là bản tiếng Việt (app cũ đọc thẳng), i18n là nguồn đầy đủ.
     i18n: { type: Object, default: {} },
+    // Thẻ nội dung: một phim nhiều thẻ, dùng để lọc và gợi ý phim tương tự.
+    tags: { type: [String], default: [] },
     metaMissingLangs: { type: [String], default: [] },
     nameOriginal: { type: String, trim: true, default: "" },
     descriptionOriginal: { type: String, trim: true, default: "" },

@@ -298,11 +298,36 @@ function renderCards() {
     const action = it.imported
       ? '<div class="pill">đã có</div>'
       : '<button class="btn btnImport" data-sid="' + esc(it.sourceId) + '">Nhập</button>';
-    return '<div class="mcard">' + img +
+    return '<div class="mcard" data-card="' + esc(it.sourceId) + '">' + img +
       '<div class="body"><div class="nm">' + esc(it.name) + '</div>' +
       '<div class="ds">' + esc(it.description || "") + '</div>' +
       action + '</div></div>';
   }).join("") : '<div class="empty">Không có kết quả.</div>';
+}
+
+// Sau khi nhập xong chỉ đổi đúng một thẻ phim. Trước đây gọi loadCatalog() để làm mới, mà
+// mỗi lượt gọi kho 52api bị chặn tốc độ 3,2 giây và lưới bị xoá trắng chờ tải -> bấm phim
+// tiếp theo không ăn. Nội dung kho cũng không đổi sau khi nhập, chỉ trạng thái "đã có" đổi.
+function markImported(sourceId) {
+  const it = lastItems.find(x => String(x.sourceId) === String(sourceId));
+  if (it) it.imported = true;
+  const card = document.querySelector('[data-card="' + String(sourceId).replace(/"/g, "") + '"]');
+  if (!card) return;
+  const btn = card.querySelector(".btnImport");
+  if (!btn) return;
+  const pill = document.createElement("div");
+  pill.className = "pill";
+  pill.textContent = "đã có";
+  btn.replaceWith(pill);
+}
+
+function flashCatalogMsg(text) {
+  const el = $("catalogMsg");
+  el.className = "msg-ok";
+  el.textContent = text;
+  el.style.display = "block";
+  clearTimeout(flashCatalogMsg._t);
+  flashCatalogMsg._t = setTimeout(() => { el.style.display = "none"; el.className = "msg-error"; }, 6000);
 }
 
 async function loadCatalog() {
@@ -421,11 +446,11 @@ $("modalConfirm").addEventListener("click", async () => {
       method: "POST",
       body: JSON.stringify({ provider: selectedItem.provider, sourceId: selectedItem.sourceId, categoryId, languageId, type: 2 }),
     });
-    $("modalMsg").className = "msg-ok";
-    $("modalMsg").textContent = body.message || "Đã nhập phim.";
-    $("modalMsg").style.display = "block";
-    $("modalConfirm").textContent = "Đã nhập";
-    setTimeout(() => { closeModal(); loadCatalog(); }, 1000);
+    const sid = selectedItem.sourceId;
+    closeModal();
+    markImported(sid);
+    flashCatalogMsg(body.message || "Đã nhập phim.");
+    tickQueue();
   } catch (e) {
     $("modalMsg").className = "msg-error";
     $("modalMsg").textContent = e.message;
