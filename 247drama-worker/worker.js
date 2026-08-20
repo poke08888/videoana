@@ -8,6 +8,8 @@ const db = require("./db");
 const { findPendingWork, extract52apiSource } = require("./work");
 const { mirrorCover, isMirrored } = require("./util/cover");
 const { ensureTunnel } = require("./util/tunnel");
+const { claimEpisode, releaseEpisode, sweepExpired } = require("./util/claims");
+const os = require("os");
 const path = require("path");
 const duanju = require("./util/duanjuProvider");
 const { renderEpisode } = require("./render");
@@ -16,6 +18,9 @@ const status = require("./status");
 // Daemon: quét việc mỗi POLL_INTERVAL_SEC (mặc định 120s) -> phim/tập mới add trên
 // admin server tự được nhặt mà KHÔNG cần restart tay.
 const POLL_SEC = Math.max(30, parseInt(process.env.POLL_INTERVAL_SEC) || 120);
+// Tên máy render: hiện trên bảng trạng thái và ghi vào phần nhận việc, để biết tập nào
+// máy nào đang làm khi chạy nhiều máy cùng lúc.
+const WORKER_NAME = process.env.WORKER_NAME || os.hostname().replace(/\.local$/, "");
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // Nạp trạng thái mọi phim 52api (kể cả phim đã xong) cho dashboard — làm lại mỗi vòng
@@ -127,22 +132,35 @@ async function runPass() {
   console.log(`[worker] quét: ${work.length} phim, ${totalMissing} tập cần render` + (totalDrift ? `, ${totalDrift} tập lệch videoId` : ""));
   if (!totalMissing) return 0;
 
+  const claims = db.mongoose.connection.db.collection("renderclaims");
+  const swept = await sweepExpired(claims).catch(() => 0);
+  if (swept) console.log(`[việc] dọn ${swept} phần nhận quá hạn (máy nào đó tắt giữa chừng)`);
+
   const limit = pLimit(env.concurrency);
-  let done = 0, ok = 0, fail = 0;
+  let done = 0, ok = 0, fail = 0, skip = 0;
   const jobs = [];
   for (const it of work) {
     // Cập nhật tổng số tập nguồn (khớp process52apiEpisodes) — 1 lần/phim.
     await db.MovieSeries.updateOne({ _id: it.series._id }, { $set: { sourceEpisodeCount: it.episodes.length } }).catch(() => {});
     for (const ep of it.missing) {
       jobs.push(limit(async () => {
-        const r = await renderEpisode({ series: it.series, provider: it.provider, sourceId: it.sourceId, ep });
-        done++; r.ok ? ok++ : fail++;
-        if (done % 5 === 0 || done === totalMissing) console.log(`[worker] tiến độ ${done}/${totalMissing} (ok ${ok}, lỗi ${fail})`);
+        // Nhận phần trước khi làm: máy khác đang giữ tập này thì bỏ qua, không làm trùng.
+        const mine = await claimEpisode(claims, {
+          provider: it.provider, sourceId: it.sourceId, index: ep.index, worker: WORKER_NAME,
+        }).catch(() => true); // kho lỗi thì cứ làm, thà trùng còn hơn đứng im
+        if (!mine) { skip++; return; }
+        try {
+          const r = await renderEpisode({ series: it.series, provider: it.provider, sourceId: it.sourceId, ep });
+          done++; r.ok ? ok++ : fail++;
+          if (done % 5 === 0 || done === totalMissing) console.log(`[worker] tiến độ ${done}/${totalMissing} (ok ${ok}, lỗi ${fail}${skip ? `, ${skip} tập máy khác nhận` : ""})`);
+        } finally {
+          await releaseEpisode(claims, { provider: it.provider, sourceId: it.sourceId, index: ep.index }).catch(() => {});
+        }
       }));
     }
   }
   await Promise.all(jobs);
-  console.log(`[worker] pass xong: ${ok} ok, ${fail} lỗi / ${totalMissing}`);
+  console.log(`[worker] pass xong: ${ok} ok, ${fail} lỗi${skip ? `, ${skip} tập do máy khác làm` : ""} / ${totalMissing}`);
   return totalMissing;
 }
 
@@ -171,7 +189,7 @@ async function main() {
 
   await db.connect();
   await db.loadSettings();
-  console.log(`[worker] DAEMON concurrency=${env.concurrency}, ocrThreads=${env.ocrThreads}, poll=${POLL_SEC}s, tmp=${env.tmpDir}`);
+  console.log(`[worker] DAEMON máy "${WORKER_NAME}" concurrency=${env.concurrency}, ocrThreads=${env.ocrThreads}, poll=${POLL_SEC}s, tmp=${env.tmpDir}`);
 
   const pushTimer = setInterval(() => status.pushToServer(), 3000);
 

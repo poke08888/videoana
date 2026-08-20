@@ -4,6 +4,9 @@ const path = require("path");
 const { execFile } = require("child_process");
 const { env } = require("./config");
 
+const os = require("os");
+const WORKER_NAME = process.env.WORKER_NAME || os.hostname().replace(/\.local$/, "");
+const WORKER_SLUG = WORKER_NAME.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "may";
 const STATUS_FILE = path.join(env.tmpDir, "render-status.json");
 
 const state = {
@@ -76,6 +79,7 @@ function snapshot() {
   let pct = state.target ? Math.round((totalDone / state.target) * 100) : 0;
   pct = unresolved > 0 ? Math.min(99, pct) : Math.min(100, pct);
   return {
+    worker: WORKER_NAME,
     updatedAt: new Date(now).toISOString(),
     running: true,
     overall: {
@@ -110,7 +114,9 @@ async function pushToServer(finalRunning) {
     fs.writeFileSync(STATUS_FILE, JSON.stringify(snap));
     const { host, user, password, uploadsPath } = env.server;
     const rsh = `sshpass -p ${JSON.stringify(password)} ssh -o StrictHostKeyChecking=accept-new`;
-    const remote = `${uploadsPath}/render-status.json`;
+    // Mỗi máy render đẩy file trạng thái RIÊNG: nhiều máy cùng ghi một tên file thì máy sau
+    // đè máy trước, bảng điều khiển chỉ thấy một máy. Backend gộp lại khi hiển thị.
+    const remote = `${uploadsPath}/render-status-${WORKER_SLUG}.json`;
     await new Promise((res) =>
       execFile("rsync", ["-t", "-e", rsh, STATUS_FILE, `${user}@${host}:${remote}`], { timeout: 30000 }, () => res()),
     );

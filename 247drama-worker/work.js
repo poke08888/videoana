@@ -48,8 +48,12 @@ function classifyEpisodes(detailEpisodes, existingRows) {
 
 // Quét mọi phim 52api, trả về danh sách việc cần render (chỉ phim còn thiếu tập).
 async function findPendingWork() {
+  // Phim MỚI NHẬP chạy trước: người vận hành vừa thêm phim thì mong thấy nó về ngay, chứ
+  // không phải chờ hết vài nghìn tập của những phim thêm từ tháng trước. Thứ tự tự nhiên của
+  // Mongo là thứ tự ghi, nên phim mới luôn nằm cuối hàng và có khi chờ cả ngày mới tới lượt.
   const movies = await MovieSeries.find({ sourceProvider: /^52api-/ })
     .select("_id name thumbnail bookId sourceProvider sourceEpisodeCount zhBottomRatio zhBottomSource")
+    .sort({ createdAt: -1 })
     .lean();
 
   const work = [];
