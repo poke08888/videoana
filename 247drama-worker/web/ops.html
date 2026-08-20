@@ -354,7 +354,7 @@ async function loadCatalog() {
     if (cat.mode === "top" && !cat.cellId) cat.categoriesCache = data.categories || [];
     if (data.searchOnly && cat.mode !== "search") {
       $("catalogMsg").className = "msg-error";
-      $("catalogMsg").textContent = "Nguồn 东梨 chỉ có tìm kiếm — gõ từ khoá rồi bấm Tìm.";
+      $("catalogMsg").textContent = data.note || "Nguồn này chỉ có tìm kiếm — gõ từ khoá rồi bấm Tìm.";
       $("catalogMsg").style.display = "block";
     }
     lastItems = data.items || [];
@@ -371,8 +371,9 @@ async function loadCatalog() {
 
 $("provider").addEventListener("change", () => {
   cat.provider = $("provider").value;
-  // dl không có bảng xếp hạng -> vào thẳng chế độ tìm kiếm cho khỏi hiện lưới trống.
-  cat.mode = cat.provider === "dl" ? "search" : "top"; cat.keyword = ""; cat.cellId = ""; cat.subCellId = ""; cat.page = 1;
+  // Chỉ hg có bảng xếp hạng; hm và dl vào thẳng chế độ tìm kiếm, nếu không sẽ hiện phim hg
+  // dưới nhãn nguồn khác rồi nhập vào là lỗi.
+  cat.mode = cat.provider === "hg" ? "top" : "search"; cat.keyword = ""; cat.cellId = ""; cat.subCellId = ""; cat.page = 1;
   $("keyword").value = "";
   loadCatalog();
 });
@@ -385,6 +386,12 @@ function doSearch() {
   loadCatalog();
 }
 $("btnTop").addEventListener("click", () => {
+  if (cat.provider !== "hg") {
+    $("catalogMsg").className = "msg-error";
+    $("catalogMsg").textContent = "Bảng xếp hạng chỉ có ở nguồn hg. Nguồn " + cat.provider + " dùng ô tìm kiếm.";
+    $("catalogMsg").style.display = "block";
+    return;
+  }
   cat.mode = "top"; cat.keyword = ""; cat.cellId = ""; cat.subCellId = ""; cat.page = 1;
   $("keyword").value = "";
   loadCatalog();

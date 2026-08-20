@@ -77,12 +77,25 @@ test("map có cache theo thời gian, hết hạn mới nạp lại", async () =
   clearCache();
 });
 
-test("người xem ở Việt Nam: middleware không đụng vào res.json", async () => {
-  const res = { json: (b) => b };
-  const original = res.json;
+test("người xem ở Việt Nam: giữ tên tiếng Việt nhưng vẫn kèm bản dịch cho app", async () => {
+  let sent = null;
+  const res = { json: (b) => { sent = b; } };
   const mw = localizeSeriesResponse({ resolveLang: () => "vi", getMap: async () => MAP, loadLangTable: noTable });
-  await mw({}, res, () => {});
-  assert.strictEqual(res.json, original);
+  await new Promise((done) => mw({}, res, done));
+  res.json({ status: true, data: { _id: "s1", name: "Chiến Thần", description: "mô tả Việt" } });
+  assert.strictEqual(sent.data.name, "Chiến Thần", "người Việt vẫn thấy tên tiếng Việt");
+  assert.strictEqual(sent.data.i18n.th.name, "เทพสงคราม", "nhưng app đọc được bản Thái");
+  assert.strictEqual(sent.contentLang, "vi");
+});
+
+test("phản hồi ghi rõ server đã chọn ngôn ngữ nào", async () => {
+  let sent = null;
+  const res = { json: (b) => { sent = b; } };
+  const mw = localizeSeriesResponse({ resolveLang: () => "th", getMap: async () => MAP, loadLangTable: noTable });
+  await new Promise((done) => mw({}, res, done));
+  res.json({ status: true, data: { _id: "s1", name: "Chiến Thần" } });
+  assert.strictEqual(sent.contentLang, "th");
+  assert.strictEqual(sent.data.name, "เทพสงคราม");
 });
 
 test("người xem Thái Lan: res.json được bọc và trả bản tiếng Thái", async () => {

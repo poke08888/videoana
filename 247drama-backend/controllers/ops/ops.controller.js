@@ -10,6 +10,8 @@ const { diffEpisodes } = require("../../util/opsHealth");
 const { translateSeriesMeta } = require("../../util/translateMeta");
 const { classifySeries } = require("../../util/classifySeries");
 const { readStatusDir, mergeWorkerStatus } = require("../../util/renderStatus");
+const { normalizeDlKeyword } = require("../../util/dlKeyword");
+const { toChineseKeyword } = require("../../util/keywordZh");
 const path = require("path");
 const { TAGS } = require("../../util/taxonomy");
 const axiosRaw = require("axios");
@@ -73,16 +75,36 @@ exports.catalog = async (req, res) => {
     await getKey52();
     // page chỉ còn ý nghĩa với tìm kiếm: bảng xếp hạng (52api) cấm tham số page.
     const { provider = "hg", type = "top", keyword = "", cellId = "", subCellId = "", page = "1" } = req.query;
-    // Nguồn dl (东梨) chỉ có tìm kiếm, KHÔNG có bảng xếp hạng. Bảng xếp hạng là endpoint
-    // riêng của hg, gọi nó khi đang chọn dl sẽ hiện ra phim hg — sai nguồn, nhập vào là hỏng.
-    const searchOnly = String(provider).toLowerCase() === "dl";
+    // Bảng xếp hạng là endpoint RIÊNG của hg (hg_new_top) — hm và dl không có. Trước đây chọn
+    // hm rồi mở bảng xếp hạng thì hiện ra phim hg, bấm nhập là gửi mã phim hg vào cửa hm và
+    // 52api trả đúng một chữ "error". Vì vậy hai nguồn kia chỉ cho tìm kiếm.
+    const searchOnly = ["dl", "hm"].includes(String(provider).toLowerCase());
     if (searchOnly && type !== "search") {
-      return res.status(200).json({ status: true, data: { categories: [], items: [], searchOnly: true } });
+      return res.status(200).json({
+        status: true,
+        data: { categories: [], items: [], searchOnly: true, note: "Nguồn này chỉ có tìm kiếm, không có bảng xếp hạng." },
+      });
+    }
+
+    // Cả ba nguồn đều là kho phim Trung Quốc, chỉ đánh chỉ mục theo tên tiếng Trung. Gõ
+    // "chiến thần" mà bỏ dấu thành "chienthan" thì khớp bừa vào phim chẳng liên quan, nên
+    // dịch sang 战神 rồi mới tìm. Dịch hụt thì vẫn tìm bằng từ gốc, không chặn người dùng.
+    let kw = keyword;
+    let keywordUsed = keyword;
+    if (type === "search") {
+      const zh = await toChineseKeyword(keyword, await getGeminiCfg());
+      kw = zh.keyword;
+      // dl còn cấm cả dấu cách -> dọn nốt.
+      if (searchOnly) kw = normalizeDlKeyword(kw);
+      keywordUsed = kw;
+      if (!kw) {
+        return res.status(400).json({ status: false, message: "Nhập từ khoá để tìm phim." });
+      }
     }
 
     const items =
       type === "search"
-        ? await duanju.search(provider, keyword, Number(page) || 1)
+        ? await duanju.search(provider, kw, Number(page) || 1)
         : cellId
           ? await duanju.topList(cellId, subCellId)
           : [];
@@ -98,6 +120,7 @@ exports.catalog = async (req, res) => {
       data: {
         categories,
         searchOnly,
+        keywordUsed,
         items: items.map((i) => ({ ...i, imported: has.has(`${String(provider).toLowerCase()}:${i.sourceId}`) })),
       },
     });
@@ -194,7 +217,13 @@ exports.importSeries = async (req, res) => {
     });
   } catch (error) {
     console.error("ops import error:", error.message);
-    return res.status(error.is52api ? 502 : 400).json({ status: false, message: error.message });
+    // 52api trả đúng một chữ "error" cho mọi loại hỏng. Hay gặp nhất là mã phim không thuộc
+    // nguồn đang chọn -> nói thẳng ra để người vận hành khỏi đoán.
+    const msg =
+      String(error.message || "").trim().toLowerCase() === "error"
+        ? `Nguồn ${String(req.body && req.body.provider).toLowerCase()} không nhận mã phim này. Kiểm tra lại đang chọn đúng nguồn chưa (bảng xếp hạng chỉ có phim nguồn hg).`
+        : error.message;
+    return res.status(error.is52api ? 502 : 400).json({ status: false, message: msg });
   }
 };
 

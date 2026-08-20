@@ -50,6 +50,9 @@ function localizePayload(node, map, lang, depth = 0) {
   if (node instanceof Date || Buffer.isBuffer(node)) return node;
 
   const byLang = node._id != null ? map.get(String(node._id)) : null;
+  // Đính kèm mọi bản dịch để app tự dựng nút đổi ngôn ngữ, giống cách nó chọn phụ đề. Đội app
+  // ngồi ở Việt Nam gọi API chỉ thấy tiếng Việt nên tưởng hệ thống chưa dịch gì.
+  if (byLang && typeof node.name === "string") node.i18n = byLang;
   const t = byLang ? byLang[lang] : null;
   if (t && t.name) {
     if (typeof node.name === "string") node.name = t.name;
@@ -76,13 +79,16 @@ function localizeSeriesResponse(opts = {}) {
       // Nạp bảng quốc gia -> ngôn ngữ trước khi tra, vì resolveSubLang là hàm đồng bộ đọc
       // bảng đã cache. Middleware này chạy trước mọi route client nên bảng luôn ấm.
       await loadTable();
-      const lang = lookup(req);
-      // "vi" là bản đã nằm sẵn ở name/description -> không phải đổi gì.
-      if (!lang || lang === "vi") return next();
+      const lang = lookup(req) || "vi";
       const map = await load();
       if (!map || !map.size) return next();
       const sendJson = res.json.bind(res);
-      res.json = (body) => sendJson(localizePayload(body, map, lang));
+      res.json = (body) => {
+        const out = localizePayload(body, map, lang);
+        // Cho app biết server đã chọn ngôn ngữ nào, giống subDefault của phụ đề.
+        if (out && typeof out === "object" && !Array.isArray(out)) out.contentLang = lang;
+        return sendJson(out);
+      };
     } catch (e) {
       console.error("localizeSeriesResponse lỗi, trả nguyên bản:", e.message);
     }

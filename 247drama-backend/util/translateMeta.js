@@ -29,8 +29,9 @@ function buildPrompt({ name, description }, langs) {
   const shape = langs.map((l) => `"${l}":{"name":"","description":""}`).join(",");
   const list = langs.map((l) => langName(l)).join(", ");
   return (
-    "Bạn là biên tập viên nội dung phim ngắn. Dịch tên phim và phần mô tả sau từ tiếng Trung " +
-    `sang các thứ tiếng: ${list}.\n` +
+    "Bạn là biên tập viên nội dung phim ngắn. Dịch tên phim và phần mô tả sau (nguồn có thể là " +
+    "tiếng Trung hoặc tiếng Việt) sang các thứ tiếng: " + `${list}.\n` +
+    "Ngôn ngữ nào trùng với ngôn ngữ gốc thì chép lại cho tự nhiên, không dịch vòng.\n" +
     "Tên phim: dịch thoáng cho tự nhiên và hấp dẫn với người xem bản ngữ, giữ đúng thể loại, " +
     "không phiên âm máy móc.\n" +
     "Mô tả: dịch sát nội dung, không thêm bớt tình tiết, không bình luận.\n" +
