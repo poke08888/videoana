@@ -41,14 +41,28 @@ Phần nhận có hạn 20 phút. Máy nào tắt ngang thì phần nhận tự 
 không cần ai dọn tay. Giới hạn 20 phút dài hơn hẳn mức 8 phút mà một tập được phép chạy, nên
 không có chuyện hai máy cùng làm một tập vì hết hạn quá sớm.
 
-## Việc riêng của máy chính
+## Tunnel Hong Kong
 
-Hai thứ sau chỉ nên chạy trên **một** máy, mặc định là máy đầu tiên:
+Phim nguồn `hm` tải qua CDN cbread.cn, bị chặn từ Việt Nam nên phải đi vòng qua VPS Hong
+Kong. **Bộ cài lo luôn phần này**: tạo khoá SSH riêng cho máy đó, cài khoá lên VPS bằng mật
+khẩu trong `.env`, rồi dựng dịch vụ `com.nonelab.hk-tunnel` giữ tunnel sống (chết là bật lại
+sau vài giây).
 
-- **Tunnel Hong Kong** (`com.nonelab.hk-tunnel`): cần cho phim nguồn `hm`. Máy nào không có
-  tunnel thì bỏ qua phim `hm`, vẫn render phim `hg` bình thường. Muốn máy đó làm được `hm`
-  thì cài khoá SSH riêng cho nó theo `ops/hk-tunnel-daemon.sh`.
-- **Sao ảnh bìa về R2**: máy nào chạy cũng được, làm trùng cũng chỉ ghi đè cùng một file.
+Mỗi máy có tunnel riêng của mình, không dùng chung — nên máy này tắt không ảnh hưởng máy kia.
+
+Nếu `.env` không có `HK_HOST`, bộ cài bỏ qua bước này và báo rõ: máy đó vẫn render phim `hg`
+bình thường, chỉ bỏ qua phim `hm`.
+
+Kiểm tra tunnel trên một máy:
+
+```bash
+lsof -iTCP:1080 -sTCP:LISTEN      # có dòng ssh = đang chạy
+tail -f ~/247drama-worker/logs/hk-tunnel.log
+```
+
+## Sao ảnh bìa về R2
+
+Máy nào chạy cũng được, làm trùng cũng chỉ ghi đè cùng một file.
 
 ## Theo dõi
 

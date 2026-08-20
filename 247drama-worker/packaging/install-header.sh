@@ -42,7 +42,7 @@ die() { printf "\n  ✗ %s\n" "$*" >&2; exit 1; }
 [ "$(uname -s)" = "Darwin" ] || die "Bộ cài này chỉ dành cho macOS."
 
 # ---------------------------------------------------------------- 1. công cụ
-say "1/6  Kiểm tra công cụ"
+say "1/7  Kiểm tra công cụ"
 if ! command -v brew >/dev/null 2>&1; then
   die "Chưa có Homebrew. Cài trước bằng lệnh trên trang https://brew.sh rồi chạy lại."
 fi
@@ -61,14 +61,14 @@ NODE_MAJOR="$(node -p 'process.versions.node.split(".")[0]')"
 ok "node $(node -v), ffmpeg $(ffmpeg -version | head -1 | awk '{print $3}')"
 
 # ------------------------------------------------------------- 2. mã nguồn
-say "2/6  Bung mã nguồn vào $INSTALL_DIR"
+say "2/7  Bung mã nguồn vào $INSTALL_DIR"
 mkdir -p "$INSTALL_DIR"
 ARCHIVE_LINE=$(awk '/^__PAYLOAD__$/ {print NR + 1; exit 0; }' "$0")
 tail -n "+$ARCHIVE_LINE" "$0" | base64 --decode | tar xzf - -C "$INSTALL_DIR"
 ok "đã bung $(find "$INSTALL_DIR" -name '*.js' | wc -l | tr -d ' ') file mã nguồn"
 
 # ------------------------------------------------------------------ 3. .env
-say "3/6  Cấu hình"
+say "3/7  Cấu hình"
 ENV_FILE="$INSTALL_DIR/.env"
 if [ -n "$ENV_SRC" ]; then
   [ -f "$ENV_SRC" ] || die "Không thấy file cấu hình: $ENV_SRC"
@@ -129,7 +129,7 @@ grep -q '^OCR_PYTHON=' "$ENV_FILE" || echo "OCR_PYTHON=$INSTALL_DIR/ocr-venv/bin
 ok "máy này tên: $(grep '^WORKER_NAME=' "$ENV_FILE" | cut -d= -f2)"
 
 # ------------------------------------------------------------ 4. thư viện
-say "4/6  Cài thư viện"
+say "4/7  Cài thư viện"
 cd "$INSTALL_DIR"
 npm install --omit=dev --no-audit --no-fund >/dev/null 2>&1
 ok "thư viện Node"
@@ -141,6 +141,70 @@ fi
 ok "bộ OCR tiếng Trung"
 
 # ------------------------------------------------------------ 5. dịch vụ
+# --------------------------------------------------------- 5. tunnel Hong Kong
+# Phim nguồn hm tải qua CDN cbread.cn — chặn từ Việt Nam, phải đi vòng qua VPS Hong Kong.
+# Máy không có tunnel vẫn render phim hg bình thường, chỉ là bỏ qua phim hm.
+say "5/7  Tunnel Hong Kong (cho phim nguồn hm)"
+HK_LABEL="com.nonelab.hk-tunnel"
+HK_PLIST="$HOME/Library/LaunchAgents/$HK_LABEL.plist"
+HK_KEY="$HOME/.ssh/id_hk_tunnel"
+HK_HOST_V="$(grep '^HK_HOST=' "$ENV_FILE" | cut -d= -f2- | tr -d '\r')"
+HK_PW_V="$(grep '^HK_PASSWORD=' "$ENV_FILE" | cut -d= -f2- | tr -d '\r')"
+
+if [ -z "$HK_HOST_V" ]; then
+  echo "  ⚠ chưa có HK_HOST trong cấu hình -> máy này sẽ bỏ qua phim nguồn hm"
+elif [ "$DRY" = "1" ]; then
+  echo "  (chế độ thử: bỏ qua phần tunnel)"
+else
+  [ -f "$HK_KEY" ] || { ssh-keygen -t ed25519 -N "" -C "hk-tunnel-$(hostname -s)" -f "$HK_KEY" >/dev/null; ok "đã tạo khoá riêng cho tunnel"; }
+
+  if ssh -o BatchMode=yes -o ConnectTimeout=8 -o StrictHostKeyChecking=accept-new -i "$HK_KEY" "root@$HK_HOST_V" true 2>/dev/null; then
+    ok "đăng nhập VPS HK bằng khoá: sẵn sàng"
+  else
+    echo "  … cài khoá lên VPS HK"
+    if [ -n "$HK_PW_V" ]; then
+      command -v sshpass >/dev/null 2>&1 || brew install sshpass >/dev/null 2>&1 || true
+      if command -v sshpass >/dev/null 2>&1; then
+        SSHPASS="$HK_PW_V" sshpass -e ssh-copy-id -o StrictHostKeyChecking=accept-new -i "$HK_KEY.pub" "root@$HK_HOST_V" >/dev/null 2>&1 || true
+      else
+        echo "  (không cài được sshpass — nhập mật khẩu VPS khi được hỏi)"
+        ssh-copy-id -o StrictHostKeyChecking=accept-new -i "$HK_KEY.pub" "root@$HK_HOST_V" >/dev/null || true
+      fi
+    else
+      echo "  (cấu hình không có mật khẩu VPS — nhập tay khi được hỏi)"
+      ssh-copy-id -o StrictHostKeyChecking=accept-new -i "$HK_KEY.pub" "root@$HK_HOST_V" >/dev/null || true
+    fi
+    ssh -o BatchMode=yes -o ConnectTimeout=8 -i "$HK_KEY" "root@$HK_HOST_V" true 2>/dev/null \
+      && ok "đăng nhập VPS HK bằng khoá: sẵn sàng" \
+      || echo "  ⚠ chưa đăng nhập được VPS HK -> phim nguồn hm sẽ bị bỏ qua"
+  fi
+
+  cat > "$HK_PLIST" <<HKEOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>$HK_LABEL</string>
+  <key>ProgramArguments</key>
+  <array><string>/bin/bash</string><string>$INSTALL_DIR/ops/hk-tunnel-daemon.sh</string></array>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>ThrottleInterval</key><integer>10</integer>
+  <key>StandardOutPath</key><string>$INSTALL_DIR/logs/hk-tunnel.log</string>
+  <key>StandardErrorPath</key><string>$INSTALL_DIR/logs/hk-tunnel.log</string>
+</dict>
+</plist>
+HKEOF
+  mkdir -p "$INSTALL_DIR/logs"
+  launchctl unload "$HK_PLIST" 2>/dev/null || true
+  launchctl load "$HK_PLIST"
+  for i in $(seq 1 15); do
+    if lsof -iTCP:1080 -sTCP:LISTEN >/dev/null 2>&1; then ok "tunnel SOCKS 1080 đã chạy"; break; fi
+    [ "$i" = 15 ] && echo "  ⚠ tunnel chưa lên, xem $INSTALL_DIR/logs/hk-tunnel.log"
+    sleep 1
+  done
+fi
+
 if [ "$DRY" = "1" ]; then
   say "Đã cài xong phần mã nguồn và thư viện (chế độ thử, chưa bật dịch vụ)"
   echo "  Chạy tay để xem thử : cd $INSTALL_DIR && node worker.js"
@@ -148,7 +212,7 @@ if [ "$DRY" = "1" ]; then
   exit 0
 fi
 
-say "5/6  Cài dịch vụ chạy nền"
+say "6/7  Cài dịch vụ chạy nền"
 mkdir -p "$HOME/Library/LaunchAgents" "$INSTALL_DIR/logs"
 NODE_BIN="$(command -v node)"
 cat > "$PLIST" <<PLISTEOF
@@ -175,7 +239,7 @@ launchctl load "$PLIST"
 ok "dịch vụ $LABEL đã bật"
 
 # ------------------------------------------------------------ 6. kiểm tra
-say "6/6  Kiểm tra"
+say "7/7  Kiểm tra"
 for i in $(seq 1 20); do
   if grep -q "DAEMON" "$INSTALL_DIR/logs/worker.log" 2>/dev/null; then
     ok "worker đã chạy: $(grep 'DAEMON' "$INSTALL_DIR/logs/worker.log" | tail -1 | cut -c1-90)"
