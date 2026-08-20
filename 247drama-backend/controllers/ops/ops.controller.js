@@ -9,6 +9,8 @@ const ShortVideo = require("../../models/shortVideo.model");
 const { diffEpisodes } = require("../../util/opsHealth");
 const { translateSeriesMeta } = require("../../util/translateMeta");
 const { classifySeries } = require("../../util/classifySeries");
+const { readStatusDir, mergeWorkerStatus } = require("../../util/renderStatus");
+const path = require("path");
 const { TAGS } = require("../../util/taxonomy");
 const axiosRaw = require("axios");
 
@@ -185,6 +187,18 @@ exports.importSeries = async (req, res) => {
   } catch (error) {
     console.error("ops import error:", error.message);
     return res.status(error.is52api ? 502 : 400).json({ status: false, message: error.message });
+  }
+};
+
+// Trạng thái các máy render: gộp mọi file render-status-*.json do các máy đẩy lên.
+// Không đụng Mongo, không gọi 52api -> gọi mỗi 3 giây cũng không tốn gì.
+exports.renderStatus = async (req, res) => {
+  try {
+    const dir = path.resolve(__dirname, "../../uploads");
+    return res.status(200).json({ status: true, data: mergeWorkerStatus(readStatusDir(dir)) });
+  } catch (error) {
+    console.error("ops renderStatus error:", error.message);
+    return res.status(500).json({ status: false, message: "Không đọc được trạng thái máy render" });
   }
 };
 

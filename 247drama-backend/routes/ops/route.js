@@ -10,6 +10,7 @@ route.get("/catalog", opsAuth(), ops.catalog);
 route.get("/detail", opsAuth(), ops.detail);
 route.post("/import", opsAuth(), ops.importSeries);
 route.get("/queue", opsAuth(), ops.queue);
+route.get("/render-status", opsAuth(), ops.renderStatus);
 route.get("/health", opsAuth(), ops.health);
 route.post("/sub-position", opsAuth(), ops.setSubPosition);
 route.post("/translate-meta", opsAuth(), ops.translateMeta);

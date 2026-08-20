@@ -154,6 +154,9 @@
       </div>
       <div class="bar" style="margin-bottom:6px"><i id="k-barfill" style="width:0%"></i></div>
 
+      <div class="subh">Máy render (<span id="machines-n">0</span>)</div>
+      <div id="machines"><div class="empty">—</div></div>
+
       <div class="subh">Đang xử lý (<span id="inflight-n">0</span>)</div>
       <div id="inflight"><div class="empty">—</div></div>
 
@@ -463,11 +466,20 @@ $("modalConfirm").addEventListener("click", async () => {
 });
 
 // ================== Khối 2: Đang chạy (render-status.json, không cần khoá) ==================
+// Trạng thái gộp của MỌI máy render (/api/ops/render-status). Bản cũ chỉ đọc file của một
+// máy nên khi chạy nhiều máy, máy đẩy sau ghi đè máy đẩy trước và bảng chỉ thấy một máy.
 async function tickRender() {
   try {
-    const r = await fetch("/uploads/render-status.json?t=" + Date.now(), { cache: "no-store" });
-    if (!r.ok) throw new Error("HTTP " + r.status);
-    const d = await r.json();
+    let d;
+    try {
+      const body = await opsFetch("/api/ops/render-status");
+      d = body.data;
+    } catch (e) {
+      // Máy chủ chưa cập nhật endpoint gộp -> tạm đọc file cũ để bảng không trống.
+      const r = await fetch("/uploads/render-status.json?t=" + Date.now(), { cache: "no-store" });
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      d = await r.json();
+    }
     const updMs = new Date(d.updatedAt).getTime();
     const stale = !isFinite(updMs) || (Date.now() - updMs) > 60000;
 
@@ -485,15 +497,27 @@ async function tickRender() {
     if (stale) {
       live.innerHTML = '<span class="dot bad"></span><span style="color:var(--bad)">worker đang tắt</span>';
     } else if (d.running) {
-      live.innerHTML = '<span class="dot"></span>đang chạy · ' + (throughput.concurrency != null ? throughput.concurrency : "?") + " luồng";
+      live.innerHTML = '<span class="dot"></span>đang chạy · ' + (throughput.machines != null ? throughput.machines + " máy · " : "") + (throughput.concurrency != null ? throughput.concurrency : "?") + " luồng";
     } else {
       live.innerHTML = '<span class="dot off"></span>đã dừng';
     }
 
+    const machines = d.workers || (d.worker ? [{ worker: d.worker, running: d.running, stale, overall: d.overall, throughput: d.throughput, inflight: d.inflight || [] }] : []);
+    $("machines-n").textContent = machines.length;
+    $("machines").innerHTML = machines.length ? machines.map(function (w) {
+      const th = w.throughput || {};
+      const ov = w.overall || {};
+      const dot = w.stale ? '<span class="dot bad"></span>' : (w.running ? '<span class="dot"></span>' : '<span class="dot off"></span>');
+      const tt = w.stale ? "mất tín hiệu" : ((th.concurrency != null ? th.concurrency : "?") + " luồng · " + (th.perMin != null ? th.perMin : 0) + " tập/phút");
+      const loi = ov.failed ? ' · <span style="color:var(--bad)">' + ov.failed + ' lỗi</span>' : "";
+      return '<div class="row"><span class="tag">' + dot + esc(w.worker || "máy") + '</span>' +
+        '<span class="mut">' + esc(tt) + loi + ' · đang làm ' + ((w.inflight || []).length) + ' tập</span></div>';
+    }).join("") : '<div class="empty">chưa máy nào báo cáo</div>';
+
     const inf = d.inflight || [];
     $("inflight-n").textContent = inf.length;
     $("inflight").innerHTML = inf.length ? inf.map(x =>
-      '<div class="row"><span class="tag">' + esc(x.tag) + '</span>' +
+      '<div class="row"><span class="tag">' + esc(x.tag) + (x.worker ? ' <span class="mut">@' + esc(x.worker) + '</span>' : "") + '</span>' +
       '<span class="badge b-' + esc(x.phase) + '">' + esc(x.phase) + '</span>' +
       '<span class="sec">' + x.sec + 's</span></div>').join("")
       : '<div class="empty">—</div>';
