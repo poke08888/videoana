@@ -1,3 +1,10 @@
+// Lỗi thật của ffmpeg nằm ở CUỐI stderr; đầu stderr là banner phiên bản dài cả trăm ký tự.
+// Cắt từ đầu thì log chỉ còn "ffmpeg version ..." và không ai biết vì sao hỏng.
+function tailErr(s, n = 600) {
+  const t = String(s || "").trim();
+  return t.length > n ? "…" + t.slice(-n) : t;
+}
+
 const { execFile } = require("child_process");
 const path = require("path");
 
@@ -20,7 +27,7 @@ function transcribeAudio(wavPath, { model = "medium", lang = "zh", cpuThreads = 
       [SCRIPT, wavPath, model, lang, String(cpuThreads), String(speechPadMs)],
       { maxBuffer: 64 * 1024 * 1024, timeout: timeoutMs },
       (err, stdout, stderr) => {
-        if (err) return reject(new Error("ASR fail: " + (stderr || err.message || "").slice(0, 400)));
+        if (err) return reject(new Error("ASR fail: " + tailErr(stderr || err.message)));
         const s = String(stdout || "").trim();
         try {
           const arr = JSON.parse(s);

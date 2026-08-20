@@ -355,3 +355,32 @@ test("topCategories panel_id: 0 ở mục con -> cellId '0' không rỗng", asyn
     },
   ]);
 });
+
+test("nguồn dl: KHÔNG gửi tham số page (API cấm), đọc đúng tên và tổng số tập", async () => {
+  const calls = [];
+  const c = createClient({
+    getKey: () => "k",
+    httpGet: async (url, params) => {
+      calls.push({ url, params });
+      if (params.type === "search") return [{ id: 13785, title: "Phim Dongli", cover: "c.jpg", introduction: "nội dung" }];
+      return { title: "Phim Dongli", cover: "c.jpg", introduction: "nội dung", total: 83, lists: [{ id: 1 }, { id: 2 }] };
+    },
+    minIntervalMs: 0,
+  });
+
+  const found = await c.search("dl", "战神");
+  assert.strictEqual(calls[0].url, "https://www.52api.cn/api/dongli");
+  assert.strictEqual("page" in calls[0].params, false, "dl mà gửi page là API trả lỗi 400");
+  assert.strictEqual(found[0].name, "Phim Dongli");
+  assert.strictEqual(found[0].sourceId, "13785");
+
+  const d = await c.detail("dl", "13785");
+  assert.strictEqual(d.episodeCount, 83, "lấy theo total chứ không đếm mảng lists đã cắt bớt");
+});
+
+test("nguồn hg/hm vẫn gửi page như cũ", async () => {
+  const calls = [];
+  const c = createClient({ getKey: () => "k", httpGet: async (url, params) => { calls.push(params); return []; }, minIntervalMs: 0 });
+  await c.search("hg", "x", 2);
+  assert.strictEqual(calls[0].page, 2);
+});

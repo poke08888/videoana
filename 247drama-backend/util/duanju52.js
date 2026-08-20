@@ -6,7 +6,11 @@
 const BASE = {
   hg: "https://www.52api.cn/api/hg_duanju",
   hm: "https://www.52api.cn/api/hm_duanju",
+  // 东梨: nguồn thứ ba, video trả về là h264 phát được ngay (hg đã đổi sang bytevc1 mà
+  // ffmpeg giải ra 0 khung hình). Endpoint này CẤM tham số page.
+  dl: "https://www.52api.cn/api/dongli",
 };
+const NO_PAGE = ["dl"];
 const TOP_BASE = "https://www.52api.cn/api/hg_new_top";
 
 function createClient({ getKey, httpGet, minIntervalMs = 3200, cacheTtlMs = 600000, now = () => Date.now() }) {
@@ -101,7 +105,9 @@ function createClient({ getKey, httpGet, minIntervalMs = 3200, cacheTtlMs = 6000
 
   return {
     async search(provider, keyword, page = 1) {
-      const data = await call(baseOf(provider), { type: "search", keyword, page });
+      const p = String(provider || "").toLowerCase();
+      const params = NO_PAGE.includes(p) ? { type: "search", keyword } : { type: "search", keyword, page };
+      const data = await call(baseOf(provider), params);
       return extractList(data).map(normalizeItem).filter((x) => x != null);
     },
     async topCategories() {
@@ -131,7 +137,8 @@ function createClient({ getKey, httpGet, minIntervalMs = 3200, cacheTtlMs = 6000
         name: item.name,
         description: item.description,
         cover: item.cover,
-        episodeCount: ((data && data.lists) || []).length,
+        // dl trả sẵn tổng số tập ở trường total; hg/hm thì đếm mảng lists.
+        episodeCount: Number((data && data.total) || 0) || ((data && data.lists) || []).length,
       };
     },
     _cacheSize: () => cache.size,

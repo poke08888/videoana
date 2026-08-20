@@ -2,7 +2,7 @@
 // Hai field sống còn: bookId "<provider>:<sourceId>" (worker đọc qua extract52apiSource) và
 // sourceProvider "52api-<provider>" (findPendingWork lọc theo field này). Sai một trong hai
 // là worker không bao giờ nhặt phim đó.
-const PROVIDERS = ["hg", "hm"];
+const PROVIDERS = ["hg", "hm", "dl"];
 
 function buildSeriesDoc({ provider, sourceId, info, categoryId, languageId, type, meta }) {
   const p = String(provider || "").toLowerCase();

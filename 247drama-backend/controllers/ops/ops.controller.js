@@ -73,6 +73,13 @@ exports.catalog = async (req, res) => {
     await getKey52();
     // page chỉ còn ý nghĩa với tìm kiếm: bảng xếp hạng (52api) cấm tham số page.
     const { provider = "hg", type = "top", keyword = "", cellId = "", subCellId = "", page = "1" } = req.query;
+    // Nguồn dl (东梨) chỉ có tìm kiếm, KHÔNG có bảng xếp hạng. Bảng xếp hạng là endpoint
+    // riêng của hg, gọi nó khi đang chọn dl sẽ hiện ra phim hg — sai nguồn, nhập vào là hỏng.
+    const searchOnly = String(provider).toLowerCase() === "dl";
+    if (searchOnly && type !== "search") {
+      return res.status(200).json({ status: true, data: { categories: [], items: [], searchOnly: true } });
+    }
+
     const items =
       type === "search"
         ? await duanju.search(provider, keyword, Number(page) || 1)
@@ -90,6 +97,7 @@ exports.catalog = async (req, res) => {
       status: true,
       data: {
         categories,
+        searchOnly,
         items: items.map((i) => ({ ...i, imported: has.has(`${String(provider).toLowerCase()}:${i.sourceId}`) })),
       },
     });

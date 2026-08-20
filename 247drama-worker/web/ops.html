@@ -124,6 +124,7 @@
         <select id="provider">
           <option value="hg">Nguồn HG</option>
           <option value="hm">Nguồn HM</option>
+          <option value="dl">东梨 (dl) — chỉ tìm kiếm</option>
         </select>
         <input type="text" id="keyword" placeholder="Tìm theo từ khoá…">
         <button class="btn" id="btnSearch">Tìm</button>
@@ -351,6 +352,11 @@ async function loadCatalog() {
     // Theo hợp đồng: type=top && !cellId -> categories có dữ liệu, items rỗng; chọn cellId rồi
     // thì ngược lại (categories rỗng). Vì vậy chỉ ghi đè cache lúc đang ở màn danh mục gốc.
     if (cat.mode === "top" && !cat.cellId) cat.categoriesCache = data.categories || [];
+    if (data.searchOnly && cat.mode !== "search") {
+      $("catalogMsg").className = "msg-error";
+      $("catalogMsg").textContent = "Nguồn 东梨 chỉ có tìm kiếm — gõ từ khoá rồi bấm Tìm.";
+      $("catalogMsg").style.display = "block";
+    }
     lastItems = data.items || [];
     renderCats();
     renderCards();
@@ -365,7 +371,8 @@ async function loadCatalog() {
 
 $("provider").addEventListener("change", () => {
   cat.provider = $("provider").value;
-  cat.mode = "top"; cat.keyword = ""; cat.cellId = ""; cat.subCellId = ""; cat.page = 1;
+  // dl không có bảng xếp hạng -> vào thẳng chế độ tìm kiếm cho khỏi hiện lưới trống.
+  cat.mode = cat.provider === "dl" ? "search" : "top"; cat.keyword = ""; cat.cellId = ""; cat.subCellId = ""; cat.page = 1;
   $("keyword").value = "";
   loadCatalog();
 });

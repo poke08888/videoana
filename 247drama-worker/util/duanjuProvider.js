@@ -61,6 +61,7 @@ function getConfig() {
     hgTopBaseUrl: cfg.hgTopBaseUrl || "https://www.52api.cn/api/hg_new_top",
     hgDecryptUrl: cfg.hgDecryptUrl || "https://www.52api.cn/api/hg_decrypt",
     hgPlayUrl: cfg.hgPlayUrl || "https://www.52api.cn/api/hg_play",
+    dlBaseUrl: cfg.dlBaseUrl || "https://www.52api.cn/api/dongli", // nguồn 东梨, video h264 sẵn
     hgDefinition: cfg.hgDefinition || "1080p", // chất lượng ưu tiên khi lấy link qua hg_play
     minRequestIntervalMs: Number(cfg.minRequestIntervalMs) || 3100,
     proxyUrl: cfg.proxyUrl || "",
@@ -121,7 +122,7 @@ async function apiGet(baseUrl, params) {
 
 async function request(provider, params) {
   const cfg = getConfig();
-  const baseUrl = provider === "hm" ? cfg.hmBaseUrl : cfg.hgBaseUrl;
+  const baseUrl = provider === "hm" ? cfg.hmBaseUrl : provider === "dl" ? cfg.dlBaseUrl : cfg.hgBaseUrl;
   return apiGet(baseUrl, params);
 }
 
@@ -181,7 +182,9 @@ async function hgPlay(videoId) {
 
 // Tìm kiếm phim theo keyword. Trả về danh sách chuẩn hoá.
 async function search(provider, keyword, page = 1) {
-  const data = await request(provider, { type: "search", keyword, page });
+  // dl CẤM tham số page: gửi kèm là API trả "参数 page 未配置，禁止传递" (code 400).
+  const params = provider === "dl" ? { type: "search", keyword } : { type: "search", keyword, page };
+  const data = await request(provider, params);
 
   if (provider === "hm") {
     const lists = (data && data.lists) || [];
@@ -192,6 +195,18 @@ async function search(provider, keyword, page = 1) {
       intro: it.introduction || "",
       episodeCount: it.updateNum || 0,
       tags: Array.isArray(it.tags) ? it.tags : [],
+    }));
+  }
+
+  if (provider === "dl") {
+    const arr = Array.isArray(data) ? data : (data && (data.list || data.lists)) || [];
+    return arr.map((it) => ({
+      sourceId: String(it.id),
+      title: it.title || "",
+      cover: it.cover || "",
+      intro: it.introduction || "",
+      episodeCount: it.total || 0,
+      tags: Array.isArray(it.desc_tags) ? it.desc_tags : [],
     }));
   }
 
@@ -208,9 +223,32 @@ async function search(provider, keyword, page = 1) {
 }
 
 // Lấy chi tiết + danh sách tập (video_id) của 1 phim.
+// Nguồn dl trả THẲNG link video trong phần chi tiết, kèm hạn dùng. Nhớ lại trong ít phút để
+// render nhiều tập của cùng một phim không phải gọi lại API cho từng tập (mỗi lượt gọi bị chặn
+// hơn 3 giây). Hết hạn nhớ thì gọi lại, không dùng link cũ vì link sẽ chết.
+const DL_CACHE_MS = 8 * 60 * 1000;
+const dlCache = new Map(); // "dl:<id>" -> { at, urls: Map<videoId, url> }
+
 async function detail(provider, id) {
   const data = await request(provider, { type: "detail", id });
   const lists = (data && data.lists) || [];
+
+  if (provider === "dl") {
+    const urls = new Map();
+    const episodes = lists.map((ep, i) => {
+      const vid = String(ep.id);
+      if (ep.video_url) urls.set(vid, ep.video_url);
+      return { index: i, videoId: vid, title: ep.title || `第${i + 1}集` };
+    });
+    dlCache.set(`dl:${id}`, { at: Date.now(), urls });
+    return {
+      title: data.title || "",
+      cover: data.cover || "",
+      description: data.introduction || data.desc || "",
+      tags: Array.isArray(data.desc_tags) ? data.desc_tags : [],
+      episodes,
+    };
+  }
 
   const episodes = lists.map((ep, i) => ({
     index: i, // 0-based: tập đầu = 0 (trailer theo mô hình app)
@@ -272,6 +310,18 @@ async function hgTopList(cellId, subCellId = "", page = 1) {
 // Resolve link phát (mp4) của 1 tập.
 // hg: chỉ cần video_id. hm: cần cả id + video_id.
 async function resolveVideo(provider, id, videoId) {
+  if (provider === "dl") {
+    const hit = dlCache.get(`dl:${id}`);
+    if (hit && Date.now() - hit.at < DL_CACHE_MS && hit.urls.has(String(videoId))) {
+      return { mp4Url: hit.urls.get(String(videoId)), thumbnail: "", index: null, durationText: "" };
+    }
+    await detail("dl", id); // nạp lại link (link cũ đã hết hạn nhớ)
+    const fresh = dlCache.get(`dl:${id}`);
+    const url = fresh && fresh.urls.get(String(videoId));
+    if (!url) throw new Error(`dl: không có link cho tập ${videoId}`);
+    return { mp4Url: url, thumbnail: "", index: null, durationText: "" };
+  }
+
   const params =
     provider === "hm" ? { type: "video", id, video_id: videoId } : { type: "video", video_id: videoId };
 
@@ -363,7 +413,7 @@ async function downloadOnce(url, { timeout = 120000, retries = 4, useProxy = fal
 }
 
 module.exports = {
-  PROVIDERS: ["hg", "hm"],
+  PROVIDERS: ["hg", "hm", "dl"],
   getConfig,
   search,
   detail,

@@ -1,3 +1,10 @@
+// Lỗi thật của ffmpeg nằm ở CUỐI stderr; đầu stderr là banner phiên bản dài cả trăm ký tự.
+// Cắt từ đầu thì log chỉ còn "ffmpeg version ..." và không ai biết vì sao hỏng.
+function tailErr(s, n = 600) {
+  const t = String(s || "").trim();
+  return t.length > n ? "…" + t.slice(-n) : t;
+}
+
 const { execFile } = require("child_process");
 const fs = require("fs");
 const os = require("os");
@@ -6,7 +13,7 @@ const path = require("path");
 function run(cmd, args, timeoutMs = 15 * 60 * 1000) {
   return new Promise((resolve, reject) => {
     execFile(cmd, args, { maxBuffer: 4 * 1024 * 1024, timeout: timeoutMs }, (err, stdout, stderr) => {
-      if (err) return reject(new Error((stderr || err.message || "").slice(0, 500)));
+      if (err) return reject(new Error(tailErr(stderr || err.message)));
       resolve(stdout);
     });
   });
@@ -47,6 +54,7 @@ async function transcodeToH264(buffer) {
 
     await run("ffmpeg", [
       "-y",
+      "-hide_banner",
       "-i", inF,
       "-c:v", "libx264",
       "-preset", "veryfast",
@@ -84,6 +92,7 @@ async function transcodeBurnSub(srcPath, assPath, box = {}) {
   const vf = `${buildBoxFilter(box)}ass=${assPath}`;
   await run("ffmpeg", [
     "-y",
+      "-hide_banner",
     "-i", srcPath,
     "-vf", vf,
     "-c:v", "libx264",
@@ -125,6 +134,7 @@ async function transcodeCleanBox(srcPath, box = {}) {
   try {
     await run("ffmpeg", [
       "-y",
+      "-hide_banner",
       "-loglevel", "error",
       "-nostats",
       "-i", srcPath,

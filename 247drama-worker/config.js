@@ -1,7 +1,7 @@
 require("dotenv").config();
 const path = require("path");
 
-const ALL_PROVIDERS = ["hg", "hm"];
+const ALL_PROVIDERS = ["hg", "hm", "dl"];
 
 // "hm" -> ["hm"]; "hg,hm" -> cả hai; rỗng/sai -> cả hai (đừng để máy đứng im vì gõ nhầm).
 function parseProviders(raw) {

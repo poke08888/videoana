@@ -1,3 +1,10 @@
+// Lỗi thật của ffmpeg nằm ở CUỐI stderr; đầu stderr là banner phiên bản dài cả trăm ký tự.
+// Cắt từ đầu thì log chỉ còn "ffmpeg version ..." và không ai biết vì sao hỏng.
+function tailErr(s, n = 600) {
+  const t = String(s || "").trim();
+  return t.length > n ? "…" + t.slice(-n) : t;
+}
+
 const { execFile } = require("child_process");
 const path = require("path");
 
@@ -29,7 +36,7 @@ function ocrSubtitles(videoPath, { timeoutMs = 25 * 60 * 1000 } = {}) {
       [SCRIPT, videoPath, String(fps), String(y0), String(y1), String(minConf)],
       { maxBuffer: 64 * 1024 * 1024, timeout: timeoutMs, env },
       (err, stdout, stderr) => {
-        if (err) return reject(new Error("OCR fail: " + (stderr || err.message || "").slice(0, 400)));
+        if (err) return reject(new Error("OCR fail: " + tailErr(stderr || err.message)));
         try {
           const parsed = JSON.parse(String(stdout || "").trim());
           // Định dạng mới: {segments, chineseBottomRatio}. Cũ: mảng segments.

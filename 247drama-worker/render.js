@@ -1,3 +1,10 @@
+// Lỗi thật của ffmpeg nằm ở CUỐI stderr; đầu stderr là banner phiên bản dài cả trăm ký tự.
+// Cắt từ đầu thì log chỉ còn "ffmpeg version ..." và không ai biết vì sao hỏng.
+function tailErr(s, n = 600) {
+  const t = String(s || "").trim();
+  return t.length > n ? "…" + t.slice(-n) : t;
+}
+
 const fs = require("fs");
 const path = require("path");
 const { execFile } = require("child_process");
@@ -13,7 +20,7 @@ const status = require("./status");
 function run(cmd, args, opts = {}) {
   return new Promise((resolve, reject) => {
     execFile(cmd, args, { maxBuffer: 8 * 1024 * 1024, ...opts }, (err, stdout, stderr) => {
-      if (err) return reject(new Error((stderr || err.message || "").slice(0, 400)));
+      if (err) return reject(new Error(tailErr(stderr || err.message)));
       resolve(stdout);
     });
   });
