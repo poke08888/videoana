@@ -14,6 +14,7 @@
  */
 
 const { default: axios } = require("axios");
+const { createGate } = require("./gate");
 const https = require("https");
 
 // proxy agents (chỉ dùng cho tải video hm khi CDN cbread.cn bị chặn từ server)
@@ -322,7 +323,18 @@ async function resolveVideo(provider, id, videoId) {
 // CDN video TQ (cbread.cn / qznovelvod.com) hay reset kết nối từ server nước ngoài
 // -> retry nhiều lần với backoff + header giống trình duyệt. Retry ở đây KHÔNG tốn quota 52api.
 // useProxy=true: đi qua proxy (dùng cho hm vì cbread.cn chặn TLS từ server VN).
-async function downloadToBuffer(url, { timeout = 120000, retries = 4, useProxy = false } = {}) {
+// Tải qua proxy phải xếp hàng: mọi luồng đi ra bằng CÙNG một IP của VPS, mà CDN Trung Quốc
+// bóp băng thông theo IP. Mở 6 luồng thì mỗi luồng chỉ còn một phần tốc độ, kết nối treo quá
+// hạn rồi bị tính là lỗi, trong khi tổng lượng tải về không hơn. Tải trực tiếp (hg) không qua
+// cổng này vì mỗi tập đi thẳng tới CDN, không chung nút thắt nào.
+const proxyGate = createGate(process.env.PROXY_DOWNLOAD_CONCURRENCY || 2);
+
+async function downloadToBuffer(url, opts = {}) {
+  if (opts.useProxy) return proxyGate.run(() => downloadOnce(url, opts));
+  return downloadOnce(url, opts);
+}
+
+async function downloadOnce(url, { timeout = 120000, retries = 4, useProxy = false } = {}) {
   const proxyAgent = useProxy ? getProxyAgent() : null;
   const httpsAgent = proxyAgent || agent;
   let lastErr;

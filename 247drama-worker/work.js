@@ -1,5 +1,6 @@
 const duanju = require("./util/duanjuProvider");
 const { MovieSeries, ShortVideo } = require("./db");
+const { env } = require("./config");
 
 const PROVIDERS = ["hg", "hm"];
 function normalizeProvider(p) {
@@ -60,6 +61,9 @@ async function findPendingWork() {
   for (const m of movies) {
     const { provider, sourceId } = extract52apiSource(m);
     if (!provider || !sourceId) continue;
+    // Lọc TRƯỚC khi gọi detail: mỗi lượt gọi 52api bị chặn 3,2 giây, quét phim mình không
+    // render là phí thời gian lẫn quota.
+    if (!env.providers.includes(provider)) continue;
 
     let info;
     try {

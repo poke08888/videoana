@@ -41,6 +41,27 @@ Phần nhận có hạn 20 phút. Máy nào tắt ngang thì phần nhận tự 
 không cần ai dọn tay. Giới hạn 20 phút dài hơn hẳn mức 8 phút mà một tập được phép chạy, nên
 không có chuyện hai máy cùng làm một tập vì hết hạn quá sớm.
 
+## Chia nguồn giữa các máy
+
+Phim nguồn `hm` phải tải qua VPS Hong Kong, và CDN Trung Quốc bóp băng thông **theo IP**. Hai
+máy cùng kéo `hm` qua chung một VPS thì mỗi máy chỉ được một phần tốc độ, kết nối treo quá hạn
+rồi bị tính là lỗi — tổng lượng tải về không hơn mà số lỗi thì tăng vọt.
+
+Cách chia: mỗi máy nhận một nguồn, đặt trong `.env` của máy đó.
+
+```bash
+WORKER_PROVIDERS=hm    # máy có tunnel, kéo phim hm
+WORKER_PROVIDERS=hg    # máy còn lại, tải thẳng từ CDN, không cần tunnel
+```
+
+Để trống hoặc gõ sai thì máy nhận cả hai nguồn — không bao giờ đứng im vì gõ nhầm.
+
+Máy chỉ quét phim thuộc nguồn của mình, nên cũng tiết kiệm quota 52api: mỗi lượt gọi bị chặn
+3,2 giây, quét phim mình không render là phí cả thời gian lẫn lượt gọi.
+
+Trong một máy, số luồng tải qua proxy cũng bị giới hạn (mặc định 2, đổi bằng
+`PROXY_DOWNLOAD_CONCURRENCY`) vì cùng lý do trên.
+
 ## Tunnel Hong Kong
 
 Phim nguồn `hm` tải qua CDN cbread.cn, bị chặn từ Việt Nam nên phải đi vòng qua VPS Hong

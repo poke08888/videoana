@@ -1,6 +1,17 @@
 require("dotenv").config();
 const path = require("path");
 
+const ALL_PROVIDERS = ["hg", "hm"];
+
+// "hm" -> ["hm"]; "hg,hm" -> cả hai; rỗng/sai -> cả hai (đừng để máy đứng im vì gõ nhầm).
+function parseProviders(raw) {
+  const list = String(raw || "")
+    .split(",")
+    .map((x) => x.trim().toLowerCase())
+    .filter((x) => ALL_PROVIDERS.includes(x));
+  return list.length ? [...new Set(list)] : [...ALL_PROVIDERS];
+}
+
 const workDir = process.env.WORK_DIR || "/Volumes/BINGNET/247drama-render";
 
 const env = {
@@ -14,6 +25,10 @@ const env = {
   concurrency: Math.max(1, parseInt(process.env.RENDER_CONCURRENCY) || 4),
   ocrThreads: Math.max(0, parseInt(process.env.OCR_THREADS) || 3),
   keepOriginal: process.env.KEEP_ORIGINAL !== "0",
+  // Nguồn phim máy này nhận: "hg", "hm", hoặc cả hai (mặc định). Chạy nhiều máy thì chia
+  // nguồn ra để hai máy không cùng kéo phim hm qua một IP VPS — CDN Trung Quốc bóp băng
+  // thông theo IP, chia đôi luồng chỉ làm cả hai cùng chậm.
+  providers: parseProviders(process.env.WORKER_PROVIDERS),
   server: {
     host: process.env.SERVER_HOST,
     user: process.env.SERVER_USER,
@@ -98,4 +113,5 @@ function buildSubUrl(provider, sourceId, index, lang, version = 1) {
   return `${base}/${buildSubKey(provider, sourceId, index, lang, version)}`;
 }
 
-module.exports = { env, buildFilename, buildR2Key, buildVideoUrl, buildSubtitleConfig, buildSubKey, buildSubUrl };
+module.exports = {
+  parseProviders, env, buildFilename, buildR2Key, buildVideoUrl, buildSubtitleConfig, buildSubKey, buildSubUrl };
