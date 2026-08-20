@@ -7,6 +7,8 @@ const pLimit = require("p-limit");
 const db = require("./db");
 const { findPendingWork, extract52apiSource } = require("./work");
 const { mirrorCover, isMirrored } = require("./util/cover");
+const { ensureTunnel } = require("./util/tunnel");
+const path = require("path");
 const duanju = require("./util/duanjuProvider");
 const { renderEpisode } = require("./render");
 const status = require("./status");
@@ -106,6 +108,13 @@ async function mirrorPendingCovers() {
 // 1 vòng quét: tìm việc còn thiếu -> render hết. Trả về số tập đã xử lý trong vòng.
 async function runPass() {
   await db.loadSettings(); // refresh settings mỗi vòng (đề phòng admin đổi)
+
+  // Tunnel HK phải sống thì tập hm mới tải được. Nó là tiến trình ssh nên máy ngủ hay rớt
+  // mạng là chết lặng lẽ; kiểm mỗi vòng và tự mở lại, thay vì để hàng chục tập hm lỗi.
+  const tun = await ensureTunnel({ port: 1080, script: path.join(__dirname, "ops", "hk-tunnel.sh") });
+  if (!tun.ok) console.error(`[tunnel] SOCKS 1080 hỏng: ${tun.reason} -> tập nguồn hm sẽ lỗi cho tới khi mở lại được`);
+  else if (tun.action !== "đang chạy") console.log(`[tunnel] SOCKS 1080 ${tun.action}`);
+
   await refreshMovieRows();
   await mirrorPendingCovers().catch((e) => console.error("[cover] lỗi:", e.message));
 
