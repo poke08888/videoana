@@ -7,6 +7,7 @@ const { translateSegments } = require("./translate");
 const { checkTrack, langName } = require("./langRules");
 const { probeDimensions, buildAss } = require("./subtitle");
 const { transcodeToH264, transcodeBurnSub, transcodeCleanBox } = require("./transcode");
+const { coverBoxFor } = require("./coverBox");
 
 // Lọc rác OCR: bỏ đoạn không có ký tự Hán hoặc chỉ 1 ký tự lẻ (đọc nhầm hiệu ứng/logo).
 function cleanOcrSegs(segs) {
@@ -184,12 +185,17 @@ async function subtitleVideoBuffer(buffer, cfg = {}) {
       console.warn(`[autosub] bỏ track: ${verdict.dropped.map((d) => d.lang).join(", ")}`);
     }
 
-    const boxCfg = {
-      yRatio: coverBoxYRatio,
-      heightRatio: coverBoxHeightRatio,
-      color: coverBoxColor,
-      enabled: coverEnabled,
-    };
+    // Ô che chữ Hán bám theo đáy chữ vừa đo được. Ô cố định 0,66-0,83 chỉ đúng với phim đặt
+    // chữ ở ~0,72; phim đặt thấp hơn thì ô trượt bên trên, chữ Trung còn nguyên dưới phụ đề mới.
+    const boxCfg = coverBoxFor({
+      bottomRatio: chineseBottomRatio,
+      base: {
+        yRatio: coverBoxYRatio,
+        heightRatio: coverBoxHeightRatio,
+        color: coverBoxColor,
+        enabled: coverEnabled,
+      },
+    });
 
     // soft: video SẠCH (chỉ che sub Trung), phụ đề đi kèm file .vtt rời.
     if (mode === "soft") {

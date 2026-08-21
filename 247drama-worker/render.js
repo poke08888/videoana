@@ -124,10 +124,26 @@ async function renderEpisodeInner({ series, provider, sourceId, ep, fromUrl }) {
       const S = (global.settingJSON && global.settingJSON.subtitle) || {};
       const num = (v, d) => (typeof v === "number" && !isNaN(v) ? v : d);
       const gapRatio = num(S.subGapRatio, 0.012);
+      // Mức chữ Hán của phim có thể VỪA được tập khác chốt sau khi object series này được
+      // dựng (một pass kéo dài hàng giờ, redo hàng loạt cũng vậy). Đọc lại từ Mongo khi trong
+      // tay chưa có số — nếu không, tập nào OCR không tự đo được vẫn bị bỏ dù phim đã chốt
+      // mức từ mấy phút trước, và cứ thế rơi mãi.
+      let seriesRatio = series.zhBottomRatio;
+      let seriesSource = series.zhBottomSource;
+      if (!(typeof seriesRatio === "number" && seriesRatio > 0)) {
+        const fresh = await MovieSeries.findOne({ _id: series._id })
+          .select("zhBottomRatio zhBottomSource")
+          .lean()
+          .catch(() => null);
+        if (fresh) {
+          seriesRatio = fresh.zhBottomRatio;
+          seriesSource = fresh.zhBottomSource;
+        }
+      }
       const pos = resolveSubPosition({
         episodeRatio: r.chineseBottomRatio,
-        seriesRatio: series.zhBottomRatio,
-        seriesSource: series.zhBottomSource,
+        seriesRatio,
+        seriesSource,
         gapRatio,
       });
       if (!pos) {
