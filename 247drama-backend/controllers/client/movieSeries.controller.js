@@ -1,4 +1,5 @@
 const MovieSeries = require("../../models/movieSeries.model");
+const { publishedMatch } = require("../../util/publishGate");
 const { seriesSearchOr } = require("../../util/searchMatch");
 
 //import model
@@ -26,7 +27,7 @@ exports.fetchNewReleasesForUser = async (req, res) => {
       User.findOne({ _id: userId }).select("isBlock").lean(),
       MovieSeries.aggregate([
         {
-          $match: { isActive: true },
+          $match: publishedMatch(),
         },
         {
           $lookup: {
@@ -105,7 +106,7 @@ exports.getMoviesGroupedByCategory = async (req, res) => {
 
     const groupedMovies = await MovieSeries.aggregate([
       {
-        $match: { isActive: true, category: { $in: categoryIds } },
+        $match: { ...publishedMatch(), category: { $in: categoryIds } },
       },
       {
         $lookup: {
@@ -178,8 +179,8 @@ exports.getTrendingMoviesSeries = async (req, res) => {
     const limit = req.query.limit ? parseInt(req.query.limit) : 20;
 
     const [total, trendingItems] = await Promise.all([
-      MovieSeries.countDocuments({ isActive: true, isTrending: true }),
-      MovieSeries.find({ isActive: true, isTrending: true })
+      MovieSeries.countDocuments({ ...publishedMatch(), isTrending: true }),
+      MovieSeries.find({ ...publishedMatch(), isTrending: true })
         .select("name thumbnail description language")
         .populate("category", "name")
         .populate("language", "name")
@@ -203,7 +204,7 @@ exports.getTrendingMoviesSeries = async (req, res) => {
 //fetch movies or web series (home - banner is auto-animated) (client / web )
 exports.fetchMoviesSeries = async (req, res) => {
   try {
-    const movieSeries = await MovieSeries.find({ isActive: true, isAutoAnimateBanner: true }).select("thumbnail banner name language").populate("language", "name").lean();
+    const movieSeries = await MovieSeries.find({ ...publishedMatch(), isAutoAnimateBanner: true }).select("thumbnail banner name language").populate("language", "name").lean();
 
     return res.status(200).json({
       status: true,
@@ -226,7 +227,7 @@ exports.findContentBySearch = async (req, res) => {
     }
 
     const searchQuery = searchString.trim() || "All";
-    const matchStage = { isActive: true };
+    const matchStage = publishedMatch();
 
     if (searchQuery !== "All") {
       // Tìm theo mọi ngôn ngữ đã dịch: người xem Thái gõ tên tiếng Thái vẫn ra phim.
@@ -307,6 +308,9 @@ exports.fetchTrendingMoviesSeries = async (req, res) => {
 
     const matchStage = {
       movieSeries: { $ne: null },
+      // Bảng xếp hạng đi từ lịch sử xem nên vẫn lôi lên được cả phim đã tắt lẫn phim đang
+      // render dở — phải lọc như mọi danh sách khác.
+      ...publishedMatch("movie."),
     };
 
     const data = await WatchHistory.aggregate([
@@ -449,7 +453,7 @@ exports.getFilterContent = async (req, res) => {
     categoryIds = validCategories.map((c) => c._id);
     languageIds = validLanguages.map((l) => l._id);
 
-    const matchStage = { isActive: true };
+    const matchStage = publishedMatch();
     if (categoryIds.length > 0) matchStage.category = { $in: categoryIds };
     if (languageIds.length > 0) matchStage.language = { $in: languageIds };
 
@@ -545,7 +549,7 @@ exports.fetchLatestContentForUser = async (req, res) => {
         User.findOne({ _id: userId }).select("_id isBlock").lean(),
         MovieSeries.aggregate([
           {
-            $match: { isActive: true },
+            $match: publishedMatch(),
           },
           {
             $lookup: {
@@ -617,7 +621,7 @@ exports.fetchLatestContentForUser = async (req, res) => {
     } else {
       const videos = await MovieSeries.aggregate([
         {
-          $match: { isActive: true },
+          $match: publishedMatch(),
         },
         {
           $lookup: {
@@ -682,7 +686,7 @@ exports.fetchMoviesGroupedByGenre = async (req, res) => {
     }
 
     const groupedMovies = await MovieSeries.aggregate([
-      { $match: { isActive: true, category: { $in: categoryIds } } },
+      { $match: { ...publishedMatch(), category: { $in: categoryIds } } },
       {
         $lookup: {
           from: "languages",
@@ -763,7 +767,7 @@ exports.fetchMediaCollection = async (req, res) => {
     const userQuery = userId ? User.findOne({ _id: userId }).select("isBlock") : Promise.resolve(null);
 
     const moviesQuery = MovieSeries.aggregate([
-      { $match: { isActive: true } },
+      { $match: publishedMatch() },
       {
         $lookup: {
           from: "categories",
@@ -887,7 +891,7 @@ exports.getContentBySearch = async (req, res) => {
     }
 
     const searchQuery = searchString.trim() || "All";
-    const matchStage = { isActive: true };
+    const matchStage = publishedMatch();
 
     if (searchQuery !== "All") {
       // Tìm theo mọi ngôn ngữ đã dịch: người xem Thái gõ tên tiếng Thái vẫn ra phim.

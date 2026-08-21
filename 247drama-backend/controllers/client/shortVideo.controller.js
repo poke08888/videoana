@@ -7,6 +7,7 @@ const mongoose = require("mongoose");
 const User = require("../../models/user.model");
 const LikeHistoryOfVideo = require("../../models/likeHistoryOfVideo.model");
 const MovieSeries = require("../../models/movieSeries.model");
+const { publishedMatch } = require("../../util/publishGate");
 const History = require("../../models/history.model");
 const UserVideoStatus = require("../../models/userVideoStatus.model");
 const UserAutoUnlockStatus = require("../../models/userAutoUnlockStatus.model");
@@ -57,7 +58,7 @@ exports.retrieveMovieSeriesVideosForUser = async (req, res) => {
         },
         {
           $match: {
-            "movieSeriesDetails.isActive": true,
+            ...publishedMatch("movieSeriesDetails."),
           },
         },
         {
@@ -261,7 +262,7 @@ exports.getVideosGroupedByMovieSeries = async (req, res) => {
         },
         {
           $match: {
-            "movieSeriesDetails.isActive": true,
+            ...publishedMatch("movieSeriesDetails."),
           },
         },
         {
@@ -904,7 +905,7 @@ exports.loadMovieSeriesVideosForUser = async (req, res) => {
           },
           {
             $match: {
-              "movieSeriesDetails.isActive": true,
+              ...publishedMatch("movieSeriesDetails."),
             },
           },
           {
@@ -1065,7 +1066,7 @@ exports.loadMovieSeriesVideosForUser = async (req, res) => {
           },
           {
             $match: {
-              "movieSeriesDetails.isActive": true,
+              ...publishedMatch("movieSeriesDetails."),
             },
           },
           {

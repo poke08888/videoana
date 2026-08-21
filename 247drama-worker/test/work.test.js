@@ -72,3 +72,23 @@ test("thiếu bookId thì lấy nguồn từ sourceProvider, đủ cả ba ngu�
 test("nguồn lạ vẫn bị bỏ qua, không đoán bừa", () => {
   assert.strictEqual(extract52apiSource({ bookId: "xx:1", sourceProvider: "52api-xx" }).provider, null);
 });
+
+test("tập đã có bản ghi nhưng backend chấm là hỏng -> đưa vào danh sách render lại", () => {
+  const rows = DETAIL.map((e) => ({ episodeNumber: e.index, sourceVideoId: e.videoId }));
+  const r = classifyEpisodes(DETAIL, rows, [1]);
+  assert.deepStrictEqual(r.missing.map((e) => e.index), [1]);
+  assert.deepStrictEqual(r.drift, []);
+});
+
+test("không có tập hỏng nào -> không render lại gì cả", () => {
+  const rows = DETAIL.map((e) => ({ episodeNumber: e.index, sourceVideoId: e.videoId }));
+  assert.deepStrictEqual(classifyEpisodes(DETAIL, rows, []).missing, []);
+  assert.deepStrictEqual(classifyEpisodes(DETAIL, rows).missing, []);
+});
+
+test("tập vừa hỏng vừa lệch videoId -> KHÔNG ghi đè, chỉ báo lệch", () => {
+  const rows = DETAIL.map((e) => ({ episodeNumber: e.index, sourceVideoId: e.index === 1 ? "khac" : e.videoId }));
+  const r = classifyEpisodes(DETAIL, rows, [1]);
+  assert.deepStrictEqual(r.missing, []);
+  assert.deepStrictEqual(r.drift.map((d) => d.index), [1]);
+});

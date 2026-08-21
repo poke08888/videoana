@@ -92,6 +92,10 @@
   .mut { color:var(--mut); }
   .pill-warn { display:inline-block; font-size:10px; padding:1px 6px; border-radius:999px;
     background:rgba(255,176,32,.18); color:var(--warn); margin-left:6px; }
+  .pill-live, .pill-hold { display:inline-block; font-size:10px; padding:2px 7px; border-radius:999px; font-weight:600; }
+  .pill-live { background:rgba(57,217,138,.16); color:var(--ok); }
+  .pill-hold { background:rgba(255,93,93,.14); color:var(--bad); }
+  .hold-why { display:block; font-size:11px; color:var(--mut); margin-top:3px; white-space:normal; max-width:220px; }
   .health-detail td { white-space:normal; background:rgba(255,255,255,.02); font-size:12px; }
 
   @media (prefers-color-scheme: light) {
@@ -168,12 +172,13 @@
     <!-- Khối 3: Sức khoẻ kho phim -->
     <div class="card">
       <h2>Sức khoẻ kho phim</h2>
+      <div class="sub" id="liveSummary">—</div>
       <div class="msg-error" id="queueMsg" style="display:none"></div>
       <div class="tablewrap">
         <table class="tbl">
           <thead>
             <tr>
-              <th>Tên</th><th>Tổng</th><th>Đã render</th><th>Track sub</th><th>Tập cũ</th><th>Vị trí sub</th><th>Cập nhật</th><th></th>
+              <th>Tên</th><th>Tổng</th><th>Đã render</th><th>Track sub</th><th>Trên app</th><th>Vị trí sub</th><th>Cập nhật</th><th></th>
             </tr>
           </thead>
           <tbody id="queueBody">
@@ -575,6 +580,14 @@ function nameCell(r) {
     '<button class="btn btn-ghost btn-sm btnTrans">' + (r.translated ? 'Dịch lại' : 'Dịch') + '</button>';
 }
 
+// Phim đã lên app hay còn bị giữ lại. Chỉ phim đủ tập và không tập nào hỏng mới hiện với
+// người xem; ô này nói thẳng lý do bị giữ để người vận hành biết phải chờ hay phải sửa.
+function liveCell(r) {
+  if (r.live) return '<span class="pill-live">đang chạy</span>';
+  const why = r.holdReason || (r.isActive === false ? "admin đã tắt" : "chưa chấm");
+  return '<span class="pill-hold">ẩn</span><span class="hold-why">' + esc(why) + '</span>';
+}
+
 // Vị trí đáy chữ Hán của phim: mỗi phim một chỗ khác nhau nên phải chốt trước khi render
 // hàng loạt. "OCR" = worker đo ở tập đầu, "đặt tay" = người vận hành gõ vào (luôn thắng OCR).
 function posCell(r) {
@@ -585,6 +598,10 @@ function posCell(r) {
 }
 
 function renderQueue(rows) {
+  const live = rows.filter(function (r) { return r.live; }).length;
+  $("liveSummary").textContent = rows.length
+    ? live + "/" + rows.length + " phim đang hiện trên app · " + (rows.length - live) + " phim bị giữ lại (thiếu tập hoặc có tập hỏng)"
+    : "—";
   if (!rows.length) {
     $("queueBody").innerHTML = '<tr><td colspan="8" class="empty">Chưa có phim nào.</td></tr>';
     return;
@@ -596,6 +613,7 @@ function renderQueue(rows) {
       '<td>' + (r.total || 0) + '</td>' +
       '<td>' + (r.rendered || 0) + '</td>' +
       '<td>' + trackCell(r) + '</td>' +
+      '<td>' + liveCell(r) + '</td>' +
       '<td>' + posCell(r) + '</td>' +
       '<td>' + fmtDate(r.updatedAt) + '</td>' +
       '<td><button class="btn btn-ghost btn-sm btnHealth">Kiểm lệch</button></td>' +

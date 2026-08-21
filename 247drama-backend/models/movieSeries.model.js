@@ -38,15 +38,29 @@ const movieSeriesSchema = new mongoose.Schema(
     descriptionOriginal: { type: String, trim: true, default: "" },
     metaTranslatedAt: { type: Date, default: null },
     zhBottomRatio: { type: Number, default: null },
-    zhBottomSource: { type: String, default: "" }
+    zhBottomSource: { type: String, default: "" },
+    // Cổng lên app (util/publishGate.js chấm, KHÔNG sửa tay): chỉ phim đủ tập và không tập
+    // nào hỏng mới isComplete = true. isActive vẫn là công tắc của admin — phải bật CẢ HAI
+    // phim mới hiện với người xem.
+    isComplete: { type: Boolean, default: false },
+    completeness: {
+      expected: { type: Number, default: 0 }, // tổng tập bên nguồn
+      have: { type: Number, default: 0 }, // số tập đã có trong kho
+      missing: { type: Number, default: 0 },
+      badEps: { type: [Number], default: [] }, // số tập hỏng (thiếu video hoặc thiếu phụ đề Việt)
+      reason: { type: String, default: "" }, // vì sao chưa lên app, hiện thẳng cho người vận hành
+      checkedAt: { type: Date, default: null },
+    }
   },
   {
     timestamps: true,
     versionKey: false,
+    // Giữ nguyên object rỗng (i18n: {}) thay vì bị Mongoose bỏ đi khi lưu.
+    minimize: false,
   }
 );
 
-movieSeriesSchema.index({ isActive: 1 });
+movieSeriesSchema.index({ isActive: 1, isComplete: 1 });
 movieSeriesSchema.index({ releaseDate: -1 });
 movieSeriesSchema.index({ language: 1 });
 

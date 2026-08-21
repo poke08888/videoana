@@ -3,6 +3,7 @@ const UserVideoList = require("../../models/userVideoList.model");
 //import model
 const User = require("../../models/user.model");
 const MovieSeries = require("../../models/movieSeries.model");
+const { publishedMatch } = require("../../util/publishGate");
 
 //mongoose
 const mongoose = require("mongoose");
@@ -81,9 +82,12 @@ exports.getAllVideosAddedToMyListByUser = async (req, res) => {
     const [user, userVideoList] = await Promise.all([
       User.findOne({ _id: userObjectId }).lean().select("_id isBlock name").lean(),
       UserVideoList.findOne({ userId: userObjectId })
+        // Phim đang ẩn (thiếu tập/tập hỏng) vẫn nằm trong danh sách đã lưu, chỉ không hiện
+        // ra cho tới khi render xong — người xem bấm vào cũng chẳng mở được.
         .populate({
           path: "videos.movieSeries",
           select: "name thumbnail",
+          match: publishedMatch(),
         })
         .lean(),
     ]);
@@ -99,7 +103,7 @@ exports.getAllVideosAddedToMyListByUser = async (req, res) => {
     return res.status(200).json({
       status: true,
       message: "Favorite MovieSeries retrieved successfully.",
-      data: userVideoList?.videos || [],
+      data: (userVideoList?.videos || []).filter((v) => v.movieSeries),
     });
   } catch (error) {
     console.error(error);

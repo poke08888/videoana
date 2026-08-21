@@ -242,8 +242,8 @@ exports.renderStatus = async (req, res) => {
 // Bảng sức khoẻ: chỉ đọc Mongo, KHÔNG gọi 52api -> bấm bao nhiêu lần cũng không tốn quota.
 exports.queue = async (req, res) => {
   try {
-    const series = await MovieSeries.find({ sourceProvider: /^52api-/ })
-      .select("_id name nameEn bookId sourceEpisodeCount updatedAt zhBottomRatio zhBottomSource metaTranslatedAt metaMissingLangs")
+    const series = await MovieSeries.find({ $or: [{ sourceProvider: /^52api-/ }, { bookId: /^(hg|hm|dl):/ }] })
+      .select("_id name nameEn bookId sourceEpisodeCount updatedAt zhBottomRatio zhBottomSource metaTranslatedAt metaMissingLangs isActive isComplete completeness")
       .sort({ updatedAt: -1 })
       .lean();
 
@@ -293,6 +293,10 @@ exports.queue = async (req, res) => {
           missingLangs: s.metaMissingLangs || [],
           zhBottomRatio: typeof s.zhBottomRatio === "number" ? s.zhBottomRatio : null,
           zhBottomSource: s.zhBottomSource || "",
+          // Cổng lên app: phim chỉ hiện với người xem khi đủ tập và không tập nào hỏng.
+          live: !!s.isComplete && s.isActive !== false,
+          holdReason: (s.completeness && s.completeness.reason) || "",
+          badEps: (s.completeness && s.completeness.badEps) || [],
           updatedAt: s.updatedAt,
         };
       }),

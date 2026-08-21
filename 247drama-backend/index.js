@@ -86,6 +86,27 @@ const cron = require("node-cron");
 //import model
 const User = require("./models/user.model");
 
+// Cổng lên app: chấm lại xem phim nào đã đủ tập, phim nào còn thiếu/còn tập hỏng.
+// Chạy ngay lúc khởi động (để cờ đúng ngay sau khi deploy) rồi lặp mỗi 2 phút — máy render
+// làm xong tập cuối lúc nào thì phim tự lên app sau đó chậm nhất 2 phút, không cần ai bấm.
+const { sweepPublishGate } = require("./util/publishGate");
+const MovieSeriesModel = require("./models/movieSeries.model");
+const ShortVideoModel = require("./models/shortVideo.model");
+async function runPublishGate() {
+  try {
+    const r = await sweepPublishGate({ MovieSeries: MovieSeriesModel, ShortVideo: ShortVideoModel, log: console.log });
+    if (r.changed) console.log(`[cổng app] ${r.published}/${r.checked} phim đủ điều kiện lên app`);
+  } catch (e) {
+    console.error("[cổng app] chấm lại lỗi:", e.message);
+  }
+}
+// pm2 chạy 4 bản index.js (cluster). Quét cả kho 4 lần một lúc là thừa -> chỉ bản số 0 làm.
+const isPrimaryInstance = !process.env.NODE_APP_INSTANCE || process.env.NODE_APP_INSTANCE === "0";
+if (isPrimaryInstance) {
+  setTimeout(runPublishGate, 5000);
+  cron.schedule("*/2 * * * *", runPublishGate);
+}
+
 //this run for update user's daily watch Ads
 cron.schedule("0 0 * * *", async () => {
   await User.updateMany(

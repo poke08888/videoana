@@ -22,7 +22,18 @@ const movieSeriesSchema = new mongoose.Schema(
     // Đáy dòng chữ Hán của phim này (0-1 theo chiều cao khung hình), đo bằng OCR ở tập đầu
     // rồi chốt cho cả phim -> mọi tập đặt phụ đề cùng một chỗ. Mỗi phim một giá trị khác nhau.
     zhBottomRatio: { type: Number, default: null },
-    zhBottomSource: { type: String, default: "" } // "auto" = OCR đo, "manual" = người vận hành đặt tay
+    zhBottomSource: { type: String, default: "" }, // "auto" = OCR đo, "manual" = người vận hành đặt tay
+    // Cổng lên app do backend chấm (util/publishGate.js). Worker chỉ ĐỌC: completeness.badEps
+    // là danh sách tập hỏng cần render đè lại.
+    isComplete: { type: Boolean, default: false },
+    completeness: {
+      expected: { type: Number, default: 0 },
+      have: { type: Number, default: 0 },
+      missing: { type: Number, default: 0 },
+      badEps: { type: [Number], default: [] },
+      reason: { type: String, default: "" },
+      checkedAt: { type: Date, default: null },
+    }
   },
   {
     timestamps: true,

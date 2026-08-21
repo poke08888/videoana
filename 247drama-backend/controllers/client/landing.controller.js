@@ -1,5 +1,6 @@
 const MovieSeries = require("../../models/movieSeries.model");
 const ShortVideo = require("../../models/shortVideo.model");
+const { publishedMatch } = require("../../util/publishGate");
 
 /**
  * GET /api/client/landing/movie?id=:movieId
@@ -14,10 +15,12 @@ exports.getMovieLandingData = async (req, res) => {
     }
 
     const movie = await MovieSeries.findById(id)
-      .select("name description thumbnail banner isActive")
+      .select("name description thumbnail banner isActive isComplete")
       .lean();
 
-    if (!movie || !movie.isActive) {
+    // Trang chia sẻ cũng là cửa vào app: phim chưa đủ tập thì link chia sẻ không mở được,
+    // giống hệt khi admin tắt phim.
+    if (!movie || !movie.isActive || !movie.isComplete) {
       return res.status(404).json({ status: false, message: "Movie not found" });
     }
 

@@ -2,6 +2,7 @@ const Category = require("../../models/category.model");
 
 //import model
 const MovieSeries = require("../../models/movieSeries.model");
+const { publishedMatch } = require("../../util/publishGate");
 const User = require("../../models/user.model");
 
 //mongoose
@@ -81,7 +82,7 @@ exports.fetchGenreBasedMediaContent = async (req, res) => {
         MovieSeries.aggregate([
           {
             $match: {
-              isActive: true,
+              ...publishedMatch(),
               category: new mongoose.Types.ObjectId(categoryId),
             },
           },
@@ -168,7 +169,7 @@ exports.fetchGenreBasedMediaContent = async (req, res) => {
         MovieSeries.aggregate([
           {
             $match: {
-              isActive: true,
+              ...publishedMatch(),
               category: new mongoose.Types.ObjectId(categoryId),
             },
           },
