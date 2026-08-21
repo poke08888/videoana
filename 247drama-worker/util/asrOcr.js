@@ -17,6 +17,24 @@ const SCRIPT = path.join(__dirname, "..", "scripts", "ocr_subs.py");
 // video có phụ đề đầy đủ.
 const WIDE_Y0 = 0.5;
 const WIDE_Y1 = 0.98;
+// Dưới ngưỡng này coi như dải thường "không thấy gì": một tập phim ngắn bình thường có hàng
+// chục câu, đọc được 1-2 câu nghĩa là đang bắt nhầm chữ vụn (watermark, số hiệu) chứ không
+// phải phụ đề.
+const MIN_CN_SEGS = 5;
+
+const hasCn = (t) => /[\u4e00-\u9fff]/.test(String(t || ""));
+
+// Số câu thật sự có chữ Hán — thước đo "lượt quét này có đọc được phụ đề không".
+function scoreSegments(segments) {
+  return (segments || []).filter((s) => hasCn(s && s.text)).length;
+}
+
+// Có cần quét lại dải rộng không. Đo được vị trí mà vẫn quá ít câu thì vẫn phải quét lại:
+// chữ vụn trong dải thường cũng đủ cho ra một con số, làm lượt quét trông như đã thành công.
+function shouldWiden(result) {
+  if (!result) return true;
+  return result.chineseBottomRatio == null || scoreSegments(result.segments) < MIN_CN_SEGS;
+}
 
 function runOcr(videoPath, { fps, y0, y1, minConf, env, timeoutMs }) {
   return new Promise((resolve, reject) => {
@@ -61,14 +79,14 @@ async function ocrSubtitles(videoPath, { timeoutMs = 25 * 60 * 1000 } = {}) {
     : process.env;
 
   const first = await runOcr(videoPath, { fps, y0, y1, minConf, env, timeoutMs });
-  if (first.chineseBottomRatio != null) return first;
+  if (!shouldWiden(first)) return first;
 
   const wideY0 = Math.min(y0, WIDE_Y0);
   const wideY1 = Math.max(y1, WIDE_Y1);
   if (wideY0 === y0 && wideY1 === y1) return first; // người vận hành đã đặt sẵn dải rộng
-  console.warn(`[ocr] dải ${y0}-${y1} không thấy chữ Hán -> quét lại dải ${wideY0}-${wideY1}`);
+  console.warn(`[ocr] dải ${y0}-${y1} chỉ đọc được ${scoreSegments(first.segments)} câu -> quét lại dải ${wideY0}-${wideY1}`);
   const wide = await runOcr(videoPath, { fps, y0: wideY0, y1: wideY1, minConf, env, timeoutMs });
-  return wide.chineseBottomRatio != null ? wide : first;
+  return scoreSegments(wide.segments) > scoreSegments(first.segments) ? wide : first;
 }
 
-module.exports = { ocrSubtitles, WIDE_Y0, WIDE_Y1 };
+module.exports = { ocrSubtitles, scoreSegments, shouldWiden, WIDE_Y0, WIDE_Y1, MIN_CN_SEGS };

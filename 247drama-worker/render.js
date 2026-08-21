@@ -168,7 +168,10 @@ async function renderEpisodeInner({ series, provider, sourceId, ep, fromUrl }) {
       const entries = Object.entries(r.tracks || {});
       if (!entries.some(([lang]) => lang === primary)) {
         status.fail(tag);
-        const why = `soft-sub thiếu bản dịch ${primary}`;
+        // Nói luôn vì sao hụt: autosub đã biết lý do (dịch hỏng, track bị nghiệm thu đánh
+        // rớt vì còn quá nhiều chữ Hán...) nhưng trước đây bị nuốt mất, log chỉ còn "thiếu
+        // bản dịch vi" — nhìn vào không biết phải sửa gì.
+        const why = `soft-sub thiếu bản dịch ${primary}${r.reason ? ` (${r.reason})` : ""}`;
         console.error(`[render] ✗ ${tag}: ${why} -> bỏ tập, lần chạy sau render lại`);
         return { ok: false, reason: why };
       }
