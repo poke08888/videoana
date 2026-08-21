@@ -37,15 +37,23 @@ async function probeDuration(file) {
   }
 }
 
-// Timeout cứng mỗi tập: 1 tập bình thường ~90-140s. Nếu quá EP_TIMEOUT_MIN (mặc định 8 phút)
-// thì coi như treo (tải hg stall...) -> bỏ, giải phóng slot, tránh Promise.all treo cả run.
-const EP_TIMEOUT_MS = Math.max(1, parseInt(process.env.EP_TIMEOUT_MIN) || 8) * 60 * 1000;
+// Timeout cứng mỗi tập: 1 tập bình thường ~90-140s khi máy rảnh. Quá EP_TIMEOUT_MIN thì bỏ,
+// giải phóng slot, tránh Promise.all treo cả run.
+//
+// CẢNH BÁO khi chỉnh: mốc này tính CẢ THỜI GIAN CHỜ, không chỉ lúc đang làm. Chạy nhiều luồng
+// thì OCR tranh CPU và mỗi tập chậm đi gấp mấy lần — đã đo: 6 luồng khiến 16/23 tập vượt mốc
+// 8 phút trong khi tunnel vẫn tải 4 MB/s, tức là "treo" ở CPU chứ không phải ở mạng. Đặt mốc
+// rộng tay hơn số luồng đang chạy, hoặc giảm luồng.
+const EP_TIMEOUT_MS = Math.max(1, parseInt(process.env.EP_TIMEOUT_MIN) || 15) * 60 * 1000;
 
 async function renderEpisode(args) {
   const tag = `${args.provider}:${args.sourceId} ep${args.ep.index + 1}`;
   let timer;
   const timeout = new Promise((_, reject) => {
-    timer = setTimeout(() => reject(new Error(`quá ${EP_TIMEOUT_MS / 60000} phút (treo, có thể tải stall)`)), EP_TIMEOUT_MS);
+    timer = setTimeout(
+      () => reject(new Error(`quá ${EP_TIMEOUT_MS / 60000} phút (máy quá tải, hoặc tải/OCR treo)`)),
+      EP_TIMEOUT_MS,
+    );
   });
   try {
     return await Promise.race([renderEpisodeInner(args), timeout]);
