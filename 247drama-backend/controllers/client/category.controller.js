@@ -137,6 +137,7 @@ exports.fetchGenreBasedMediaContent = async (req, res) => {
               _id: 1,
               releaseDate: 1,
               name: 1,
+              i18n: 1,
               description: 1,
               thumbnail: 1,
               totalViews: { $size: "$watchHistories" }, // Total number of views for all videos in this movie series
@@ -193,6 +194,7 @@ exports.fetchGenreBasedMediaContent = async (req, res) => {
               _id: 1,
               releaseDate: 1,
               name: 1,
+              i18n: 1,
               description: 1,
               thumbnail: 1,
               isAddedToList: 1,

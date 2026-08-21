@@ -15,9 +15,6 @@ const UserAutoUnlockStatus = require("../../models/userAutoUnlockStatus.model");
 //generate History UniqueId
 const { generateHistoryUniqueId } = require("../../util/generateHistoryUniqueId");
 
-//resolve phụ đề mặc định theo IP (VN -> vi, còn lại -> en)
-const { resolveSubLang } = require("../../util/geoLang");
-
 //retrieves all videos from a specific movie series for a user
 exports.retrieveMovieSeriesVideosForUser = async (req, res) => {
   try {
@@ -43,7 +40,6 @@ exports.retrieveMovieSeriesVideosForUser = async (req, res) => {
         // BẮT BUỘC: $group phía dưới đẩy tập vào mảng theo đúng thứ tự tài liệu đi vào, mà
         // thứ tự tự nhiên của Mongo là thứ tự GHI — worker render 4 tập song song nên tập
         // ghi xong trước nằm trước. Thiếu dòng này thì app hiện tập 3 trước tập 1.
-        // Hai endpoint bản web đã sắp xếp sẵn, chỉ đường của app bị sót.
         { $sort: { episodeNumber: 1 } },
         {
           $lookup: {
@@ -154,6 +150,7 @@ exports.retrieveMovieSeriesVideosForUser = async (req, res) => {
             },
             "movieSeriesDetails._id": 1,
             "movieSeriesDetails.name": 1,
+            "movieSeriesDetails.i18n": 1,
             "movieSeriesDetails.description": 1,
             "movieSeriesDetails.thumbnail": 1,
             "movieSeriesDetails.maxAdsForFreeView": 1,
@@ -171,6 +168,7 @@ exports.retrieveMovieSeriesVideosForUser = async (req, res) => {
           $group: {
             _id: "$movieSeriesDetails._id",
             movieSeriesName: { $first: "$movieSeriesDetails.name" },
+            i18n: { $first: "$movieSeriesDetails.i18n" },
             movieSeriesDescription: { $first: "$movieSeriesDetails.description" },
             movieSeriesThumbnail: { $first: "$movieSeriesDetails.thumbnail" },
             movieSeriesMaxAdsForFreeView: { $first: "$movieSeriesDetails.maxAdsForFreeView" },
@@ -182,10 +180,10 @@ exports.retrieveMovieSeriesVideosForUser = async (req, res) => {
                 episodeNumber: "$episodeNumber",
                 videoImage: "$videoImage",
                 videoUrl: "$videoUrl",
-                isLocked: "$isLocked",
-                coin: "$coin",
                 subTracks: "$subTracks",
                 burnedLang: "$burnedLang",
+                isLocked: "$isLocked",
+                coin: "$coin",
                 isLike: "$isLike",
                 totalLikes: "$totalLikes",
               },
@@ -217,15 +215,12 @@ exports.retrieveMovieSeriesVideosForUser = async (req, res) => {
     // Check if the auto-unlock is enabled for this user and movie series
     const isAutoUnlockEnabled = autoUnlockStatus ? autoUnlockStatus.isAutoUnlockEpisodes : false;
 
-    const subDefault = resolveSubLang(req);
-
     return res.status(200).json({
       status: true,
       message: "Retrieved videos from a specific movie series for the user.",
       userInfo: userInfo,
       totalVideosCount: totalVideosCount,
       isAutoUnlockEnabled,
-      subDefault,
       data: videos[0] || null,
     });
   } catch (error) {
@@ -371,6 +366,7 @@ exports.getVideosGroupedByMovieSeries = async (req, res) => {
             },
             "movieSeriesDetails._id": 1,
             "movieSeriesDetails.name": 1,
+            "movieSeriesDetails.i18n": 1,
             "movieSeriesDetails.description": 1,
             "movieSeriesDetails.thumbnail": 1,
             languageName: { $ifNull: ["$languageObj.name", ""] },
@@ -391,6 +387,7 @@ exports.getVideosGroupedByMovieSeries = async (req, res) => {
           $group: {
             _id: "$movieSeriesDetails._id",
             movieSeriesName: { $first: "$movieSeriesDetails.name" },
+            i18n: { $first: "$movieSeriesDetails.i18n" },
             movieSeriesDescription: { $first: "$movieSeriesDetails.description" },
             movieSeriesThumbnail: { $first: "$movieSeriesDetails.thumbnail" },
             languageName: { $first: "$languageName" },
@@ -402,9 +399,9 @@ exports.getVideosGroupedByMovieSeries = async (req, res) => {
                 episodeNumber: "$episodeNumber",
                 videoImage: "$videoImage",
                 videoUrl: "$videoUrl",
-                isLocked: "$isLocked",
                 subTracks: "$subTracks",
                 burnedLang: "$burnedLang",
+                isLocked: "$isLocked",
                 isLike: "$isLike",
                 totalLikes: "$totalLikes", // Include total likes in the videos field
               },
@@ -437,6 +434,7 @@ exports.getVideosGroupedByMovieSeries = async (req, res) => {
           $project: {
             _id: 1,
             movieSeriesName: 1,
+            i18n: 1,
             movieSeriesDescription: 1,
             movieSeriesThumbnail: 1,
             languageName: 1,
@@ -463,9 +461,7 @@ exports.getVideosGroupedByMovieSeries = async (req, res) => {
       return res.status(200).json({ status: false, message: "You are blocked by admin." });
     }
 
-    const subDefault = resolveSubLang(req);
-
-    return res.status(200).json({ status: true, message: "Retrieved grouped videos by movie series.", subDefault, data: groupedVideos });
+    return res.status(200).json({ status: true, message: "Retrieved grouped videos by movie series.", data: groupedVideos });
   } catch (error) {
     console.log(error);
     return res.status(500).json({ status: false, message: error.message || "Internal Server Error" });
@@ -686,29 +682,26 @@ exports.deductCoinForVideoView = async (req, res) => {
     const loginCoinUsed = Math.min(user.loginRewardCoin || 0, remaining);
     remaining -= loginCoinUsed;
 
-    const trackedRewardCoins = (user.adRewardCoin || 0) + (user.dailyRewardCoin || 0) + (user.loginRewardCoin || 0);
-    const otherRewardCoin = Math.max(0, (user.rewardCoin || 0) - trackedRewardCoins);
-    const otherRewardCoinUsed = Math.min(otherRewardCoin, remaining);
-    remaining -= otherRewardCoinUsed;
+    // const referralCoinUsed = Math.min(user.referralRewardCoin || 0, remaining);
+    // remaining -= referralCoinUsed;
 
-    // Remaining will be deducted from purchasedCoin. 
-    // However, admin may have added coins directly to `user.coin`.
-    // So we just deduct from purchasedCoin, but don't fail if purchasedCoin goes negative,
-    // as long as the user's total coin is sufficient (already checked).
-    let purchasedCoinUsed = remaining;
-    
-    // To avoid negative purchasedCoin in DB (if we don't want negatives), we can just cap it:
-    purchasedCoinUsed = Math.min(purchasedCoinUsed, user.purchasedCoin || 0);
-    remaining -= purchasedCoinUsed;
+    const purchasedCoinUsed = remaining;
 
-    // If there's STILL remaining, it means the coins came from admin directly adding to `user.coin`.
-    // We just subtract it from total coin, and don't track it in sub-buckets.
-    const rewardCoinUsed = adCoinUsed + dailyCoinUsed + loginCoinUsed + otherRewardCoinUsed;
+    if (purchasedCoinUsed > (user.purchasedCoin || 0)) {
+      return res.status(200).json({ status: false, message: "Insufficient purchased coins" });
+    }
+
+    const rewardCoinUsed = adCoinUsed + dailyCoinUsed + loginCoinUsed;
 
     const updatedUser = await User.findOneAndUpdate(
       {
         _id: userId,
         coin: { $gte: videoCost },
+        rewardCoin: { $gte: rewardCoinUsed },
+        purchasedCoin: { $gte: purchasedCoinUsed },
+        adRewardCoin: { $gte: adCoinUsed },
+        dailyRewardCoin: { $gte: dailyCoinUsed },
+        loginRewardCoin: { $gte: loginCoinUsed },
       },
       {
         $inc: {
@@ -719,6 +712,7 @@ exports.deductCoinForVideoView = async (req, res) => {
           adRewardCoin: -adCoinUsed,
           dailyRewardCoin: -dailyCoinUsed,
           loginRewardCoin: -loginCoinUsed,
+          // referralRewardCoin: -referralCoinUsed,
         },
       },
       { new: true },
@@ -863,7 +857,6 @@ exports.loadMovieSeriesVideosForUser = async (req, res) => {
     const limit = req.query.limit ? parseInt(req.query.limit) : 50;
 
     const movieSeriesId = new mongoose.Types.ObjectId(req.query.movieSeriesId);
-    const subDefault = resolveSubLang(req);
 
     if (req.query.userId) {
       const userId = new mongoose.Types.ObjectId(req.query.userId);
@@ -1004,10 +997,10 @@ exports.loadMovieSeriesVideosForUser = async (req, res) => {
                   episodeNumber: "$episodeNumber",
                   videoImage: "$videoImage",
                   videoUrl: "$videoUrl",
-                  isLocked: "$isLocked",
-                  coin: "$coin",
                   subTracks: "$subTracks",
                   burnedLang: "$burnedLang",
+                  isLocked: "$isLocked",
+                  coin: "$coin",
                   isLike: "$isLike",
                   totalLikes: "$totalLikes",
                 },
@@ -1040,7 +1033,6 @@ exports.loadMovieSeriesVideosForUser = async (req, res) => {
         message: "Retrieved videos from a specific movie series for the user.",
         userInfo: userInfo,
         totalVideosCount: totalVideosCount || 0,
-        subDefault,
         data: videos[0] || null,
       });
     } else {
@@ -1099,8 +1091,6 @@ exports.loadMovieSeriesVideosForUser = async (req, res) => {
               episodeNumber: 1,
               videoImage: 1,
               videoUrl: 1,
-              subTracks: 1,
-              burnedLang: 1,
               isLocked: 1,
               coin: 1,
               "movieSeriesDetails._id": 1,
@@ -1128,8 +1118,6 @@ exports.loadMovieSeriesVideosForUser = async (req, res) => {
                   videoUrl: "$videoUrl",
                   isLocked: "$isLocked",
                   coin: "$coin",
-                  subTracks: "$subTracks",
-                  burnedLang: "$burnedLang",
                   isLike: "$isLike",
                   totalLikes: "$totalLikes",
                 },
@@ -1145,7 +1133,6 @@ exports.loadMovieSeriesVideosForUser = async (req, res) => {
       return res.status(200).json({
         status: true,
         message: "Retrieved videos from a specific movie series for the user.",
-        subDefault,
         totalVideosCount: totalVideosCount || 0,
         data: videos[0] || null,
       });

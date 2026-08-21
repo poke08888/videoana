@@ -1,6 +1,6 @@
 const MovieSeries = require("../../models/movieSeries.model");
-const { publishedMatch } = require("../../util/publishGate");
 const { seriesSearchOr } = require("../../util/searchMatch");
+const { publishedMatch } = require("../../util/publishGate");
 
 //import model
 const Category = require("../../models/category.model");
@@ -50,6 +50,7 @@ exports.fetchNewReleasesForUser = async (req, res) => {
           $project: {
             _id: 1,
             name: 1,
+            i18n: 1,
             thumbnail: 1,
             languageName: { $ifNull: ["$languageObj.name", ""] },
             totalViews: {
@@ -230,7 +231,7 @@ exports.findContentBySearch = async (req, res) => {
     const matchStage = publishedMatch();
 
     if (searchQuery !== "All") {
-      // Tìm theo mọi ngôn ngữ đã dịch: người xem Thái gõ tên tiếng Thái vẫn ra phim.
+      // Tìm theo mọi ngôn ngữ đã dịch, không chỉ tên tiếng Việt.
       matchStage.$or = seriesSearchOr(searchQuery);
     }
 
@@ -271,6 +272,7 @@ exports.findContentBySearch = async (req, res) => {
       {
         $project: {
           name: 1,
+          i18n: 1,
           description: 1,
           thumbnail: 1,
           isActive: 1,
@@ -371,6 +373,7 @@ exports.fetchTrendingMoviesSeries = async (req, res) => {
           movie: {
             _id: "$movie._id",
             name: "$movie.name",
+            i18n: "$movie.i18n",
             description: "$movie.description",
             thumbnail: "$movie.thumbnail",
             category: { $ifNull: ["$category.name", ""] },
@@ -493,6 +496,7 @@ exports.getFilterContent = async (req, res) => {
             {
               $project: {
                 name: 1,
+                i18n: 1,
                 description: 1,
                 thumbnail: 1,
                 banner: 1,
@@ -597,6 +601,7 @@ exports.fetchLatestContentForUser = async (req, res) => {
               _id: 1,
               releaseDate: 1,
               name: 1,
+              i18n: 1,
               description: 1,
               thumbnail: 1,
               isAddedToList: 1,
@@ -647,6 +652,7 @@ exports.fetchLatestContentForUser = async (req, res) => {
             _id: 1,
             releaseDate: 1,
             name: 1,
+            i18n: 1,
             description: 1,
             thumbnail: 1,
             isAddedToList: 1,
@@ -713,6 +719,7 @@ exports.fetchMoviesGroupedByGenre = async (req, res) => {
             $push: {
               _id: "$_id",
               name: "$name",
+              i18n: "$i18n",
               description: "$description",
               thumbnail: "$thumbnail",
               isAddedToList: { $gt: [{ $size: "$userVideo" }, 0] }, // true if movie exists in UserVideoList
@@ -845,6 +852,7 @@ exports.fetchMediaCollection = async (req, res) => {
           _id: 1,
           releaseDate: 1,
           name: 1,
+          i18n: 1,
           description: 1,
           thumbnail: 1,
           isAddedToList: 1,
@@ -894,7 +902,7 @@ exports.getContentBySearch = async (req, res) => {
     const matchStage = publishedMatch();
 
     if (searchQuery !== "All") {
-      // Tìm theo mọi ngôn ngữ đã dịch: người xem Thái gõ tên tiếng Thái vẫn ra phim.
+      // Tìm theo mọi ngôn ngữ đã dịch, không chỉ tên tiếng Việt.
       matchStage.$or = seriesSearchOr(searchQuery);
     }
 
@@ -997,6 +1005,7 @@ exports.getContentBySearch = async (req, res) => {
         $project: {
           _id: 1,
           name: 1,
+          i18n: 1,
           description: 1,
           thumbnail: 1,
           releaseDate: 1,

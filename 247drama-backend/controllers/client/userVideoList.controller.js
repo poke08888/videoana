@@ -86,7 +86,7 @@ exports.getAllVideosAddedToMyListByUser = async (req, res) => {
         // ra cho tới khi render xong — người xem bấm vào cũng chẳng mở được.
         .populate({
           path: "videos.movieSeries",
-          select: "name thumbnail",
+          select: "name i18n thumbnail",
           match: publishedMatch(),
         })
         .lean(),

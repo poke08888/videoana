@@ -1,8 +1,8 @@
 const SearchHistory = require("../../models/searchHistory.model");
 const MovieSeries = require("../../models/movieSeries.model");
+const SearchCount = require("../../models/searchCount.model");
 const { seriesSearchOr } = require("../../util/searchMatch");
 const { publishedMatch } = require("../../util/publishGate");
-const SearchCount = require("../../models/searchCount.model");
 
 //Entry for the SearchHistory + SearchCount
 exports.searchMovieSeries = async (req, res) => {
@@ -15,8 +15,6 @@ exports.searchMovieSeries = async (req, res) => {
       });
     }
 
-    // Khớp theo mọi ngôn ngữ đã dịch, không chỉ tên tiếng Việt, để lịch sử tìm kiếm của
-    // người xem nước ngoài cũng được ghi nhận.
     const movie = await MovieSeries.findOne({
       _id: movieSeriesId,
       $or: seriesSearchOr(query),
@@ -54,7 +52,7 @@ exports.getMostSearched = async (req, res) => {
       SearchCount.find()
         .select("movieSeriesId count lastSearchedAt")
         // Phim chưa lên app thì không được nằm trong gợi ý "tìm nhiều nhất".
-        .populate({ path: "movieSeriesId", select: "name", match: publishedMatch() })
+        .populate({ path: "movieSeriesId", select: "name i18n", match: publishedMatch() })
         .sort({ count: -1, lastSearchedAt: -1 })
         .skip((start - 1) * limit)
         .limit(limit)
