@@ -92,3 +92,18 @@ test("tập vừa hỏng vừa lệch videoId -> KHÔNG ghi đè, chỉ báo l�
   assert.deepStrictEqual(r.missing, []);
   assert.deepStrictEqual(r.drift.map((d) => d.index), [1]);
 });
+
+test("phim gần xong làm trước, phim mới bắt đầu để sau", () => {
+  const { sortWork } = require("../work");
+  const w = (n, createdAt) => ({ missing: new Array(n).fill(0), createdAt });
+  const r = sortWork([w(80, 5), w(1, 1), w(12, 3), w(1, 9)]);
+  assert.deepStrictEqual(r.map((x) => x.missing.length), [1, 1, 12, 80]);
+  assert.deepStrictEqual(r.slice(0, 2).map((x) => x.createdAt), [9, 1], "cùng số tập thiếu -> phim mới nhập trước");
+});
+
+test("sắp xếp không làm hỏng danh sách rỗng hay thiếu field", () => {
+  const { sortWork } = require("../work");
+  assert.deepStrictEqual(sortWork([]), []);
+  assert.deepStrictEqual(sortWork(null), []);
+  assert.strictEqual(sortWork([{}, { missing: [1] }])[0].missing, undefined);
+});

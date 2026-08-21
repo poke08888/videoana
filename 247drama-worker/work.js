@@ -64,7 +64,7 @@ async function findPendingWork() {
   // bookId "<nguồn>:<id>" mà thiếu sourceProvider — lọc mỗi sourceProvider là 32 phim như vậy
   // nằm im mãi mãi, không máy nào nhặt.
   const movies = await MovieSeries.find({ $or: [{ sourceProvider: /^52api-/ }, { bookId: /^(hg|hm|dl):/ }] })
-    .select("_id name thumbnail bookId sourceProvider sourceEpisodeCount zhBottomRatio zhBottomSource completeness")
+    .select("_id name thumbnail bookId sourceProvider sourceEpisodeCount zhBottomRatio zhBottomSource completeness createdAt")
     .sort({ createdAt: -1 })
     .lean();
 
@@ -100,6 +100,7 @@ async function findPendingWork() {
 
     if (missing.length || drift.length) {
       work.push({
+        createdAt: m.createdAt ? new Date(m.createdAt).getTime() : 0,
         // Phải mang theo mức chữ Hán đã chốt của phim: render.js đọc series.zhBottomRatio để
         // đặt dòng phụ đề. Thiếu hai field này thì tập nào OCR không tự đo được vị trí sẽ bị
         // bỏ, dù phim đã chốt mức từ lâu — cả trăm tập rơi mỗi vòng quét mà không ai hiểu vì sao.
@@ -118,7 +119,19 @@ async function findPendingWork() {
       });
     }
   }
-  return work;
+  return sortWork(work);
 }
 
-module.exports = { classifyEpisodes, findPendingWork, extract52apiSource };
+// Phim GẦN XONG làm trước. Đích của cả hệ thống là phim lên app, mà phim chỉ lên khi đủ tập —
+// làm nốt phim còn thiếu 1 tập thì vài phút sau app có thêm một phim, còn bắt đầu một phim 80
+// tập thì hai tiếng nữa mới có gì để xem. Cùng số tập thiếu thì phim mới nhập được ưu tiên
+// (người vận hành vừa thêm là mong thấy nó chạy).
+function sortWork(work) {
+  return (work || []).slice().sort((a, b) => {
+    const d = (a.missing || []).length - (b.missing || []).length;
+    if (d) return d;
+    return (b.createdAt || 0) - (a.createdAt || 0);
+  });
+}
+
+module.exports = { classifyEpisodes, findPendingWork, extract52apiSource, sortWork };
