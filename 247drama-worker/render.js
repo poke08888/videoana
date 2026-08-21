@@ -58,7 +58,7 @@ async function renderEpisode(args) {
   }
 }
 
-async function renderEpisodeInner({ series, provider, sourceId, ep }) {
+async function renderEpisodeInner({ series, provider, sourceId, ep, fromUrl }) {
   const tag = `${provider}:${sourceId} ep${ep.index + 1}`;
   const movieKey = `${provider}:${sourceId}`;
   const t0 = Date.now();
@@ -73,15 +73,19 @@ async function renderEpisodeInner({ series, provider, sourceId, ep }) {
   try {
     // 1) resolve + tải mp4 gốc (hm qua proxy)
     status.setPhase(tag, "tải");
-    const resolved = await duanju.resolveVideo(provider, sourceId, ep.videoId);
+    // fromUrl = bản đã nằm sẵn trên R2 của mình. Dùng khi SỬA tập hỏng: nguồn có thể đã chết
+    // (hg hết quota, hg đổi sang codec không giải mã được) nhưng bản mirror vẫn còn nguyên
+    // chữ Trung để OCR lại. Đi thẳng CDN của mình, không qua 52api, không tốn quota.
+    const resolved = fromUrl ? { mp4Url: fromUrl } : await duanju.resolveVideo(provider, sourceId, ep.videoId);
     if (!resolved.mp4Url) { status.fail(tag); return { ok: false, reason: "không có link" }; }
     // hg thường tải trực tiếp OK, nhưng MỘT SỐ tập trả URL douyinvod bị chặn/reset từ VN
     // ("socket hang up") -> tải trực tiếp fail thì retry QUA PROXY HK (như hm). Timeout ngắn
     // ở lần trực tiếp để fail nhanh sang proxy.
     let buf;
     try {
-      buf = await duanju.downloadToBuffer(resolved.mp4Url, { useProxy: provider === "hm", timeout: 60000, retries: 2 });
+      buf = await duanju.downloadToBuffer(resolved.mp4Url, { useProxy: !fromUrl && provider === "hm", timeout: 60000, retries: 2 });
     } catch (e1) {
+      if (fromUrl) throw e1; // CDN của mình mà tải không được thì đi qua tunnel cũng vậy
       buf = await duanju.downloadToBuffer(resolved.mp4Url, { useProxy: true, timeout: 120000, retries: 3 });
     }
 
@@ -221,7 +225,7 @@ async function renderEpisodeInner({ series, provider, sourceId, ep }) {
           coin: ep.index < freeLimit ? 0 : 10,
           isLocked: ep.index >= freeLimit,
           sourceProvider: `52api-${provider}`,
-          sourceVideoId: ep.videoId,
+          sourceVideoId: ep.videoId || (prevDoc && prevDoc.sourceVideoId) || "",
           subLang,
           subTracks,
           subVersion: subTracks.length ? subVersion : ((prevDoc && prevDoc.subVersion) || 0),

@@ -100,7 +100,16 @@ async function findPendingWork() {
 
     if (missing.length || drift.length) {
       work.push({
-        series: { _id: m._id, name: m.name, thumbnail: m.thumbnail || "" },
+        // Phải mang theo mức chữ Hán đã chốt của phim: render.js đọc series.zhBottomRatio để
+        // đặt dòng phụ đề. Thiếu hai field này thì tập nào OCR không tự đo được vị trí sẽ bị
+        // bỏ, dù phim đã chốt mức từ lâu — cả trăm tập rơi mỗi vòng quét mà không ai hiểu vì sao.
+        series: {
+          _id: m._id,
+          name: m.name,
+          thumbnail: m.thumbnail || "",
+          zhBottomRatio: typeof m.zhBottomRatio === "number" ? m.zhBottomRatio : null,
+          zhBottomSource: m.zhBottomSource || "",
+        },
         provider,
         sourceId,
         episodes,

@@ -199,3 +199,34 @@ sleep 90 && grep "quét:" ~/247drama-worker/logs/worker.log | tail -1
 
 **Xong là đúng khi**: dòng `quét:` báo khoảng 20 phim, và log chỉ hiện dòng `[render] ✓ hg:…`,
 không còn dòng nào bắt đầu bằng `hm:`.
+
+---
+
+## 10. Cổng lên app và cách sửa tập hỏng (từ 21/08/2026)
+
+Phim **chỉ hiện trên app khi đủ tập và không tập nào hỏng**. Backend tự chấm lại cả kho mỗi 2
+phút và ghi vào từng phim: cờ `isComplete` + `completeness.reason` (lý do bị giữ) +
+`completeness.badEps` (danh sách số tập hỏng). Máy render xong tập cuối thì phim tự lên app
+trong vòng 2 phút, không ai phải bấm gì.
+
+**Tập hỏng** = mất link video, hoặc không có lấy một dòng phụ đề Việt (không track `vi`, cũng
+không `burnedLang`). Những tập này đã có bản ghi nên vòng quét cũ coi như xong và không bao giờ
+làm lại — phim vì thế kẹt ngoài app vĩnh viễn. Nay `work.js` đọc `completeness.badEps` và đưa
+chúng vào danh sách cần render lại.
+
+Sửa ngay, không chờ vòng quét:
+
+```bash
+cd ~/247drama-worker
+node scripts/redo-bad.js --dry                    # xem sẽ sửa những tập nào
+node scripts/redo-bad.js                          # sửa hết (2 luồng)
+node scripts/redo-bad.js hm:41000147903           # chỉ một phim
+```
+
+Điểm quan trọng: script **không tải lại từ nguồn**. Bản mp4 của những tập đó đã nằm trên R2 của
+mình và còn nguyên chữ Trung, nên chỉ cần OCR lại. Nhờ vậy sửa được cả phim nguồn `hg` dù 52api
+đã hết quota `hg_play` và luồng hg giờ chỉ còn bytevc1 không giải mã nổi. Script cũng nhận phần
+qua `renderclaims` như worker nên chạy song song với daemon không đụng nhau.
+
+Xem phim nào đang bị giữ và vì sao: mở http://103.179.185.196/uploads/ops.html — cột **"Trên
+app"** ghi rõ từng phim ("mới có 21/52 tập", "3 tập lỗi (tập 24, 27, 61)"...).

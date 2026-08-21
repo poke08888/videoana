@@ -164,6 +164,26 @@ async function runPass() {
   return totalMissing;
 }
 
+// Tắt daemon là phải kéo theo cả đám tiến trình con. OCR (python) và ffmpeg do execFile đẻ ra
+// nằm ngoài vòng đời của node: giết mỗi node thì chúng thành mồ côi (ppid=1) và VẪN chạy tới
+// khi xong — mỗi tiến trình ~60% một nhân. Đã gặp: 9 tiến trình OCR mồ côi sau vài lần khởi
+// động lại, tải máy lên 33, mọi thứ chậm như rùa mà log không hề báo gì.
+function killChildren() {
+  try {
+    require("child_process").execSync(`pkill -P ${process.pid}`, { stdio: "ignore" });
+  } catch (e) {
+    // không có con nào để giết -> pkill trả mã khác 0, kệ nó
+  }
+}
+for (const sig of ["SIGTERM", "SIGINT", "SIGHUP"]) {
+  process.on(sig, () => {
+    console.log(`[worker] nhận ${sig} -> dọn tiến trình con rồi thoát`);
+    killChildren();
+    process.exit(0);
+  });
+}
+process.on("exit", killChildren);
+
 async function main() {
   // Fail-fast: nếu workDir nằm trên /Volumes (ổ ngoài) thì XÁC MINH đã mount thật, KHÔNG chỉ mkdir.
   // Vì mkdir -p sẽ "thành công" bằng cách tạo thư mục trên ổ CHÍNH khi ổ ngoài chưa mount ->
