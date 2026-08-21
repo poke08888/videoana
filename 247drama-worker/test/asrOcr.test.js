@@ -4,8 +4,9 @@ const { scoreSegments, shouldWiden, MIN_CN_SEGS } = require("../util/asrOcr");
 
 const cn = (n) => Array.from({ length: n }, (_, i) => ({ text: `中文câu${i}` }));
 
-test("đếm đúng số câu có chữ Hán, bỏ qua câu rác không dấu Hán", () => {
+test("đếm đúng số câu dùng được, bỏ qua câu rác và chữ Hán lẻ 1 ký tự", () => {
   assert.strictEqual(scoreSegments([{ text: "中文" }, { text: "MV" }, { text: "" }, { text: "3" }]), 1);
+  assert.strictEqual(scoreSegments([{ text: "中" }]), 0, "một chữ Hán lẻ không phải câu thoại");
   assert.strictEqual(scoreSegments([]), 0);
   assert.strictEqual(scoreSegments(null), 0);
   assert.strictEqual(scoreSegments([{ text: null }, {}]), 0);

@@ -17,16 +17,23 @@ const SCRIPT = path.join(__dirname, "..", "scripts", "ocr_subs.py");
 // video có phụ đề đầy đủ.
 const WIDE_Y0 = 0.5;
 const WIDE_Y1 = 0.98;
-// Dưới ngưỡng này coi như dải thường "không thấy gì": một tập phim ngắn bình thường có hàng
-// chục câu, đọc được 1-2 câu nghĩa là đang bắt nhầm chữ vụn (watermark, số hiệu) chứ không
-// phải phụ đề.
-const MIN_CN_SEGS = 5;
+// Dưới ngưỡng này coi như dải thường "không thấy gì": một tập phim ngắn bình thường có 30-80
+// câu thoại, đọc được chưa tới 10 câu nghĩa là đang bắt nhầm chữ vụn (biển hiệu, watermark,
+// số hiệu) chứ không phải phụ đề. Phim đặt chữ ngay rìa dải (đáy ~0,83) lọt được vài câu vào
+// dải thường nên KHÔNG bị coi là rỗng, rồi bị lọc sạch ở bước làm sạch — tập chết với thông
+// báo "OCR không đọc được phụ đề nào" mà chẳng ai biết chỉ cần quét rộng ra một chút.
+const MIN_CN_SEGS = 10;
 
-const hasCn = (t) => /[\u4e00-\u9fff]/.test(String(t || ""));
+// Đúng phép lọc mà cleanOcrSegs dùng: có chữ Hán và dài từ 2 ký tự. Đếm bằng thước khác thì
+// lượt quét "đủ câu" ở đây lại thành rỗng ở bước sau.
+const isRealLine = (t) => {
+  const s = String(t || "");
+  return /[\u4e00-\u9fff]/.test(s) && s.replace(/\s/g, "").length >= 2;
+};
 
-// Số câu thật sự có chữ Hán — thước đo "lượt quét này có đọc được phụ đề không".
+// Số câu thật sự dùng được — thước đo "lượt quét này có đọc được phụ đề không".
 function scoreSegments(segments) {
-  return (segments || []).filter((s) => hasCn(s && s.text)).length;
+  return (segments || []).filter((s) => isRealLine(s && s.text)).length;
 }
 
 // Có cần quét lại dải rộng không. Đo được vị trí mà vẫn quá ít câu thì vẫn phải quét lại:
