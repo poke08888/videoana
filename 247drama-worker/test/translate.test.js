@@ -15,7 +15,7 @@ test("Gemini trả đúng số dòng -> gán 1:1 theo vị trí", async () => {
   assert.deepStrictEqual(r.map((s) => s.start), [0, 1, 2]); // timestamp giữ nguyên
 });
 
-test("Gemini gộp dòng -> chẻ đôi lô hỏi lại, chỉ câu gây rối mới giữ gốc", async () => {
+test("Gemini gộp dòng -> chẻ đôi lô hỏi lại, chỉ câu gây rối mới bị bỏ trống", async () => {
   // Trả thiếu 1 dòng cho mọi lô có chứa câu số 2; lô khác trả đúng.
   const ask = (p) => {
     const lines = linesOf(p);
@@ -25,7 +25,7 @@ test("Gemini gộp dòng -> chẻ đôi lô hỏi lại, chỉ câu gây rối m
     return JSON.stringify(Array.from({ length: n }, (_, i) => `v:${lines[i]}`));
   };
   const r = await translateSegments(segs(4), { apiKey: "x", batchSize: 4, ask });
-  assert.strictEqual(r[1].text, "中文2", "câu hỏng giữ nguyên tiếng Trung");
+  assert.strictEqual(r[1].text, "", "câu không dịch được phải để TRỐNG, không giữ chữ Hán");
   for (const i of [0, 2, 3]) {
     assert.ok(r[i].text.startsWith("v:"), `câu ${i + 1} phải được dịch, đang là ${r[i].text}`);
   }
@@ -37,14 +37,14 @@ test("một câu mà Gemini trả nhiều mảnh -> nối lại, không rơi câ
   assert.strictEqual(r[0].text, "nửa đầu nửa sau");
 });
 
-test("gọi Gemini hỏng hoàn toàn -> giữ nguyên toàn bộ câu gốc, không ném lỗi", async () => {
+test("gọi Gemini hỏng hoàn toàn -> mọi câu để trống, không ném lỗi (langRules sẽ chặn tập)", async () => {
   const r = await translateSegments(segs(2), {
     apiKey: "x",
     ask: () => {
       throw new Error("mạng hỏng");
     },
   });
-  assert.deepStrictEqual(r.map((s) => s.text), ["中文1", "中文2"]);
+  assert.deepStrictEqual(r.map((s) => s.text), ["", ""]);
 });
 
 test("chẻ lô không làm lệch thứ tự", async () => {

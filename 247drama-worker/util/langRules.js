@@ -9,6 +9,11 @@ const THAI = /[฀-๿]/;
 
 const HAN_LIMIT = 0.05; // quá 5% số dòng còn chữ Hán = dịch hụt
 const SCRIPT_MIN = 0.5; // dưới 50% số dòng đúng bảng chữ = model trả sai ngôn ngữ
+// Câu nào không dịch được thì translateSegments để TRỐNG (xem util/translate.js). Vài câu
+// trống là bình thường — chữ vụn OCR đọc nhầm. Nhưng trống quá nhiều nghĩa là Gemini chết
+// giữa chừng hoặc hết quota: phải chặn, không thì tập lên với bản phụ đề rỗng hoác mà mọi
+// phép thử khác đều "đạt" (đo chữ Hán trên tập rỗng thì ra 0%).
+const BLANK_LIMIT = 0.2;
 
 const LANGS = {
   vi: { name: "tiếng Việt", script: null },
@@ -44,6 +49,10 @@ function checkTrack(lang, segs, zhCount) {
   if (s.length !== zhCount) {
     return { ok: false, reason: `số cue ${lang} (${s.length}) khác số dòng OCR (${zhCount})` };
   }
+  const blank = zhCount ? (zhCount - lines(s).length) / zhCount : 1;
+  if (blank >= BLANK_LIMIT) {
+    return { ok: false, reason: `bản dịch ${lang} rỗng: ${Math.round(blank * 100)}% số dòng không dịch được` };
+  }
   const han = ratio(s, HAN);
   if (han >= HAN_LIMIT) {
     return { ok: false, reason: `bản dịch ${lang} hụt: ${Math.round(han * 100)}% số dòng còn chữ Hán` };
@@ -58,4 +67,4 @@ function checkTrack(lang, segs, zhCount) {
   return { ok: true, reason: "" };
 }
 
-module.exports = { LANGS, langName, isSupported, checkTrack, HAN_LIMIT, SCRIPT_MIN };
+module.exports = { LANGS, langName, isSupported, checkTrack, HAN_LIMIT, SCRIPT_MIN, BLANK_LIMIT };

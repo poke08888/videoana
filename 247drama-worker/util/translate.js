@@ -111,12 +111,17 @@ async function translateSegments(segments, opts = {}) {
   for (let i = 0; i < segments.length; i += batchSize) {
     const batch = segments.slice(i, i + batchSize);
     const out = await translateChunk(batch);
-    let kept = 0;
+    let bỏ = 0;
     for (let k = 0; k < batch.length; k++) {
-      if (out[k]) result[i + k].text = out[k];
-      else kept++;
+      // Câu nào chịu không dịch được thì để TRỐNG, không giữ lại tiếng Trung. Chỗ này gần
+      // như luôn là chữ vụn OCR đọc nhầm (biển hiệu, chữ chạy) — Gemini trả về y nguyên vì
+      // không có gì để dịch. Giữ lại thì người xem Việt thấy chữ Hán, mà tệ hơn: chỉ vài câu
+      // như vậy đã vượt ngưỡng 5% của nghi thức nghiệm thu và cả tập bị đánh rớt. Cue vẫn
+      // còn (số cue phải khớp số dòng OCR), nhưng rỗng nên segsToVtt bỏ qua khi dựng .vtt.
+      result[i + k].text = out[k] || "";
+      if (!out[k]) bỏ++;
     }
-    if (kept) console.warn(`[translate] lô ${i + 1}-${i + batch.length}: ${kept} câu không dịch được -> giữ gốc`);
+    if (bỏ) console.warn(`[translate] lô ${i + 1}-${i + batch.length}: ${bỏ} câu không dịch được -> để trống`);
   }
   return result;
 }

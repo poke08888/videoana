@@ -16,9 +16,9 @@ function cleanOcrSegs(segs) {
   );
 }
 
-// Tỉ lệ dòng CÒN chữ Hán trong kết quả "đã dịch". translateSegments giữ nguyên text gốc
-// khi một lô dịch hụt, nên key Gemini chết/hết quota sẽ cho ra bản "dịch" y hệt tiếng Trung
-// mà không ném lỗi — tập vẫn lên như thành công. Đo lại để chặn.
+// Tỉ lệ dòng CÒN chữ Hán trong kết quả "đã dịch". Gemini có thể trả về y nguyên tiếng Trung
+// mà không ném lỗi (hết quota, model từ chối) — tập sẽ lên như thành công nếu không đo lại.
+// Câu không dịch được thì translateSegments để trống, phần đó do BLANK_LIMIT trong langRules bắt.
 function hanRatio(segs) {
   const lines = (segs || []).filter((s) => s && s.text && String(s.text).trim());
   if (!lines.length) return 1;
@@ -28,8 +28,8 @@ function hanRatio(segs) {
 
 /**
  * Nghi thức nghiệm thu trước khi publish một tập: mỗi track phải ĐỦ dòng và THẬT SỰ đã dịch
- * đúng ngôn ngữ của nó (translateSegments giữ nguyên text gốc cho lô nào hụt, nên chỉ đếm
- * "có kết quả" là không đủ).
+ * đúng ngôn ngữ của nó (chỉ đếm "có kết quả" là không đủ: bản dịch có thể còn nguyên tiếng
+ * Trung, hoặc rỗng hoác vì Gemini chết giữa chừng).
  *
  * Ngôn ngữ chính hụt -> cả tập không đạt (thà chậm còn hơn đẩy tập không ai đọc được).
  * Ngôn ngữ phụ hụt -> chỉ bỏ track đó, tập vẫn lên với các ngôn ngữ còn lại.

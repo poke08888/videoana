@@ -48,3 +48,22 @@ test("tên ngôn ngữ để nhắc model, mã lạ thì trả lại chính nó"
   assert.strictEqual(isSupported("id"), true);
   assert.strictEqual(isSupported("xx"), false);
 });
+
+test("câu không dịch được để trống: vài câu thì vẫn nhận", () => {
+  const segs = Array.from({ length: 20 }, (_, i) => ({ text: i < 2 ? "" : "câu tiếng Việt" }));
+  assert.strictEqual(checkTrack("vi", segs, 20).ok, true);
+});
+
+test("track rỗng quá nửa -> đánh rớt, không để tập lên với phụ đề trắng", () => {
+  const segs = Array.from({ length: 20 }, (_, i) => ({ text: i < 12 ? "" : "câu tiếng Việt" }));
+  const r = checkTrack("vi", segs, 20);
+  assert.strictEqual(r.ok, false);
+  assert.match(r.reason, /rỗng/);
+});
+
+test("Gemini chết hẳn -> mọi câu trống -> đánh rớt (trước đây lọt vì đo chữ Hán ra 0%)", () => {
+  const segs = Array.from({ length: 10 }, () => ({ text: "" }));
+  const r = checkTrack("vi", segs, 10);
+  assert.strictEqual(r.ok, false);
+  assert.match(r.reason, /100% số dòng không dịch được/);
+});
