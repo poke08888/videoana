@@ -50,7 +50,13 @@ function runOcr(videoPath, { fps, y0, y1, minConf, env, timeoutMs }) {
       [SCRIPT, videoPath, String(fps), String(y0), String(y1), String(minConf)],
       { maxBuffer: 64 * 1024 * 1024, timeout: timeoutMs, env },
       (err, stdout, stderr) => {
-        if (err) return reject(new Error("OCR fail: " + tailErr(stderr || err.message)));
+        if (err) {
+          // Tiến trình OCR chết vì tín hiệu (hết bộ nhớ, ONNX sập khi chạy quá nhiều luồng)
+          // thì stderr RỖNG, chỉ còn "Command failed: <lệnh dài>" — đọc log không biết gì.
+          // Ghi rõ tín hiệu/mã thoát để lần sau còn lần ra.
+          const how = err.signal ? `bị giết bằng ${err.signal}` : `mã thoát ${err.code}`;
+          return reject(new Error(`OCR fail (${how}): ` + tailErr(stderr || "không có stderr")));
+        }
         try {
           const parsed = JSON.parse(String(stdout || "").trim());
           // Định dạng mới: {segments, chineseBottomRatio}. Cũ: mảng segments.
