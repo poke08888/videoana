@@ -56,18 +56,19 @@ async function translateSegments(segments, opts = {}) {
     sourceLang = "zh",
     targetLang = "vi",
     batchSize = 20,
+    ask, // chỉ dùng cho test: thay chỗ gọi Gemini
   } = opts;
-  if (!apiKey) throw new Error("thiếu geminiApiKey");
+  if (!apiKey && !ask) throw new Error("thiếu geminiApiKey");
   if (!segments.length) return [];
 
   const result = segments.map((s) => ({ ...s }));
   const srcName = langName(sourceLang);
   const dstName = langName(targetLang);
 
-  for (let i = 0; i < segments.length; i += batchSize) {
-    const batch = segments.slice(i, i + batchSize);
+  // Hỏi Gemini một lô -> mảng chuỗi, hoặc null nếu gọi/parse hỏng.
+  async function askGemini(batch) {
     // Đánh số 1..N; ép Gemini dịch ĐÚNG 1:1 theo dòng, KHÔNG gộp/tách/đổi thứ tự
-    // (giữ đồng bộ với timestamp của whisper -> phụ đề không lệch).
+    // (giữ đồng bộ với timestamp -> phụ đề không lệch).
     const numbered = batch.map((s, j) => `${j + 1}. ${s.text}`).join("\n");
     const prompt =
       `Bạn là dịch giả phụ đề phim ngắn. Dịch từng câu thoại sau từ ${srcName} sang ${dstName} ` +
@@ -75,24 +76,47 @@ async function translateSegments(segments, opts = {}) {
       `QUAN TRỌNG: dịch ĐÚNG ${batch.length} dòng, MỖI dòng vào 1 phần tử, GIỮ NGUYÊN thứ tự, ` +
       `TUYỆT ĐỐI không gộp/tách/thêm/bớt dòng (kể cả câu ngắn hay lặp).\n` +
       `Chỉ trả về JSON array gồm ĐÚNG ${batch.length} chuỗi ${dstName}, không thêm gì khác.\n\n${numbered}`;
-
-    let arr = null;
     try {
-      const raw = await callGemini({ apiKey, model, prompt, json: true });
-      const parsed = JSON.parse(stripCodeFence(raw));
-      if (Array.isArray(parsed)) arr = parsed.map((x) => (typeof x === "string" ? x : x && (x.t || x.vi || x.text) || ""));
+      const raw = ask ? await ask(prompt, batch) : await callGemini({ apiKey, model, prompt, json: true });
+      const parsed = typeof raw === "string" ? JSON.parse(stripCodeFence(raw)) : raw;
+      if (!Array.isArray(parsed)) return null;
+      return parsed.map((x) => (typeof x === "string" ? x : (x && (x.t || x.vi || x.text)) || ""));
     } catch (e) {
-      console.error(`[translate] lô ${i + 1}-${i + batch.length} lỗi:`, e.message);
+      console.error(`[translate] lô ${batch.length} dòng lỗi:`, e.message);
+      return null;
     }
+  }
 
+  // Trả mảng ĐÚNG BẰNG độ dài lô; phần tử null = không dịch được, giữ nguyên câu gốc.
+  //
+  // Gemini thỉnh thoảng gộp hai câu ngắn làm một (trả 19 dòng cho lô 20). Trước đây cả lô bị
+  // giữ nguyên tiếng Trung — 20 câu Hán lọt vào track "vi" là đủ để nghi thức nghiệm thu đánh
+  // rớt cả track, và tập coi như hỏng. Nay chẻ đôi lô rồi hỏi lại: chỗ nào Gemini dịch đúng số
+  // dòng thì giữ, chỉ đúng câu gây rối mới phải bỏ.
+  async function translateChunk(batch) {
+    const arr = await askGemini(batch);
     if (arr && arr.length === batch.length) {
-      // 1:1 hoàn hảo -> gán theo vị trí (đồng bộ chuẩn với timestamp).
-      for (let k = 0; k < batch.length; k++) if (arr[k]) result[i + k].text = String(arr[k]).trim();
-    } else {
-      // Số dòng KHÔNG khớp -> Gemini đã gộp/tách -> KHÔNG gán theo vị trí (sẽ lệch).
-      // An toàn: giữ tiếng Trung cho cả lô để không sai câu (thà chưa dịch còn hơn lệch).
-      console.warn(`[translate] lô ${i + 1}-${i + batch.length}: Gemini trả ${arr ? arr.length : "?"} != ${batch.length} dòng -> giữ gốc lô này`);
+      return arr.map((x) => (x ? String(x).trim() : null));
     }
+    if (batch.length === 1) {
+      // Một câu mà trả về nhiều mảnh -> nối lại, vẫn đúng câu đó.
+      const joined = arr && arr.length ? arr.map((x) => String(x).trim()).filter(Boolean).join(" ") : "";
+      return [joined || null];
+    }
+    const mid = Math.ceil(batch.length / 2);
+    const [a, b] = [await translateChunk(batch.slice(0, mid)), await translateChunk(batch.slice(mid))];
+    return [...a, ...b];
+  }
+
+  for (let i = 0; i < segments.length; i += batchSize) {
+    const batch = segments.slice(i, i + batchSize);
+    const out = await translateChunk(batch);
+    let kept = 0;
+    for (let k = 0; k < batch.length; k++) {
+      if (out[k]) result[i + k].text = out[k];
+      else kept++;
+    }
+    if (kept) console.warn(`[translate] lô ${i + 1}-${i + batch.length}: ${kept} câu không dịch được -> giữ gốc`);
   }
   return result;
 }
