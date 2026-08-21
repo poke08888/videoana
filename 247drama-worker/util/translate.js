@@ -1,6 +1,19 @@
 const axios = require("axios");
 const { langName } = require("./langRules");
 
+const HAN = /[\u4e00-\u9fff]/;
+
+// Gemini nhiều khi trả lại NGUYÊN câu tiếng Trung thay vì dịch — hay gặp với chữ vụn OCR đọc
+// nhầm, tên riêng, hoặc câu chỉ có một hai chữ. Đúng số dòng nên nhìn như dịch thành công,
+// nhưng người xem Việt thì thấy chữ Hán, và chỉ vài câu như vậy đã vượt ngưỡng 5% khiến cả
+// tập bị đánh rớt. Coi như chưa dịch được câu đó.
+function isTranslated(text, targetLang) {
+  const t = String(text || "").trim();
+  if (!t) return false;
+  if (targetLang === "zh") return true;
+  return !HAN.test(t);
+}
+
 const GEMINI_HOST = "https://generativelanguage.googleapis.com/v1beta/models";
 
 function endpoint(model, apiKey) {
@@ -96,12 +109,12 @@ async function translateSegments(segments, opts = {}) {
   async function translateChunk(batch) {
     const arr = await askGemini(batch);
     if (arr && arr.length === batch.length) {
-      return arr.map((x) => (x ? String(x).trim() : null));
+      return arr.map((x) => (isTranslated(x, targetLang) ? String(x).trim() : null));
     }
     if (batch.length === 1) {
       // Một câu mà trả về nhiều mảnh -> nối lại, vẫn đúng câu đó.
       const joined = arr && arr.length ? arr.map((x) => String(x).trim()).filter(Boolean).join(" ") : "";
-      return [joined || null];
+      return [isTranslated(joined, targetLang) ? joined : null];
     }
     const mid = Math.ceil(batch.length / 2);
     const [a, b] = [await translateChunk(batch.slice(0, mid)), await translateChunk(batch.slice(mid))];
@@ -154,4 +167,4 @@ function stripCodeFence(s) {
     .trim();
 }
 
-module.exports = { translateSegments, translateText };
+module.exports = { translateSegments, translateText, isTranslated };

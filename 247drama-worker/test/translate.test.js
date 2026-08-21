@@ -22,7 +22,8 @@ test("Gemini gộp dòng -> chẻ đôi lô hỏi lại, chỉ câu gây rối m
     const hasBad = lines.some((l) => l.includes("中文2"));
     const n = hasBad && lines.length > 1 ? lines.length - 1 : lines.length;
     if (hasBad && lines.length === 1) return JSON.stringify([]); // câu số 2: chịu, không dịch được
-    return JSON.stringify(Array.from({ length: n }, (_, i) => `v:${lines[i]}`));
+    // bản "dịch" giả phải KHÔNG còn chữ Hán, nếu không sẽ bị coi là chưa dịch
+    return JSON.stringify(Array.from({ length: n }, (_, i) => `v:${lines[i].split(".")[0]}`));
   };
   const r = await translateSegments(segs(4), { apiKey: "x", batchSize: 4, ask });
   assert.strictEqual(r[1].text, "", "câu không dịch được phải để TRỐNG, không giữ chữ Hán");
@@ -62,4 +63,18 @@ test("không có segment nào -> trả mảng rỗng, không gọi Gemini", asyn
   const r = await translateSegments([], { apiKey: "x", ask: () => (called++, "[]") });
   assert.deepStrictEqual(r, []);
   assert.strictEqual(called, 0);
+});
+
+test("Gemini trả lại nguyên tiếng Trung -> coi như chưa dịch, để trống", async () => {
+  const { isTranslated } = require("../util/translate");
+  assert.strictEqual(isTranslated("你们用偷窃之物", "vi"), false);
+  assert.strictEqual(isTranslated("Xin chào", "vi"), true);
+  assert.strictEqual(isTranslated("你好", "zh"), true, "dịch sang tiếng Trung thì chữ Hán là đúng");
+  assert.strictEqual(isTranslated("", "vi"), false);
+
+  const r = await translateSegments(segs(2), {
+    apiKey: "x",
+    ask: () => JSON.stringify(["Câu đã dịch", "中文2"]),
+  });
+  assert.deepStrictEqual(r.map((s) => s.text), ["Câu đã dịch", ""]);
 });
