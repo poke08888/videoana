@@ -14,6 +14,10 @@ const SCRIPT_MIN = 0.5; // dưới 50% số dòng đúng bảng chữ = model tr
 // giữa chừng hoặc hết quota: phải chặn, không thì tập lên với bản phụ đề rỗng hoác mà mọi
 // phép thử khác đều "đạt" (đo chữ Hán trên tập rỗng thì ra 0%).
 const BLANK_LIMIT = 0.2;
+// ...nhưng tính theo tỉ lệ thì tập ngắn bị oan: có tập chỉ 5 câu thoại, hụt ĐÚNG MỘT câu đã
+// là 20%. Gặp thật ở "Đích Nữ Trùng Sinh" tập 88 (phim 151 tập, tập dài trung bình 61 giây).
+// Nên luôn tha tối đa 2 câu trống, quá đó mới xét tỉ lệ.
+const BLANK_FREE = 2;
 
 const LANGS = {
   vi: { name: "tiếng Việt", script: null },
@@ -49,9 +53,10 @@ function checkTrack(lang, segs, zhCount) {
   if (s.length !== zhCount) {
     return { ok: false, reason: `số cue ${lang} (${s.length}) khác số dòng OCR (${zhCount})` };
   }
-  const blank = zhCount ? (zhCount - lines(s).length) / zhCount : 1;
-  if (blank >= BLANK_LIMIT) {
-    return { ok: false, reason: `bản dịch ${lang} rỗng: ${Math.round(blank * 100)}% số dòng không dịch được` };
+  const trống = zhCount - lines(s).length;
+  const blank = zhCount ? trống / zhCount : 1;
+  if (trống > BLANK_FREE && blank >= BLANK_LIMIT) {
+    return { ok: false, reason: `bản dịch ${lang} rỗng: ${trống}/${zhCount} dòng không dịch được (${Math.round(blank * 100)}%)` };
   }
   const han = ratio(s, HAN);
   if (han >= HAN_LIMIT) {
@@ -67,4 +72,4 @@ function checkTrack(lang, segs, zhCount) {
   return { ok: true, reason: "" };
 }
 
-module.exports = { LANGS, langName, isSupported, checkTrack, HAN_LIMIT, SCRIPT_MIN, BLANK_LIMIT };
+module.exports = { LANGS, langName, isSupported, checkTrack, HAN_LIMIT, SCRIPT_MIN, BLANK_LIMIT, BLANK_FREE };

@@ -61,9 +61,19 @@ test("track rỗng quá nửa -> đánh rớt, không để tập lên với ph�
   assert.match(r.reason, /rỗng/);
 });
 
+test("tập ngắn chỉ 5 câu, hụt 1 câu -> VẪN NHẬN (20% nhưng chỉ đúng một câu)", () => {
+  const segs = [{ text: "" }, { text: "a" }, { text: "b" }, { text: "c" }, { text: "d" }];
+  assert.strictEqual(checkTrack("vi", segs, 5).ok, true);
+});
+
+test("tập ngắn hụt quá 2 câu -> đánh rớt", () => {
+  const segs = [{ text: "" }, { text: "" }, { text: "" }, { text: "c" }, { text: "d" }];
+  assert.strictEqual(checkTrack("vi", segs, 5).ok, false);
+});
+
 test("Gemini chết hẳn -> mọi câu trống -> đánh rớt (trước đây lọt vì đo chữ Hán ra 0%)", () => {
   const segs = Array.from({ length: 10 }, () => ({ text: "" }));
   const r = checkTrack("vi", segs, 10);
   assert.strictEqual(r.ok, false);
-  assert.match(r.reason, /100% số dòng không dịch được/);
+  assert.match(r.reason, /10\/10 dòng không dịch được/);
 });
