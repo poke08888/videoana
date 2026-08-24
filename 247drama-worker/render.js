@@ -76,7 +76,10 @@ async function renderEpisodeInner({ series, provider, sourceId, ep, fromUrl }) {
 
   // freeLimit đọc TẠI THỜI ĐIỂM CHẠY (sau db.loadSettings, khi global.settingJSON đã có).
   // Tính ở module-load sẽ =1 vì settingJSON chưa nạp -> khoá nhầm tập 1-5.
-  const freeLimit = ((global.settingJSON && global.settingJSON.freeEpisodesForNonVip) || 0) + 1; // =6
+  // LUẬT CHUNG: N tập đầu của mọi phim đều miễn phí, N lấy từ Setting nên đổi một chỗ là cả
+  // kho theo. Số tập đánh từ 0 nên freeLimit = số trong Setting + 1: lưu 9 = miễn phí 10 tập
+  // đầu. Muốn đổi luật thì chạy scripts/apply-free-episodes.js (sửa Setting + áp lại kho cũ).
+  const freeLimit = ((global.settingJSON && global.settingJSON.freeEpisodesForNonVip) || 0) + 1;
 
   try {
     // 1) resolve + tải mp4 gốc (hm qua proxy)

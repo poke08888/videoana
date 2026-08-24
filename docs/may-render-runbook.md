@@ -230,3 +230,29 @@ qua `renderclaims` như worker nên chạy song song với daemon không đụng
 
 Xem phim nào đang bị giữ và vì sao: mở http://103.179.185.196/uploads/ops.html — cột **"Trên
 app"** ghi rõ từng phim ("mới có 21/52 tập", "3 tập lỗi (tập 24, 27, 61)"...).
+
+---
+
+## 11. Luật miễn phí 10 tập đầu (từ 24/08/2026)
+
+**Mọi phim đều mở miễn phí 10 tập đầu**, tập 11 trở đi khoá 10 xu. Luật nằm ở
+`Setting.freeEpisodesForNonVip` nên chỉ có một chỗ để đổi, và được thi hành tự động ở cả hai
+đường tạo tập:
+
+- worker (`render.js`): render xong tập nào là đặt `coin`/`isLocked` theo luật ngay — phim mới
+  lên là đã đúng, không ai phải sửa tay;
+- backend admin (thêm / xoá / đổi thứ tự tập) cũng đọc đúng setting đó.
+
+**Con số dễ nhầm**: tập đánh số từ 0 và cả hai chỗ đều tính `freeLimit = setting + 1`, nên
+**muốn 10 tập đầu miễn phí thì Setting phải là 9**.
+
+Đổi luật (ví dụ sang 5 tập):
+
+```bash
+cd ~/247drama-worker
+node scripts/apply-free-episodes.js --dry     # xem sẽ mở/khoá bao nhiêu tập
+node scripts/apply-free-episodes.js --so 5    # đổi Setting + áp lại cho toàn kho phim cũ
+```
+
+Script nhận **số tập miễn phí** (5, 10...) và tự quy đổi sang con số lưu trong Setting. Chạy
+xong nhớ `pm2 reload backend` trên server: backend giữ setting trong RAM từ lúc khởi động.
