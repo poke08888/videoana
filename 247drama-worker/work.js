@@ -69,6 +69,7 @@ async function findPendingWork() {
     .lean();
 
   const work = [];
+  const hếtQuota = new Set(); // nguồn nào đã báo hết quota trong vòng quét này
   for (const m of movies) {
     const { provider, sourceId } = extract52apiSource(m);
     if (!provider || !sourceId) continue;
@@ -76,11 +77,20 @@ async function findPendingWork() {
     // render là phí thời gian lẫn quota.
     if (!env.providers.includes(provider)) continue;
 
+    // Nguồn đã báo hết quota thì bỏ qua luôn cả nguồn đó trong vòng này: hỏi tiếp cũng chỉ
+    // nhận đúng câu trả lời ấy, mà mỗi lượt vẫn ăn 3,2 giây throttle.
+    if (hếtQuota.has(provider)) continue;
+
     let info;
     try {
       info = await duanju.detail(provider, sourceId); // đi qua throttle 52api
     } catch (e) {
-      console.error(`[work] detail lỗi ${provider}:${sourceId}:`, e.message);
+      if (e.outOfQuota) {
+        hếtQuota.add(provider);
+        console.error(`[work] nguồn ${provider} HẾT QUOTA 52api -> bỏ qua mọi phim ${provider} vòng này (${e.message})`);
+      } else {
+        console.error(`[work] detail lỗi ${provider}:${sourceId}:`, e.message);
+      }
       continue;
     }
     const episodes = info.episodes || [];

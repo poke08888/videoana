@@ -115,6 +115,10 @@ async function apiGet(baseUrl, params) {
   if (!body || body.code !== 200) {
     const err = new Error(`52api trả lỗi: ${body ? body.msg : "no body"} (code ${body ? body.code : "?"})`);
     err.apiCode = body ? body.code : undefined;
+    // "超出免费总额度" = hết quota miễn phí của key. Đánh dấu để bên gọi biết mà DỪNG, đừng
+    // hỏi tiếp: đã có 22.883 lượt gọi hỏng vì lý do này nằm trong log, mỗi vòng quét lại nện
+    // thêm một lượt cho từng phim.
+    err.outOfQuota = /超出免费总额度|额度/.test(String(body && body.msg));
     throw err;
   }
   return body.data;
