@@ -51,3 +51,12 @@ test("buildScriptPrompt cấm trích dẫn chữ trên nhãn (prompt đè lên �
   const p = buildScriptPrompt({ productName: "X", industry: "food", shots: 3, clipLen: 8, maxSyllables: 38, hasBackground: true });
   assert.match(p, /KHÔNG.*(trích|chép|ghi lại|viết lại).*chữ/i);
 });
+
+test("buildScriptPrompt: số cảnh 'auto' → bảo AI tự quyết, không ép con số", () => {
+  const a = buildScriptPrompt({ productName: "X", industry: "food", shots: "auto", clipLen: 8, maxSyllables: 38, hasBackground: true });
+  assert.match(a, /tự quyết|tự chọn/i);
+  assert.match(a, /1[–-]8|tối đa 8/, "vẫn phải nêu trần 8 cảnh");
+  assert.ok(!/đúng \d+ cảnh/.test(a), "không được ép 'đúng N cảnh'");
+  const b = buildScriptPrompt({ productName: "X", industry: "food", shots: 5, clipLen: 8, maxSyllables: 38, hasBackground: true });
+  assert.match(b, /đúng 5 cảnh/, "khi có số thì vẫn ép đúng số đó");
+});

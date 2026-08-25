@@ -47,11 +47,11 @@ export function validateScript(raw: any, o: { maxSyllables: number }): { ok: tru
   return { ok: true, script: { shots, caption: String(raw?.caption || "").trim(), hashtags, cover_idx: Number.isInteger(cover) && cover >= 0 && cover < shots.length ? cover : 0 } };
 }
 
-export function buildScriptPrompt(a: { productName: string; industry: string; shots: number; clipLen: number; maxSyllables: number; hasBackground: boolean; notes?: string; autopsy?: string }): string {
+export function buildScriptPrompt(a: { productName: string; industry: string; shots: number | "auto"; clipLen: number; maxSyllables: number; hasBackground: boolean; notes?: string; autopsy?: string }): string {
   return `Bạn là biên kịch video review TikTok Shop của Nonelab. Nhìn các ảnh đính kèm: ảnh sản phẩm${a.hasBackground ? " và ảnh bối cảnh cuối cùng" : ""}.
 Sản phẩm: "${a.productName}". Ngành hàng: ${a.industry}.${a.notes ? `\nGhi chú của người dùng: ${a.notes}` : ""}${a.autopsy ? `\nKhung từ Phiếu mổ xẻ video bùng nổ (bám theo nhịp và công thức này):\n${a.autopsy}` : ""}
 
-Viết kịch bản đúng ${a.shots} cảnh, mỗi cảnh là một clip ${a.clipLen} giây, quay dọc 9:16, CHỈ CÓ BÀN TAY tương tác với sản phẩm, KHÔNG có mặt người, không chữ chèn.
+Viết kịch bản ${a.shots === "auto" ? "với số cảnh do bạn TỰ QUYẾT (1–8 cảnh), chọn đúng số cảnh mà nội dung sản phẩm này cần — đừng kéo dài cho đủ số" : `đúng ${a.shots} cảnh`}, mỗi cảnh là một clip ${a.clipLen} giây, quay dọc 9:16, CHỈ CÓ BÀN TAY tương tác với sản phẩm, KHÔNG có mặt người, không chữ chèn.
 Quy tắc:
 - Cảnh 1 luôn là hook (purpose "hook"). Có ít nhất một cảnh "interaction" (tay bóc/cầm/chấm/rót). Cảnh cuối là "cta".
 - Mỗi "dialog" (lời đọc tiếng Việt, tự nhiên như người thật nói) TỐI ĐA ${a.maxSyllables} âm tiết. Không vượt.
@@ -66,7 +66,7 @@ Trả về DUY NHẤT một JSON:
 {"shots":[{"purpose":"hook","camera":"close","dialog":"...","image_prompt":"...","motion_prompt":"...","motion_level":"medium"}],"caption":"...","hashtags":["#..."],"cover_idx":0}`;
 }
 
-export async function generateScriptAI(a: { apiKey: string; model: string; refs: FileRef[]; productName: string; industry: string; shots: number; clipLen: number; maxSyllables: number; hasBackground: boolean; notes?: string; autopsy?: string }): Promise<Script> {
+export async function generateScriptAI(a: { apiKey: string; model: string; refs: FileRef[]; productName: string; industry: string; shots: number | "auto"; clipLen: number; maxSyllables: number; hasBackground: boolean; notes?: string; autopsy?: string }): Promise<Script> {
   const ai = new GoogleGenAI({ apiKey: a.apiKey });
   const parts: any[] = a.refs.map((r) => ({ inlineData: { data: fs.readFileSync(r.path).toString("base64"), mimeType: r.mimeType } }));
   parts.push(buildScriptPrompt(a));

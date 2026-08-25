@@ -11,7 +11,7 @@ export const createStudioProject = (fd: FormData) => fetch("/api/studio/projects
 export const getStudioProject = (id: string) => fetch(`/api/studio/projects/${id}`, { headers: authHeaders() }).then(parse);
 export const deleteStudioProject = (id: string) => fetch(`/api/studio/projects/${id}`, { method: "DELETE", headers: authHeaders() }).then(parse);
 export const patchStudioProject = (id: string, body: any) => fetch(`/api/studio/projects/${id}`, { method: "PATCH", headers: jh(), body: JSON.stringify(body) }).then(parse);
-export const genStudioScript = (id: string, body: { source: "ai" | "manual"; shots?: any[]; notes?: string; count?: number; apiKey?: string; model?: string; caption?: string; hashtags?: string[] }) =>
+export const genStudioScript = (id: string, body: { source: "ai" | "manual"; shots?: any[]; notes?: string; count?: number | "auto"; apiKey?: string; model?: string; caption?: string; hashtags?: string[] }) =>
   fetch(`/api/studio/projects/${id}/script`, { method: "POST", headers: jh(), body: JSON.stringify(body) }).then(parse);
 export const saveStudioShots = (id: string, shots: any[]) => fetch(`/api/studio/projects/${id}/shots`, { method: "PUT", headers: jh(), body: JSON.stringify({ shots }) }).then(parse);
 export const requestStudioKeyframes = (id: string, shotIds?: string[]) => fetch(`/api/studio/projects/${id}/keyframes`, { method: "POST", headers: jh(), body: JSON.stringify({ shotIds }) }).then(parse);

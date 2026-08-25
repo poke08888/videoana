@@ -16,7 +16,7 @@ export function ScriptSheet({ bundle, integration, showToast, reload }: { bundle
   const { project: p, maxSyllables } = bundle;
   const [shots, setShots] = useState<any[]>(bundle.shots.length ? bundle.shots : [empty()]);
   const [notes, setNotes] = useState("");
-  const [count, setCount] = useState(4);
+  const [count, setCount] = useState<number | "auto">("auto");
   const [busy, setBusy] = useState("");
   const [caption, setCaption] = useState(p.caption || "");
   const [hashtags, setHashtags] = useState(p.hashtags || "");
@@ -58,7 +58,10 @@ export function ScriptSheet({ bundle, integration, showToast, reload }: { bundle
       {!locked && (
         <div style={css("display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px")}>
           <input style={css("flex:1;min-width:220px;padding:8px 10px;border:1px solid #e6dcc8;border-radius:8px;font-size:13px")} placeholder="Ghi chú cho AI (điểm bán, đối tượng, giọng điệu…)" value={notes} onChange={(e) => setNotes(e.target.value)} />
-          <select style={sel} value={count} onChange={(e) => setCount(Number(e.target.value))}>{[3, 4, 5, 6].map((n) => <option key={n} value={n}>{n} cảnh</option>)}</select>
+          <select style={sel} value={String(count)} onChange={(e) => setCount(e.target.value === "auto" ? "auto" : Number(e.target.value))}>
+            <option value="auto">Số cảnh: AI tự quyết</option>
+            {[1, 2, 3, 4, 5, 6, 7, 8].map((n) => <option key={n} value={n}>{n} cảnh</option>)}
+          </select>
           <button style={btnP} disabled={!!busy} onClick={genAI}>{busy === "ai" ? "AI đang viết…" : "AI viết kịch bản từ ảnh"}</button>
           <button style={btnS} onClick={() => setShots((a) => [...a, empty()])}>+ Thêm cảnh</button>
         </div>

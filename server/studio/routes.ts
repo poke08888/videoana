@@ -107,7 +107,7 @@ studioRouter.post("/projects/:id/script", requireEditor, async (req, res) => {
     if (!apiKey) return res.status(400).json({ ok: false, message: "Chưa có API key Gemini." });
     const assets = await listAssets(p.id);
     const refs = [...assets.filter((a) => a.kind === "product"), ...assets.filter((a) => a.kind === "background")].map((a) => ({ path: a.path, mimeType: a.mime }));
-    const script = await generateScriptAI({ apiKey, model: String(b.model || STUDIO.scriptModel), refs, productName: p.name, industry: p.industry, shots: Math.min(8, Math.max(1, num(b.count, 4))), clipLen: p.clip_len, maxSyllables, hasBackground: assets.some((a) => a.kind === "background"), notes: b.notes ? String(b.notes).slice(0, 2000) : undefined });
+    const script = await generateScriptAI({ apiKey, model: String(b.model || STUDIO.scriptModel), refs, productName: p.name, industry: p.industry, shots: b.count === undefined || b.count === null || b.count === "" || b.count === "auto" ? "auto" as const : Math.min(8, Math.max(1, num(b.count, 4))), clipLen: p.clip_len, maxSyllables, hasBackground: assets.some((a) => a.kind === "background"), notes: b.notes ? String(b.notes).slice(0, 2000) : undefined });
     const shots = await replaceShots(p.id, script.shots);
     await updateProject(p.id, { script_source: "ai", caption: script.caption, hashtags: script.hashtags.join(" "), cover_idx: script.cover_idx, stage: "script" });
     res.json({ ok: true, shots, caption: script.caption, hashtags: script.hashtags });
