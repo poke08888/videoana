@@ -6,7 +6,7 @@ import { initStudioTables } from "./db.js";
 import { createProject, addAsset, replaceShots, listShots, getProject, getRender, updateShot } from "./store.js";
 import { ensureProjectDirs } from "./config.js";
 import { fakeImageEngine } from "./engines/fake.js";
-import { makeEngines, requestKeyframes, runShotImage, setApproved, requestClips, runShotClip, requestAssemble, runAssemble, recoverInterrupted } from "./pipeline.js";
+import { makeEngines, pickVideoEngine, requestKeyframes, runShotImage, setApproved, requestClips, runShotClip, requestAssemble, runAssemble, recoverInterrupted } from "./pipeline.js";
 
 before(async () => { await initStudioTables(); });
 
@@ -73,4 +73,19 @@ test("recoverInterrupted: shot đang processing có file → done, không có fi
   assert.equal(a.clip_status, "done");
   assert.equal(fs.statSync(done).mtimeMs, before);
   assert.equal(b.image_status, "pending");
+});
+
+test("pickVideoEngine: cảnh packaging/label dùng Ken Burns, cảnh khác dùng model video", () => {
+  const eng = { image: fakeImageEngine(), video: { name: "veo", generate: async () => ({}) } as any,
+                voice: {} as any, videoStill: { name: "kenburns", generate: async () => ({}) } as any };
+  assert.equal(pickVideoEngine("packaging", eng).name, "kenburns");
+  assert.equal(pickVideoEngine("label", eng).name, "kenburns");
+  assert.equal(pickVideoEngine("hook", eng).name, "veo");
+  assert.equal(pickVideoEngine("interaction", eng).name, "veo");
+  assert.equal(pickVideoEngine("cta", eng).name, "veo");
+});
+
+test("pickVideoEngine: không có engine ảnh-tĩnh thì rơi về model video", () => {
+  const eng = { image: fakeImageEngine(), video: { name: "veo", generate: async () => ({}) } as any, voice: {} as any };
+  assert.equal(pickVideoEngine("packaging", eng).name, "veo");
 });

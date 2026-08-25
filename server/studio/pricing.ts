@@ -9,6 +9,7 @@ export const PRICES = {
     "veo-3.1-generate-preview": 0.4,
     "kling-3.0-standard": 0.084,
     "kling-3.0-pro": 0.112,
+    kenburns: 0,   // dựng bằng ffmpeg zoompan, không gọi API
     fake: 0,
   } as Record<string, number>,
   imagePerImage: {

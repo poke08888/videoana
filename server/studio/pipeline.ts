@@ -14,8 +14,10 @@ import { veoVideoEngine } from "./engines/video.js";
 import { edgeVoiceEngine } from "./engines/voice.js";
 import { fptVoiceEngine } from "./engines/voiceFpt.js";
 import { fakeImageEngine, fakeVideoEngine, fakeVoiceEngine, FAKE_SYLLABLES_PER_SEC } from "./engines/fake.js";
+import { kenBurnsVideoEngine } from "./engines/kenburns.js";
 import { alignWords } from "./engines/align.js";
-import type { Engines } from "./engines/types.js";
+import type { Engines, VideoEngine } from "./engines/types.js";
+import { LOW_MOTION_PURPOSES } from "./script.js";
 import { groupCues, shiftCues, toSrt, type SubCue } from "./subtitles.js";
 import { assembleVideo, clipStarts, TRANSITIONS, type Transition } from "./assemble.js";
 import { runFfmpeg, probeDuration } from "./ffmpeg.js";
@@ -28,6 +30,7 @@ export function makeEngines(apiKey: string): Engines {
     image: e.image === "fake" ? fakeImageEngine() : nanoImageEngine(apiKey),
     video: e.video === "fake" ? fakeVideoEngine() : veoVideoEngine(apiKey),
     voice: e.voice === "fake" ? fakeVoiceEngine() : e.voice === "fpt" ? fptVoiceEngine((process.env.FPT_TTS_API_KEY || "").trim()) : edgeVoiceEngine(),
+    videoStill: kenBurnsVideoEngine(),
   };
 }
 
@@ -106,6 +109,15 @@ export async function requestClips(projectId: string, tier: "draft" | "final"): 
   return { ok: true, count };
 }
 
+/**
+ * Cảnh phải đọc rõ nhãn thì dựng từ ảnh khoá đã duyệt bằng Ken Burns, không gọi model video:
+ * giữ nhãn nguyên từng điểm ảnh và tốn 0 đồng (bench Bước 0). Cảnh khác vẫn dùng model.
+ */
+export function pickVideoEngine(purpose: string, engines: Engines): VideoEngine {
+  if (STUDIO.kenBurnsForLabels && LOW_MOTION_PURPOSES.has(purpose) && engines.videoStill) return engines.videoStill;
+  return engines.video;
+}
+
 export async function runShotClip(shot: Shot, engines: Engines): Promise<RunOutcome> {
   const p = await getProject(shot.project_id);
   if (!p) return { ok: false, message: "Không thấy dự án." };
@@ -114,7 +126,7 @@ export async function runShotClip(shot: Shot, engines: Engines): Promise<RunOutc
   try {
     const tier = (shot.clip_tier as "draft" | "final") || p.tier;
     const outPath = path.join(ensureProjectDirs(p.id), "clips", `shot_${shot.idx}_${tier}_${Date.now()}.mp4`);
-    const r = await engines.video.generate({ prompt: shot.motion_prompt || shot.image_prompt, firstFrame: { path: shot.image_path, mimeType: mimeOf(shot.image_path) }, durationSec: p.clip_len as 4 | 6 | 8, aspectRatio: p.ratio, tier, motionLevel: shot.motion_level, outPath });
+    const r = await pickVideoEngine(shot.purpose, engines).generate({ prompt: shot.motion_prompt || shot.image_prompt, firstFrame: { path: shot.image_path, mimeType: mimeOf(shot.image_path) }, durationSec: p.clip_len as 4 | 6 | 8, aspectRatio: p.ratio, tier, motionLevel: shot.motion_level, outPath });
     await updateShot(shot.id, { clip_status: "done", clip_path: r.path, clip_tier: tier, engine: r.model, error: null, retry_after: null });
     await recordCost({ projectId: p.id, shotId: shot.id, kind: "video", model: r.model, usd: r.costUsd });
     await addDiskBytes(p.id, fileSize(r.path));

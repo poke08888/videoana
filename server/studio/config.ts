@@ -30,6 +30,9 @@ export const STUDIO = {
     video: str(process.env.STUDIO_ENGINE_VIDEO, "veo") as "veo" | "fake",
     voice: str(process.env.STUDIO_ENGINE_VOICE, "edge") as "edge" | "fpt" | "fake",
   },
+  // Cảnh packaging/label dựng bằng Ken Burns trên ảnh khoá thay vì gọi model video.
+  // Bench Bước 0: chữ nhãn giữ nguyên từng điểm ảnh và tốn 0 đồng. Đặt =0 để tắt.
+  kenBurnsForLabels: str(process.env.STUDIO_KENBURNS_LABELS, "1") !== "0",
   transitionSec: 0.5,
   musicVolume: 0.12,
 };

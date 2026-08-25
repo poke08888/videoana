@@ -11,4 +11,6 @@ export interface VideoEngine { name: string; generate(req: VideoRequest): Promis
 export interface VoiceRequest { text: string; voice: string; rate: number; outPath: string }   // rate 1.0 = bình thường
 export interface VoiceResult { path: string; durationSec: number; words: WordTiming[] | null; costUsd: number }
 export interface VoiceEngine { name: string; voices(): { id: string; label: string }[]; synthesize(req: VoiceRequest): Promise<VoiceResult> }
-export interface Engines { image: ImageEngine; video: VideoEngine; voice: VoiceEngine }
+export interface Engines { image: ImageEngine; video: VideoEngine; voice: VoiceEngine;
+  /** Dựng clip từ ảnh tĩnh (Ken Burns) — dùng cho cảnh phải đọc rõ nhãn. */
+  videoStill?: VideoEngine }
