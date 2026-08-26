@@ -15,3 +15,4 @@ server/db.sqlite-wal
 server/db.sqlite-shm
 server/db.json
 data/
+.env.bak*
