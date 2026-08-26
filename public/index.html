@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Short Drama Demo · 52api</title>
+<style>
+  :root { --bg:#0d0d12; --card:#191922; --line:#2a2a38; --text:#eee; --sub:#8b8b9c; --accent:#ff2d55; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+         background:var(--bg); color:var(--text); }
+  header { position:sticky; top:0; z-index:10; background:rgba(13,13,18,.9); backdrop-filter:blur(10px);
+           border-bottom:1px solid var(--line); padding:14px 18px; display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+  h1 { font-size:18px; margin:0 12px 0 0; }
+  h1 span { color:var(--accent); }
+  input, select, button { font-size:14px; border-radius:10px; border:1px solid var(--line);
+           background:var(--card); color:var(--text); padding:9px 12px; outline:none; }
+  input { flex:1; min-width:160px; }
+  button { cursor:pointer; }
+  button.primary { background:var(--accent); border-color:var(--accent); font-weight:600; }
+  button:hover { filter:brightness(1.15); }
+  main { padding:18px; max-width:1100px; margin:0 auto; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:14px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:14px; overflow:hidden; cursor:pointer;
+          transition:transform .12s; }
+  .card:hover { transform:translateY(-3px); border-color:var(--accent); }
+  .card .thumb { aspect-ratio:3/4; background:#000 center/cover no-repeat; }
+  .card .meta { padding:8px 10px; }
+  .card .title { font-size:13px; font-weight:600; line-height:1.3; display:-webkit-box; -webkit-line-clamp:2;
+                 -webkit-box-orient:vertical; overflow:hidden; }
+  .card .sub { font-size:11px; color:var(--sub); margin-top:4px; }
+  .status { color:var(--sub); padding:20px 0; text-align:center; }
+  .eps { display:flex; flex-wrap:wrap; gap:8px; margin-top:14px; }
+  .eps button { min-width:52px; }
+  .eps button.active { background:var(--accent); border-color:var(--accent); }
+  .detail-head { display:flex; gap:16px; margin-bottom:8px; }
+  .detail-head .poster { width:120px; aspect-ratio:3/4; border-radius:12px; background:#000 center/cover no-repeat; flex:none; }
+  video { width:100%; max-height:70vh; border-radius:12px; background:#000; margin-top:14px; }
+  /* Phụ đề tiếng Việt (VTT): nhỏ hơn ~40% so với mặc định + nền mờ dễ đọc.
+     Vị trí (nằm ngay dưới sub tiếng Trung cháy sẵn) đặt bằng cue.line trong JS. */
+  #player::cue { font-size:60%; background:rgba(0,0,0,.55); line-height:1.2; }
+  .back { background:transparent; border:none; color:var(--accent); padding:0; margin-bottom:14px; font-size:14px; }
+  .debug { margin-top:24px; border-top:1px solid var(--line); padding-top:12px; }
+  .debug summary { cursor:pointer; color:var(--sub); font-size:12px; }
+  .debug pre { background:#000; border:1px solid var(--line); border-radius:10px; padding:12px; overflow:auto;
+               max-height:300px; font-size:11px; color:#9ad; }
+  .hidden { display:none; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Short<span>Drama</span></h1>
+  <input id="q" placeholder="Tìm phim ngắn… (vd: 穿越, 战神, 总裁)" />
+  <select id="source">
+    <option value="hm">河马短剧 (Hippo)</option>
+    <option value="hg">红果短剧 (Hongguo)</option>
+  </select>
+  <button class="primary" id="searchBtn">Tìm</button>
+</header>
+
+<main>
+  <!-- Search results -->
+  <section id="listView">
+    <div id="status" class="status">Nhập từ khoá rồi bấm Tìm để bắt đầu.</div>
+    <div id="grid" class="grid"></div>
+  </section>
+
+  <!-- Detail + player -->
+  <section id="detailView" class="hidden">
+    <button class="back" id="backBtn">← Quay lại</button>
+    <div class="detail-head">
+      <div id="poster" class="poster"></div>
+      <div>
+        <h2 id="dTitle" style="margin:0 0 6px;"></h2>
+        <div id="dDesc" style="color:var(--sub); font-size:13px; line-height:1.5;"></div>
+      </div>
+    </div>
+    <div id="eps" class="eps"></div>
+    <div style="margin-top:14px; display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+      <button id="subBtn" disabled>🇻🇳 Tạo sub Việt (Whisper + Gemini)</button>
+      <span id="subStatus" style="color:var(--sub); font-size:12px;"></span>
+    </div>
+    <video id="player" controls playsinline crossorigin="anonymous"></video>
+  </section>
+
+  <details class="debug">
+    <summary>🐞 Raw JSON (để chỉnh field mapping nếu response khác dự kiến)</summary>
+    <pre id="raw">—</pre>
+  </details>
+</main>
+
+<script>
+// ---- Defensive helpers: response shapes vary, so scan for likely fields ----
+const src = () => document.getElementById('source').value;
+function showRaw(obj){ document.getElementById('raw').textContent = JSON.stringify(obj, null, 2); }
+
+// Find the first array anywhere in the payload (list of dramas / episodes).
+function findArray(obj){
+  if (Array.isArray(obj)) return obj;
+  if (obj && typeof obj === 'object') {
+    // 'lists' is what 52api's short-drama endpoints actually use. Check named keys
+    // first (deterministic) so we never accidentally grab a `tags` array.
+    for (const k of ['lists','list','data','items','videos','episodes','records','result']) {
+      if (Array.isArray(obj[k])) return obj[k];
+    }
+    for (const v of Object.values(obj)) {
+      const found = findArray(v);
+      if (found) return found;
+    }
+  }
+  return null;
+}
+const pick = (o, keys) => { for (const k of keys) if (o && o[k] != null && o[k] !== '') return o[k]; return ''; };
+const getTitle  = o => pick(o, ['title','name','book_name','drama_name','video_name','album_name']);
+const getCover  = o => pick(o, ['cover','pic','cover_url','coverUrl','image','img','thumb','poster','album_cover']);
+const getId     = o => pick(o, ['id','book_id','drama_id','album_id','video_id','vid','albumId']);
+const getSub    = o => pick(o, ['introduction','desc','description','intro','author','sub_title','category','tag']);
+const getMeta   = o => [pick(o,['playNum']), pick(o,['finishStatusCn']), pick(o,['updateNum']) ? pick(o,['updateNum'])+' tập' : ''].filter(Boolean).join(' · ');
+const getEpId   = o => pick(o, ['video_id','vid','id','episode_id','chapter_id']);
+const getPlay   = o => pick(o, ['chapterUrl','url','play_url','playUrl','video_url','videoUrl','mp4','m3u8','link','play','src']);
+
+async function api(path, params){
+  const qs = new URLSearchParams({ source: src(), ...params });
+  const r = await fetch(`/api/${path}?${qs}`);
+  const j = await r.json();
+  showRaw(j);
+  if (j.code !== undefined && j.code !== 0 && j.code !== 200 && j.code !== '0') {
+    // Not necessarily fatal — some APIs use different success codes. Warn but continue.
+    console.warn('API code:', j.code, j.msg);
+  }
+  return j;
+}
+
+// ---- Search ----
+let currentId = null;
+async function doSearch(){
+  const keyword = document.getElementById('q').value.trim();
+  if (!keyword) return;
+  const status = document.getElementById('status');
+  const grid = document.getElementById('grid');
+  status.textContent = 'Đang tìm…'; grid.innerHTML = '';
+  try {
+    const j = await api('search', { keyword, page: 1 });
+    const list = findArray(j) || [];
+    if (!list.length) { status.textContent = j.msg || 'Không có kết quả (xem Raw JSON bên dưới).'; return; }
+    status.textContent = `${list.length} kết quả cho "${keyword}"`;
+    grid.innerHTML = '';
+    list.forEach(item => {
+      const el = document.createElement('div');
+      el.className = 'card';
+      const cover = getCover(item);
+      el.innerHTML = `
+        <div class="thumb" style="background-image:url('${cover}')"></div>
+        <div class="meta">
+          <div class="title">${getTitle(item) || '(không tên)'}</div>
+          <div class="sub">${getMeta(item) || ''}</div>
+        </div>`;
+      el.onclick = () => openDetail(getId(item), item);
+      grid.appendChild(el);
+    });
+  } catch(e){ status.textContent = 'Lỗi: ' + e.message; }
+}
+
+// ---- Detail ----
+async function openDetail(id, item){
+  currentId = id;
+  document.getElementById('listView').classList.add('hidden');
+  document.getElementById('detailView').classList.remove('hidden');
+  document.getElementById('dTitle').textContent = getTitle(item) || 'Chi tiết';
+  document.getElementById('poster').style.backgroundImage = `url('${getCover(item)}')`;
+  document.getElementById('dDesc').textContent = 'Đang tải danh sách tập…';
+  document.getElementById('eps').innerHTML = '';
+  document.getElementById('player').src = '';
+
+  try {
+    const j = await api('detail', { id });
+    document.getElementById('dDesc').textContent = getSub(j.data || j) || getSub(item) || '';
+    const eps = findArray(j) || [];
+    const epsBox = document.getElementById('eps');
+    if (!eps.length) { epsBox.textContent = 'Không lấy được danh sách tập (xem Raw JSON).'; return; }
+    eps.forEach((ep, i) => {
+      const b = document.createElement('button');
+      b.textContent = i + 1;
+      b.title = pick(ep, ['name','title']) || ('Tập ' + (i + 1));
+      b.onclick = () => { document.querySelectorAll('.eps button').forEach(x=>x.classList.remove('active'));
+                          b.classList.add('active'); playEpisode(id, getEpId(ep), ep); };
+      epsBox.appendChild(b);
+    });
+  } catch(e){ document.getElementById('dDesc').textContent = 'Lỗi: ' + e.message; }
+}
+
+// ---- Play ----
+let curVideoId = null;
+
+// Nâng phụ đề Việt lên nằm ngay DƯỚI dòng sub tiếng Trung cháy sẵn trong video.
+// SUB_LINE = % tính từ trên xuống (số NHỎ hơn = phụ đề CAO hơn). Chỉnh cho khớp video.
+const SUB_LINE = 84;
+function positionCues(tt){
+  const cues = tt && tt.cues;
+  if (!cues) return;
+  for (let i = 0; i < cues.length; i++){
+    try { cues[i].snapToLines = false; cues[i].line = SUB_LINE; cues[i].align = 'center'; } catch(_){}
+  }
+}
+async function playEpisode(id, video_id, ep){
+  const player = document.getElementById('player');
+  curVideoId = video_id;
+  // reset subtitle UI cho tập mới
+  document.querySelectorAll('#player track').forEach(t => t.remove());
+  const subBtn = document.getElementById('subBtn');
+  subBtn.disabled = false;
+  document.getElementById('subStatus').textContent = '';
+  try {
+    // Some APIs already include a play url in the episode object.
+    let url = getPlay(ep);
+    if (!url) {
+      const j = await api('video', { id, video_id });
+      url = getPlay(j.data || j) || getPlay(findArray(j)?.[0] || {});
+    }
+    if (!url) { alert('Không tìm thấy link phát — xem Raw JSON để biết tên field.'); return; }
+    player.src = url;
+    player.play().catch(()=>{});
+    player.scrollIntoView({ behavior:'smooth', block:'center' });
+  } catch(e){ alert('Lỗi phát: ' + e.message); }
+}
+
+// ---- Wire up ----
+document.getElementById('searchBtn').onclick = doSearch;
+document.getElementById('q').addEventListener('keydown', e => { if (e.key === 'Enter') doSearch(); });
+// ---- Subtitle (Whisper + Gemini) ----
+document.getElementById('subBtn').onclick = async () => {
+  const btn = document.getElementById('subBtn');
+  const status = document.getElementById('subStatus');
+  if (!curVideoId) return;
+  btn.disabled = true;
+  status.textContent = '⏳ Đang tách audio → nhận dạng → dịch… (có thể vài phút)';
+  try {
+    const qs = new URLSearchParams({ source: src(), id: currentId, video_id: curVideoId });
+    const r = await fetch('/api/subtitle?' + qs);
+    const j = await r.json();
+    if (!j.ready) { status.textContent = '❌ ' + (j.msg || 'thất bại'); btn.disabled = false; return; }
+    const player = document.getElementById('player');
+    player.querySelectorAll('track').forEach(t => t.remove());
+    const track = document.createElement('track');
+    track.kind = 'subtitles'; track.srclang = 'vi'; track.label = 'Tiếng Việt';
+    track.src = j.url + '?t=' + Date.now(); track.default = true;
+    player.appendChild(track);
+    const showSub = () => {
+      const tt = player.textTracks[0];
+      if (!tt) return;
+      tt.mode = 'showing';
+      positionCues(tt);
+    };
+    track.addEventListener('load', showSub);
+    setTimeout(showSub, 300);
+    status.textContent = j.cached ? '✅ Sub Việt (đã cache)' : '✅ Đã tạo sub Việt';
+  } catch (e) { status.textContent = '❌ ' + e.message; btn.disabled = false; }
+};
+
+document.getElementById('backBtn').onclick = () => {
+  document.getElementById('detailView').classList.add('hidden');
+  document.getElementById('listView').classList.remove('hidden');
+  document.getElementById('player').src = '';
+};
+</script>
+</body>
+</html>

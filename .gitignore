@@ -16,3 +16,5 @@ server/db.sqlite-shm
 server/db.json
 data/
 .env.bak*
+*.pem
+id_rsa*
