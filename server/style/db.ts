@@ -1,6 +1,10 @@
 /** server/style/db.ts — bảng Style kênh (spec §8). Gọi sau connectDB(). */
 import { runQuery } from "../db.js";
 
+async function addColumnIfMissing(table: string, columnDef: string) {
+  try { await runQuery(`ALTER TABLE ${table} ADD COLUMN ${columnDef}`); } catch { /* đã có */ }
+}
+
 export async function initStyleTables() {
   await runQuery(`CREATE TABLE IF NOT EXISTS style_profiles (
     id TEXT PRIMARY KEY, owner TEXT, platform TEXT, handle TEXT, nickname TEXT, avatar TEXT,
@@ -13,4 +17,5 @@ export async function initStyleTables() {
   await runQuery(`CREATE INDEX IF NOT EXISTS idx_style_videos_profile ON style_videos(profile_id)`);
   await runQuery(`CREATE INDEX IF NOT EXISTS idx_style_videos_status ON style_videos(status)`);
   // Migration về sau thêm ở đây, SAU CREATE TABLE (bài học d84e0e6).
+  await addColumnIfMissing("style_profiles", "source_url TEXT"); // Task 15: link gốc để "Chạy lại" khi lấy video lỗi
 }

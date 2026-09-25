@@ -4,8 +4,8 @@ import { retryStyleFailed, aggregateStyle } from "./styleApi";
 export function ProgressPanel({ bundle, showToast, reload }: { bundle: any; showToast: (m: string) => void; reload: () => void }) {
   const vids: any[] = bundle.videos; const done = vids.filter((v) => v.status === "done").length; const failed = vids.filter((v) => v.status === "failed");
   const p = bundle.profile;
-  const busy = p.status === "running" || p.status === "aggregating";
-  const STATUS: Record<string, string> = { running: "đang phân tích từng video", aggregating: "đang tổng hợp 6 lớp + viết skill (thường 1–2 phút)", done: "hoàn tất", failed: "thất bại" };
+  const busy = p.status === "picking" || p.status === "running" || p.status === "aggregating";
+  const STATUS: Record<string, string> = { picking: "đang lấy danh sách video từ kênh", running: "đang phân tích từng video", aggregating: "đang tổng hợp 6 lớp + viết skill (thường 1–2 phút)", done: "hoàn tất", failed: "thất bại" };
   const Spinner = () => <span aria-label="đang chạy" style={{ ...c("display:inline-block;width:14px;height:14px;border-radius:50%;border:2px solid #e3d9c8;border-top-color:#b06a16;vertical-align:-2px;margin-right:6px"), animation: "ns-spin .8s linear infinite" }} />;
   return (
     <div style={c("background:#fff;border:1px solid #ece4d6;border-radius:16px;padding:18px;margin-bottom:14px")}>

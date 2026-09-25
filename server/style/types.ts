@@ -81,7 +81,7 @@ export interface StyleProfile {
 }
 export interface Formula { text: string; count: number; examples: string[] }
 
-export interface ProfileRow { id: string; owner: string; platform: string; handle: string; nickname: string; avatar: string; status: "running" | "aggregating" | "done" | "failed";
-  picked_ids: string; exemplar_ids: string; profile: string | null; skill_md: string | null; message: string | null; created_at: string; updated_at: string }
+export interface ProfileRow { id: string; owner: string; platform: string; handle: string; nickname: string; avatar: string; status: "picking" | "running" | "aggregating" | "done" | "failed";
+  picked_ids: string; exemplar_ids: string; profile: string | null; skill_md: string | null; message: string | null; source_url: string | null; created_at: string; updated_at: string }
 export interface VideoRow { id: string; profile_id: string; aweme_id: string; link: string; title: string; cover: string; views: number; likes: number; create_time: number; is_exemplar: number;
   status: "pending" | "processing" | "done" | "failed"; measure: string | null; analysis: string | null; timeline: string | null; frames: string | null; warnings: string | null; error: string | null; updated_at: string }

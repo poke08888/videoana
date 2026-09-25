@@ -150,6 +150,8 @@ export async function startAggregateNow(profileId: string, deps: StyleDeps): Pro
 export async function recoverStyleInterrupted(deps?: StyleDeps): Promise<void> {
   await runQuery("UPDATE style_videos SET status = 'pending' WHERE status = 'processing'");
   await runQuery("UPDATE style_profiles SET status = 'running' WHERE status = 'aggregating'");
+  // Đang lấy danh sách video thì mất việc nền → failed, KHÔNG tự chạy lại (tránh gọi RapidAPI bất ngờ).
+  await runQuery("UPDATE style_profiles SET status = 'failed', message = ?, updated_at = ? WHERE status = 'picking'", ["Máy chủ khởi động lại giữa lúc lấy video — bấm Chạy lại.", new Date().toISOString()]);
   if (!deps) return;
   const stuck = await allQuery<{ id: string }>("SELECT p.id FROM style_profiles p WHERE p.status = 'running' AND NOT EXISTS (SELECT 1 FROM style_videos v WHERE v.profile_id = p.id AND v.status IN ('pending','processing'))");
   for (const { id } of stuck) {

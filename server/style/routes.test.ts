@@ -137,3 +137,22 @@ test("retry-failed khi profile đang 'aggregating' → 409, không đẩy lại 
     for (const v of await listVideos(c.profileId)) await updateVideo(v.id, { status: "failed", error: "dọn" });
   } finally { (STYLE as any).minVideos = orig; }
 });
+
+test("POST /start → trả ngay {profileId, handle}; nền lấy video tới running + 30 video; URL rác 400; Khách 403", { timeout: 15_000 }, async () => {
+  const t0 = Date.now();
+  const res = await fetch(`${base}/api/style/start`, { method: "POST", headers: H(editor), body: JSON.stringify({ url: "https://www.tiktok.com/@h" }) });
+  const r = await j(res);
+  assert.equal(res.status, 200, JSON.stringify(r));
+  assert.ok(r.ok && r.profileId, `phải trả profileId: ${JSON.stringify(r)}`);
+  assert.equal(r.handle, "h");
+  assert.ok(Date.now() - t0 < 1000, "phải trả về dưới 1 s");
+  let g: any = null; const t1 = Date.now();
+  while (Date.now() - t1 < 5000) { g = await j(await fetch(`${base}/api/style/profile/${r.profileId}`, { headers: H(editor) })); if (g.profile?.status === "running" && g.videos.length === 30) break; await new Promise((x) => setTimeout(x, 50)); }
+  assert.equal(g.profile.status, "running", JSON.stringify(g.profile?.message));
+  assert.equal(g.videos.length, 30, "phải có 30 video");
+  const list = await j(await fetch(`${base}/api/style/profiles`, { headers: H(editor) }));
+  assert.equal(list.profiles.find((x: any) => x.id === r.profileId)?.source_url, "https://www.tiktok.com/@h", "danh sách phải trả source_url");
+  for (const v of await listVideos(r.profileId)) await updateVideo(v.id, { status: "failed", error: "dọn" });
+  assert.equal((await fetch(`${base}/api/style/start`, { method: "POST", headers: H(editor), body: JSON.stringify({ url: "!!!" }) })).status, 400);
+  assert.equal((await fetch(`${base}/api/style/start`, { method: "POST", headers: H(guest), body: JSON.stringify({ url: "https://www.tiktok.com/@h" }) })).status, 403);
+});

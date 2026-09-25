@@ -6,6 +6,8 @@ const parse = (r: Response) => r.json().catch(() => ({ ok: false, message: "Ph�
 const offline = () => ({ ok: false, message: "Không kết nối được máy chủ — kiểm tra mạng rồi thử lại." });
 
 export const getStyleHealth = () => fetch("/api/style/health", { headers: authHeaders() }).then(parse, offline);
+/** Một nút: server tạo profile "picking" và trả ngay {profileId, handle}; lấy video chạy nền. */
+export const startStyle = (url: string) => fetch("/api/style/start", { method: "POST", headers: jh(), body: JSON.stringify({ url }) }).then(parse, offline);
 export const pickStyle = (url: string, count = 30, exemplars = 5) => fetch("/api/style/pick", { method: "POST", headers: jh(), body: JSON.stringify({ url, count, exemplars }) }).then(parse, offline);
 export const createStyle = (body: { account: any; videos: any[]; exemplarIds: string[] }) => fetch("/api/style/create", { method: "POST", headers: jh(), body: JSON.stringify(body) }).then(parse, offline);
 export const listStyleProfiles = () => fetch("/api/style/profiles", { headers: authHeaders() }).then(parse, offline);

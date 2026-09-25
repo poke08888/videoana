@@ -5,21 +5,17 @@
 import { Router, type Request, type Response } from "express";
 import { requireEditor, verifyToken } from "../auth.js";
 import { runQueryChanges } from "../studio/store.js";
-import { normalizeAccountInput, type Account, type AccountVideo } from "../account.js";
+import { normalizeAccountInput, type Account } from "../account.js";
 import { STYLE } from "./config.js";
 import { pickStyleVideos } from "./pick.js";
 import { createProfile, getProfile, listProfiles, listVideos, updateVideo, updateProfile, deleteProfile } from "./store.js";
 import { startAggregateNow, type StyleDeps } from "./pipeline.js";
 import { buildSkillZip } from "./zip.js";
+import { startProfileFromUrl, INVALID_URL_MSG, type PickDeps } from "./intake.js";
 import { styleQueueStatus } from "./queue.js";
 import type { ProfileRow, PickedVideo, StyleProfile } from "./types.js";
 
-export interface RouterDeps {
-  style: StyleDeps;
-  resolveAccount: (input: string, key: string) => Promise<Account>;
-  fetchAccountVideos: (account: Account, opts: { count: number; key: string }) => Promise<AccountVideo[]>;
-  rapidKey: (platform: "tiktok" | "douyin") => string | null;
-}
+export interface RouterDeps extends PickDeps { style: StyleDeps }
 const ownerEmail = (req: any) => String(req?.user?.email || "").toLowerCase().trim();
 const isAdmin = (req: any) => req?.user?.role === "Quản trị";
 const parse = <T>(s: string | null, d: T): T => { try { return s ? (JSON.parse(s) as T) : d; } catch { return d; } };
@@ -35,6 +31,17 @@ export function makeStyleRouter(deps: RouterDeps): Router {
   const authQuery = (req: Request, res: Response, next: () => void) => { const t = String(req.query.t || ""); const p = t ? verifyToken(t) : null; if (!p) return res.status(401).json({ ok: false }); (req as any).user = p; next(); };
 
   r.get("/health", requireEditor, (_req, res) => res.json({ ok: true, engine: STYLE.engine, model: STYLE.model, queue: styleQueueStatus(), minVideos: STYLE.minVideos }));
+
+  // Một nút: tạo vỏ 'picking' trả ngay, lấy video chạy nền → người dùng dán kênh tiếp được ngay.
+  r.post("/start", requireEditor, async (req, res) => {
+    try {
+      const r0 = await startProfileFromUrl({ owner: ownerEmail(req), url: String(req.body?.url || ""), deps });
+      res.json({ ok: true, ...r0 });
+    } catch (e: any) {
+      if (e?.message === INVALID_URL_MSG) return res.status(400).json({ ok: false, message: e.message });
+      console.error("[style] start:", e); res.status(500).json({ ok: false, message: "Lỗi hệ thống khi nhận kênh." });
+    }
+  });
 
   r.post("/pick", requireEditor, async (req, res) => {
     try {
