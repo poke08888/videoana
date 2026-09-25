@@ -38,7 +38,7 @@ export function StyleView({ isMobile, showToast }: { isMobile: boolean; integrat
       {profiles.length === 0 && <div style={c("background:#fff;border:1px dashed #ddd3c2;border-radius:16px;padding:28px;text-align:center;color:#8a7c67")}>Chưa có profile nào.</div>}
       {profiles.map((p) => (
         <div key={p.id} onClick={() => open(p.id)} style={c("background:#fff;border:1px solid #ece4d6;border-radius:14px;padding:14px 16px;margin-bottom:10px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap")}>
-          <div><b>@{p.handle}</b> · {p.nickname} · {p.platform}<div style={c("font-size:12px;color:#8a7c67")}>{p.done}/{p.total} video · {p.failed} lỗi · {p.status} · {new Date(p.created_at).toLocaleString("vi-VN")}{p.owner ? ` · ${p.owner}` : ""}</div></div>
+          <div>{["running", "aggregating"].includes(p.status) && <span style={{ ...c("display:inline-block;width:8px;height:8px;border-radius:50%;background:#b06a16;margin-right:8px"), animation: "ns-fade 1s ease-in-out infinite alternate" }} />}<b>@{p.handle}</b> · {p.nickname} · {p.platform}<div style={c("font-size:12px;color:#8a7c67")}>{p.done}/{p.total} video · {p.failed} lỗi · {p.status} · {new Date(p.created_at).toLocaleString("vi-VN")}{p.owner ? ` · ${p.owner}` : ""}</div></div>
           <button onClick={async (e) => { e.stopPropagation(); if (!confirm(`Xoá profile @${p.handle}?`)) return; const r = await deleteStyleProfile(p.id); showToast(r?.ok ? "Đã xoá." : r?.message || "Lỗi"); reloadList(); }} style={c("padding:6px 10px;border-radius:8px;border:1px solid #ddd3c2;background:#fff;cursor:pointer;font-size:12px")}>Xoá</button>
         </div>))}
     </div>

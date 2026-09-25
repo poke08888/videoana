@@ -26,6 +26,8 @@ export const STYLE = {
   model: str(process.env.STYLE_MODEL, str(process.env.GEMINI_MODEL, DEFAULT_MODEL)),
   engine,
   tmpDir: str(process.env.STYLE_TMP_DIR, path.join(__dirname, "..", "..", "data", "style-tmp")),
+  geminiTextTimeoutMs: Math.max(10_000, num(process.env.STYLE_GEMINI_TEXT_TIMEOUT_MS, 120_000)),
+  geminiVideoTimeoutMs: Math.max(30_000, num(process.env.STYLE_GEMINI_VIDEO_TIMEOUT_MS, 300_000)),
   concurrency: Math.max(1, num(process.env.STYLE_CONCURRENCY, 4)),
   sceneThreshold: num(process.env.STYLE_SCENE_THRESHOLD, 0.35),
   minVideos: Math.max(1, num(process.env.STYLE_MIN_VIDEOS, 15)),

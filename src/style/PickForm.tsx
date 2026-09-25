@@ -29,7 +29,7 @@ export function PickForm({ showToast, onCreated, onCancel }: { showToast: (m: st
         <div style={c("font-weight:600;margin-bottom:8px")}>Link kênh TikTok / Douyin</div>
         <div style={c("display:flex;gap:8px;flex-wrap:wrap")}>
           <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://www.tiktok.com/@kenh hoặc douyin.com/user/…" style={c("flex:1;min-width:240px;padding:10px 12px;border:1px solid #ddd3c2;border-radius:10px;font-size:14px")} />
-          <button disabled={busy} onClick={pick} style={c("padding:10px 16px;border-radius:10px;border:0;background:#b06a16;color:#fff;font-weight:600;cursor:pointer")}>{busy ? "Đang lấy…" : "Lấy video"}</button>
+          <button disabled={busy} onClick={pick} style={c("padding:10px 16px;border-radius:10px;border:0;background:#b06a16;color:#fff;font-weight:600;cursor:pointer")}>{busy ? <><span style={{ ...c("display:inline-block;width:12px;height:12px;border-radius:50%;border:2px solid rgba(255,255,255,.45);border-top-color:#fff;vertical-align:-1px;margin-right:6px"), animation: "ns-spin .8s linear infinite" }} />Đang lấy video…</> : "Lấy video"}</button>
           <button onClick={onCancel} style={c("padding:10px 14px;border-radius:10px;border:1px solid #ddd3c2;background:#fff;cursor:pointer")}>Huỷ</button>
         </div>
         <div style={c("font-size:12px;color:#8a7c67;margin-top:8px")}>Hệ thống lấy 100 video gần nhất → chọn 30 view cao nhất trong 90 ngày (nới dần nếu thiếu) → 5 view cao nhất là mẫu chuẩn (được tách timeline từng cut). Bỏ tick video lạc style trước khi chạy — cần giữ ít nhất {minVideos} video để tổng hợp.</div>
@@ -39,7 +39,7 @@ export function PickForm({ showToast, onCreated, onCancel }: { showToast: (m: st
           <div style={c("display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px")}>
             <div><b>@{res.account.handle}</b> · {res.account.nickname} · {res.fetched} video lấy về · {res.note}</div>
             <div style={c("display:flex;flex-direction:column;align-items:flex-end;gap:4px")}>
-              <button disabled={busy || tooFew} onClick={create} style={{ ...c("padding:10px 16px;border-radius:10px;border:0;background:#3c7a5e;color:#fff;font-weight:600;cursor:pointer"), ...(tooFew ? c("opacity:0.5;cursor:not-allowed") : {}) }}>Phân tích style ({selected} video)</button>
+              <button disabled={busy || tooFew} onClick={create} style={{ ...c("padding:10px 16px;border-radius:10px;border:0;background:#3c7a5e;color:#fff;font-weight:600;cursor:pointer"), ...(tooFew ? c("opacity:0.5;cursor:not-allowed") : {}) }}>{busy ? <><span style={{ ...c("display:inline-block;width:12px;height:12px;border-radius:50%;border:2px solid rgba(255,255,255,.45);border-top-color:#fff;vertical-align:-1px;margin-right:6px"), animation: "ns-spin .8s linear infinite" }} />Đang xếp hàng…</> : `Phân tích style (${selected} video)`}</button>
               {tooFew && <div style={c("font-size:12px;color:#9e3a3a")}>Cần ít nhất {minVideos} video (đang chọn {selected}).</div>}
             </div>
           </div>

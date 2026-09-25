@@ -105,10 +105,16 @@ async function withRetry<T>(fn: () => Promise<T>, tries = 4): Promise<T> {
   throw last;
 }
 
+/** Không để một lời gọi Gemini treo vô hạn (mạng kẹt) → profile kẹt 'aggregating'. Hết giờ → ném lỗi, pipeline ghi failed + cho tổng hợp lại. */
+export function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
+  let t: ReturnType<typeof setTimeout>;
+  return Promise.race([p.finally(() => clearTimeout(t)), new Promise<T>((_, rej) => { t = setTimeout(() => rej(new Error(`${label} quá ${Math.round(ms / 1000)} s không phản hồi.`)), ms); })]);
+}
+
 export function geminiStyleEngine(apiKey: string, model = STYLE.model): StyleEngine {
   const ai = new GoogleGenAI({ apiKey });
   const upload = async (videoPath: string, mimeType: string) => {
-    let file = await ai.files.upload({ file: videoPath, config: { mimeType } });
+    let file = await withTimeout(ai.files.upload({ file: videoPath, config: { mimeType } }), STYLE.geminiVideoTimeoutMs, "Upload video lên Gemini");
     const t0 = Date.now();
     while (fileState(file) === "PROCESSING") {
       if (Date.now() - t0 > 180_000) throw new Error("Gemini xử lý video quá lâu (>180s).");
@@ -121,13 +127,13 @@ export function geminiStyleEngine(apiKey: string, model = STYLE.model): StyleEng
     const file = await upload(videoPath, mimeType);
     const part: Part = createPartFromUri(file.uri as string, file.mimeType as string);
     part.videoMetadata = { fps };
-    const resp = await withRetry(() => ai.models.generateContent({ model, contents: createUserContent([part, prompt]), config: { responseMimeType: "application/json", temperature: 0.3 } }));
+    const resp = await withRetry(() => withTimeout(ai.models.generateContent({ model, contents: createUserContent([part, prompt]), config: { responseMimeType: "application/json", temperature: 0.3 } }), STYLE.geminiVideoTimeoutMs, "Gemini xem video"));
     const json = extractJSON((resp.text ?? "").trim());
     if (!json) throw new Error("Gemini trả về JSON không hợp lệ.");
     return json;
   };
   const askText = async (prompt: string) => {
-    const resp = await withRetry(() => ai.models.generateContent({ model, contents: prompt, config: { responseMimeType: "application/json", temperature: 0.4 } }));
+    const resp = await withRetry(() => withTimeout(ai.models.generateContent({ model, contents: prompt, config: { responseMimeType: "application/json", temperature: 0.4 } }), STYLE.geminiTextTimeoutMs, "Gemini viết chữ"));
     const json = extractJSON((resp.text ?? "").trim());
     if (!json) throw new Error("Gemini trả về JSON không hợp lệ.");
     return json;
