@@ -74,3 +74,13 @@ test("recoverStyleInterrupted: picking → failed", async () => {
   const g = (await getProfile(p.id))!;
   assert.equal(g.status, "failed"); assert.match(g.message || "", /Chạy lại/);
 });
+
+test("fillProfileVideos bỏ qua khi profile đã bị xoá trong lúc lấy video (không chèn video mồ côi)", async () => {
+  const { createProfileShell, deleteProfile, fillProfileVideos } = await import("./store.js");
+  const { allQuery } = await import("../db.js");
+  const p = await createProfileShell({ owner: "orphan@nerman.asia", platform: "tiktok", handle: "orphan", sourceUrl: "https://www.tiktok.com/@orphan" });
+  await deleteProfile(p.id);
+  await fillProfileVideos(p.id, { nickname: "O", avatar: "", handle: "orphan", videos: [{ awemeId: "o1", link: "https://www.tiktok.com/@orphan/video/o1", title: "", cover: "", views: 1, likes: 0, createTime: 1, isExemplar: false }], exemplarIds: [] });
+  const rows = await allQuery("SELECT id FROM style_videos WHERE profile_id = ?", [p.id]);
+  assert.equal(rows.length, 0, "không được có video mồ côi");
+});

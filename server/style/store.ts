@@ -37,8 +37,9 @@ export async function createProfileShell(a: { owner: string; platform: string; h
 /** Đổ video đã chọn vào profile 'picking' (nickname/handle rỗng thì giữ giá trị vỏ). Đổi status='running' SAU CÙNG để hàng đợi không thấy profile running rỗng. */
 export async function fillProfileVideos(profileId: string, a: { nickname: string; avatar: string; handle: string; videos: PickedVideo[]; exemplarIds: string[] }): Promise<void> {
   const now = NOW();
-  await runQuery("UPDATE style_profiles SET nickname = COALESCE(NULLIF(?, ''), nickname), avatar = ?, handle = COALESCE(NULLIF(?, ''), handle), picked_ids = ?, exemplar_ids = ?, updated_at = ? WHERE id = ?",
+  const n = await runQueryChanges("UPDATE style_profiles SET nickname = COALESCE(NULLIF(?, ''), nickname), avatar = ?, handle = COALESCE(NULLIF(?, ''), handle), picked_ids = ?, exemplar_ids = ?, updated_at = ? WHERE id = ? AND status = 'picking'",
     [a.nickname, a.avatar, a.handle, JSON.stringify(a.videos.map((v) => v.awemeId)), JSON.stringify(a.exemplarIds), now, profileId]);
+  if (n !== 1) return; // profile đã bị xoá (hoặc không còn picking) trong lúc lấy video → không chèn video mồ côi
   await insertVideos(profileId, a.videos, a.exemplarIds, now);
   await updateProfile(profileId, { status: "running", message: null });
 }
@@ -58,7 +59,7 @@ export const findReusable = (owner: string, link: string) => getQuery<VideoRow>(
 /** Claim nguyên tử: pending → processing. Trả VideoRow hoặc null nếu có worker khác đã lấy.
  *  Công bằng: profile tạo trước chạy trước (FIFO theo profile), trong 1 profile mẫu chuẩn rồi view cao trước. */
 export async function claimVideo(): Promise<VideoRow | null> {
-  const row = await getQuery<VideoRow>("SELECT v.* FROM style_videos v JOIN style_profiles p ON p.id = v.profile_id WHERE v.status = 'pending' ORDER BY p.created_at ASC, v.is_exemplar DESC, v.views DESC LIMIT 1");
+  const row = await getQuery<VideoRow>("SELECT v.* FROM style_videos v JOIN style_profiles p ON p.id = v.profile_id WHERE v.status = 'pending' AND p.status <> 'picking' ORDER BY p.created_at ASC, v.is_exemplar DESC, v.views DESC LIMIT 1");
   if (!row) return null;
   const n = await runQueryChanges("UPDATE style_videos SET status = 'processing', updated_at = ? WHERE id = ? AND status = 'pending'", [NOW(), row.id]);
   return n === 1 ? (await getVideo(row.id)) || null : null;
