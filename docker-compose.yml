@@ -16,7 +16,10 @@ services:
       # Xưởng: file ảnh/clip/mp4 nằm trên ổ dữ liệu 150GB (/data), KHÔNG trên ổ hệ thống
       - STUDIO_DATA_DIR=/app/data/studio
       - STUDIO_SUB_FONT=DejaVu Sans
+      # Style kênh: video tải tạm nằm trên ổ /data (150GB), xoá ngay sau khi phân tích
+      - STYLE_TMP_DIR=/app/data/style-tmp
     volumes:
       - ./data:/app/data
       - /data/videoana-studio:/app/data/studio
+      - /data/videoana-style-tmp:/app/data/style-tmp
     restart: unless-stopped
