@@ -1,0 +1,32 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { buildSkillMd, buildTimelinesMd, buildFormulasMd, skillDescription, slugOf } from "./skill.js";
+import type { StyleProfile } from "./types.js";
+
+const P: StyleProfile = {
+  channel: { platform: "tiktok", handle: "Nerman.Official", nickname: "Nerman", avatar: "" }, analyzedAt: "2026-09-25T00:00:00.000Z", model: "gemini-2.5-flash",
+  videos: { total: 30, used: 28, failed: 1, outliers: [{ videoId: "v9", reasons: ["caption: word-pop (kênh: sentence)"] }] },
+  metrics: { duration: { median: 31.2, p25: 24.1, p75: 38.7, n: 28 }, cutsPerMin: { median: 35.3, p25: 30.1, p75: 41.9, n: 28 }, shotLen: { median: 1.7, p25: 1.4, p75: 2, n: 28 }, loudness: { median: -14.1, p25: -15, p75: -13, n: 28 }, talkingHeadRatio: { median: 0.6, p25: 0.5, p75: 0.7, n: 28 }, brollRatio: { median: 0.4, p25: 0.3, p75: 0.5, n: 28 } },
+  layers: { structure: {}, visual: {}, text: { captionStyle: { value: "sentence", share: 0.93, rule: "hard" } }, audio: {}, content: { genre: { value: "review", share: 0.8, rule: "hard" } }, brand: {} },
+  rules: { hard: ["Nhịp cắt: 30.1–41.9 cut/phút; mỗi shot 1.4–2 s (trung vị 1.7).", "Kiểu caption: sentence (93 % video)."], soft: ["Cách quay: thường handheld (55 % video)."], never: ["Có intro = true: KHÔNG BAO GIỜ (0/28 video)."] },
+  formulas: { opening: [{ text: "Chào mọi người, hôm nay …", count: 12, examples: ["Chào mọi người, hôm nay mình review"] }], closing: [], cta: [{ text: "Ấn giỏ hàng", count: 20, examples: ["Ấn vào giỏ hàng nhé"] }] },
+  exemplars: [{ videoId: "v1", link: "https://www.tiktok.com/@a/video/1", views: 1_200_000, duration: 30, timeline: [{ from: 0, to: 1.5, shot: "CU tay cầm hộp", textOnScreen: "HOT", textAnim: "pop", sfx: "whoosh", music: "drop", voice: "Mở đầu" }] }],
+  evidence: {},
+};
+const N = { overview: "Tổng quan.", persona: "Persona.", howTo: "Cách dựng." };
+
+test("slug + description theo mẫu", () => {
+  assert.equal(slugOf("Nerman.Official"), "nerman-official");
+  assert.match(skillDescription(P), /@Nerman\.Official.*review.*1\.7 s.*sentence/);
+});
+test("SKILL.md: frontmatter hợp lệ, mọi câu rules xuất hiện nguyên văn, 3 đoạn narrate, không TBD", () => {
+  const md = buildSkillMd(P, N);
+  assert.ok(md.startsWith("---\nname: style-nerman-official\ndescription: "), md.slice(0, 80));
+  for (const r of [...P.rules.hard, ...P.rules.soft, ...P.rules.never]) assert.ok(md.includes(r), `thiếu quy tắc: ${r}`);
+  for (const s of ["Tổng quan.", "Persona.", "Cách dựng.", "KHÔNG BAO GIỜ", "28/30", "Chào mọi người, hôm nay …", "12 lần"]) assert.ok(md.includes(s), `thiếu ${s}`);
+  assert.ok(!/TBD|TODO|undefined|null/.test(md), "không được có placeholder");
+});
+test("timelines.md và formulas.md có bảng", () => {
+  const t = buildTimelinesMd(P); assert.ok(t.includes("| 0–1.5 |") && t.includes("CU tay cầm hộp") && t.includes("1.200.000"), t.slice(0, 300));
+  const f = buildFormulasMd(P); assert.ok(f.includes("Ấn giỏ hàng") && f.includes("20 lần"), f);
+});
