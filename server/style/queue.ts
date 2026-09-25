@@ -33,4 +33,4 @@ export function startStyleQueue(deps: StyleDeps, opts: { intervalMs?: number } =
   }, opts.intervalMs ?? 3000);
 }
 /** Gọi lúc khởi động server. */
-export async function bootStyleQueue(deps: StyleDeps) { await recoverStyleInterrupted(); startStyleQueue(deps); }
+export async function bootStyleQueue(deps: StyleDeps) { await recoverStyleInterrupted(deps); startStyleQueue(deps); }

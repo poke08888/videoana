@@ -41,3 +41,9 @@ export async function claimVideo(): Promise<VideoRow | null> {
   const n = await runQueryChanges("UPDATE style_videos SET status = 'processing', updated_at = ? WHERE id = ? AND status = 'pending'", [NOW(), row.id]);
   return n === 1 ? (await getVideo(row.id)) || null : null;
 }
+/** Claim nguyên tử quyền tổng hợp: status ∈ fromStatuses → 'aggregating'. true nếu chính lời gọi này lấy được. */
+export async function claimAggregation(profileId: string, fromStatuses: string[]): Promise<boolean> {
+  if (!fromStatuses.length) return false;
+  const n = await runQueryChanges(`UPDATE style_profiles SET status = 'aggregating', updated_at = ? WHERE id = ? AND status IN (${fromStatuses.map(() => "?").join(",")})`, [NOW(), profileId, ...fromStatuses]);
+  return n === 1;
+}

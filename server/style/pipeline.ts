@@ -4,15 +4,16 @@
  * finalizeProfileIfDone: khi hết pending/processing → aggregate → cluster → narrate → SKILL.md → done/failed.
  */
 import fs from "node:fs";
+import path from "node:path";
 import { STYLE } from "./config.js";
 import { measureVideo } from "./measure.js";
 import { makeStyleEngine, type StyleEngine } from "./analyze.js";
 import { aggregateProfile, type AggInput } from "./aggregate.js";
 import { buildSkillMd } from "./skill.js";
-import { getProfile, listVideos, updateProfile, updateVideo, findReusable } from "./store.js";
+import { getProfile, listVideos, updateProfile, updateVideo, findReusable, claimAggregation } from "./store.js";
 import { downloadTikTok, resolveTokapiKey } from "../tiktok.js";
 import { downloadDouyin, resolveDouyinKey } from "../douyin.js";
-import { runQuery } from "../db.js";
+import { runQuery, allQuery } from "../db.js";
 import type { StyleMeasure, StyleAnalysis, StyleTimelineShot, StyleProfile, VideoRow } from "./types.js";
 
 export interface StyleDeps { engine: StyleEngine; measure: (path: string) => Promise<StyleMeasure>; download: (link: string, platform: string, dir: string) => Promise<{ path: string }> }
@@ -26,7 +27,8 @@ export function makeStyleDeps(apiKey: string): StyleDeps {
     },
   };
 }
-const isBilling = (e: any) => /api[_ ]?key|PERMISSION_DENIED|\b401\b|\b403\b|quota|RESOURCE_EXHAUSTED|billing/i.test(String(e?.message || e));
+/** Chỉ áp cho lỗi từ deps.engine.* (lỗi tải/cấu hình khác không được làm dừng cả hàng đợi). */
+const isBilling = (e: any) => /PERMISSION_DENIED|API key not valid|invalid.*key|\b401\b|quota|RESOURCE_EXHAUSTED|billing/i.test(String(e?.message || e));
 const parse = <T>(s: string | null, d: T): T => { try { return s ? (JSON.parse(s) as T) : d; } catch { return d; } };
 
 export async function runStyleVideo(v: VideoRow, deps: StyleDeps): Promise<{ ok: boolean; kind?: "billing" }> {
@@ -34,18 +36,23 @@ export async function runStyleVideo(v: VideoRow, deps: StyleDeps): Promise<{ ok:
   if (!profile) { await updateVideo(v.id, { status: "failed", error: "Profile không còn tồn tại." }); return { ok: false }; }
   // Tái dùng phiếu cùng link của cùng owner (spec §3 bước 3)
   const prior = await findReusable(profile.owner, v.link);
-  if (prior && prior.id !== v.id && prior.analysis) {
+  // Mẫu chuẩn cần timeline: nếu phiếu cũ không có timeline thì KHÔNG tái dùng, đi đường thường để dựng timeline.
+  if (prior && prior.id !== v.id && prior.analysis && !(v.is_exemplar && !prior.timeline)) {
     await updateVideo(v.id, { status: "done", measure: prior.measure, analysis: prior.analysis, timeline: v.is_exemplar ? prior.timeline : null, frames: prior.frames, warnings: prior.warnings, error: null });
     console.log(`[style] Tái dùng phiếu style cho link trùng: ${v.link}`);
     await finalizeProfileIfDone(v.profile_id, deps).catch((e) => console.error("[style] finalize (reuse):", e));
     return { ok: true };
   }
-  fs.mkdirSync(STYLE.tmpDir, { recursive: true });
-  let file: string | null = null;
+  // Thư mục tạm riêng từng video: 2 dòng cùng link (cùng awemeId) không giẫm file của nhau.
+  const dir = path.join(STYLE.tmpDir, v.id);
+  let stage: "download" | "measure" | "engine" = "download";
   try {
-    file = (await deps.download(v.link, profile.platform, STYLE.tmpDir)).path;
+    await fs.promises.mkdir(dir, { recursive: true });
+    const file = (await deps.download(v.link, profile.platform, dir)).path;
+    stage = "measure";
     let measure: StyleMeasure | null = null;
     try { measure = await deps.measure(file); } catch (e) { console.warn(`[style] ffmpeg lỗi (${v.link}), Gemini tự ước lượng:`, String((e as any)?.message || e)); }
+    stage = "engine";
     const analysis: StyleAnalysis = await deps.engine.analyze({ videoPath: file, mimeType: "video/mp4", measure, meta: { title: v.title, platform: profile.platform === "douyin" ? "Douyin" : "TikTok", nickname: profile.nickname } });
     let timeline: StyleTimelineShot[] | null = null;
     if (v.is_exemplar) {
@@ -59,50 +66,76 @@ export async function runStyleVideo(v: VideoRow, deps: StyleDeps): Promise<{ ok:
     const msg = String(e?.message || e).slice(0, 500);
     await updateVideo(v.id, { status: "failed", error: msg });
     console.error(`[style] Lỗi video ${v.link}: ${msg}`);
-    await finalizeProfileIfDone(v.profile_id, deps).catch(() => {});
-    return { ok: false, kind: isBilling(e) ? "billing" : undefined };
+    await finalizeProfileIfDone(v.profile_id, deps).catch((err) => console.error("[style] finalize (sau lỗi):", err));
+    return { ok: false, kind: stage === "engine" && isBilling(e) ? "billing" : undefined };
   } finally {
-    if (file) await fs.promises.unlink(file).catch(() => {});
+    await fs.promises.rm(dir, { recursive: true, force: true }).catch(() => {});
   }
   await finalizeProfileIfDone(v.profile_id, deps).catch((e) => console.error("[style] finalize:", e));
   return { ok: true };
 }
 
-function toAggInputs(rows: VideoRow[]): AggInput[] {
-  return rows.filter((r) => r.status === "done" && r.analysis).map((r) => {
+/** Dòng done có analysis hỏng JSON bị bỏ qua và tính là lỗi. */
+function toAggInputs(rows: VideoRow[]): { inputs: AggInput[]; bad: number } {
+  const inputs: AggInput[] = []; let bad = 0;
+  for (const r of rows) {
+    if (r.status !== "done" || !r.analysis) continue;
+    let analysis: StyleAnalysis;
+    try { analysis = JSON.parse(r.analysis) as StyleAnalysis; if (!analysis || typeof analysis !== "object") throw new Error("không phải object"); }
+    catch { bad++; continue; }
     const measure = parse<StyleMeasure | null>(r.measure, null); const frames = parse<string[]>(r.frames, []);
-    return { videoId: r.aweme_id, link: r.link, views: r.views || 0, createTime: r.create_time || 0, measure: measure ? { ...measure, frames } : null, analysis: parse<StyleAnalysis>(r.analysis, null as any), timeline: parse<StyleTimelineShot[] | null>(r.timeline, null), isExemplar: r.is_exemplar === 1 };
-  });
+    inputs.push({ videoId: r.aweme_id, link: r.link, views: r.views || 0, createTime: r.create_time || 0, measure: measure ? { ...measure, frames } : null, analysis, timeline: parse<StyleTimelineShot[] | null>(r.timeline, null), isExemplar: r.is_exemplar === 1 });
+  }
+  if (bad) console.warn(`[style] ${bad} phiếu có analysis hỏng JSON, bỏ qua khi tổng hợp.`);
+  return { inputs, bad };
 }
 
+/** Gọi SAU khi đã claimAggregation (profile đang 'aggregating'). Không bao giờ để kẹt 'aggregating'. */
 async function buildAndSave(profileId: string, deps: StyleDeps): Promise<void> {
-  const p = (await getProfile(profileId))!; const rows = await listVideos(profileId);
-  const inputs = toAggInputs(rows); const failed = rows.filter((r) => r.status === "failed").length;
-  if (inputs.length < STYLE.minVideos) { await updateProfile(profileId, { status: "failed", message: `Chỉ ${inputs.length}/${rows.length} video phân tích được (cần ≥ ${STYLE.minVideos}). Bấm "Chạy lại video lỗi" hoặc hạ STYLE_MIN_VIDEOS.` }); return; }
-  await updateProfile(profileId, { status: "aggregating", message: null });
-  const agg = aggregateProfile(inputs, Math.floor(Date.now() / 1000), { platform: p.platform, handle: p.handle, nickname: p.nickname, avatar: p.avatar }, deps.engine.name === "fake" ? "fake" : STYLE.model);
-  agg.videos.failed = failed;
-  const cluster = async (kind: "opening" | "closing" | "cta") => { try { return await deps.engine.cluster({ kind, texts: agg.formulas[kind] }); } catch { return agg.formulas[kind].slice(0, 5).map((t) => ({ text: t, count: 1, examples: [t] })); } };
-  const profile: StyleProfile = { ...agg, formulas: { opening: await cluster("opening"), closing: await cluster("closing"), cta: await cluster("cta") } };
-  let narr = { overview: "", persona: "", howTo: "" };
-  try { narr = await deps.engine.narrate({ profile }); } catch (e) { console.warn("[style] narrate lỗi, SKILL.md không có đoạn văn:", String((e as any)?.message || e)); }
-  const fallback = "(AI chưa viết được đoạn này — xem số đo và quy tắc bên dưới.)";
-  const skillMd = buildSkillMd(profile, { overview: narr.overview || fallback, persona: narr.persona || fallback, howTo: narr.howTo || fallback });
-  await updateProfile(profileId, { status: "done", profile: JSON.stringify(profile), skill_md: skillMd, message: `Tổng hợp từ ${profile.videos.used}/${rows.length} video.` });
-  console.log(`[style] Profile ${profileId} (${p.handle}) hoàn tất: ${profile.videos.used} video, ${profile.rules.hard.length} quy tắc cứng.`);
+  try {
+    const p = await getProfile(profileId); if (!p) return;
+    const rows = await listVideos(profileId);
+    const { inputs, bad } = toAggInputs(rows); const failed = rows.filter((r) => r.status === "failed").length + bad;
+    if (inputs.length < STYLE.minVideos) { await updateProfile(profileId, { status: "failed", message: `Chỉ ${inputs.length}/${rows.length} video phân tích được (cần ≥ ${STYLE.minVideos}). Bấm "Chạy lại video lỗi" hoặc hạ STYLE_MIN_VIDEOS.` }); return; }
+    await updateProfile(profileId, { message: null });
+    const agg = aggregateProfile(inputs, Math.floor(Date.now() / 1000), { platform: p.platform, handle: p.handle, nickname: p.nickname, avatar: p.avatar }, deps.engine.name === "fake" ? "fake" : STYLE.model);
+    agg.videos.failed = failed;
+    const cluster = async (kind: "opening" | "closing" | "cta") => { try { return await deps.engine.cluster({ kind, texts: agg.formulas[kind] }); } catch { return agg.formulas[kind].slice(0, 5).map((t) => ({ text: t, count: 1, examples: [t] })); } };
+    const profile: StyleProfile = { ...agg, formulas: { opening: await cluster("opening"), closing: await cluster("closing"), cta: await cluster("cta") } };
+    let narr = { overview: "", persona: "", howTo: "" };
+    try { narr = await deps.engine.narrate({ profile }); } catch (e) { console.warn("[style] narrate lỗi, SKILL.md không có đoạn văn:", String((e as any)?.message || e)); }
+    const fallback = "(AI chưa viết được đoạn này — xem số đo và quy tắc bên dưới.)";
+    const skillMd = buildSkillMd(profile, { overview: narr.overview || fallback, persona: narr.persona || fallback, howTo: narr.howTo || fallback });
+    await updateProfile(profileId, { status: "done", profile: JSON.stringify(profile), skill_md: skillMd, message: `Tổng hợp từ ${profile.videos.used}/${rows.length} video.` });
+    console.log(`[style] Profile ${profileId} (${p.handle}) hoàn tất: ${profile.videos.used} video, ${profile.rules.hard.length} quy tắc cứng.`);
+  } catch (e: any) {
+    const msg = String(e?.message || e).slice(0, 500);
+    console.error(`[style] Tổng hợp profile ${profileId} lỗi:`, msg);
+    await updateProfile(profileId, { status: "failed", message: `Tổng hợp lỗi: ${msg}` }).catch((err) => console.error("[style] không ghi được trạng thái failed:", err));
+  }
 }
 
-/** Gọi sau mỗi video. Chỉ tổng hợp khi không còn pending/processing. */
+/** Gọi sau mỗi video. Chỉ tổng hợp khi không còn pending/processing, và chỉ 1 worker giành được quyền tổng hợp. */
 export async function finalizeProfileIfDone(profileId: string, deps: StyleDeps): Promise<boolean> {
   const p = await getProfile(profileId); if (!p || p.status === "done" || p.status === "aggregating") return false;
   const rows = await listVideos(profileId);
   if (rows.some((r) => r.status === "pending" || r.status === "processing")) return false;
+  if (!(await claimAggregation(profileId, ["running", "failed"]))) return false;
   await buildAndSave(profileId, deps); return true;
 }
 /** Tổng hợp lại theo yêu cầu người dùng (từ phiếu đã có). */
-export async function aggregateNow(profileId: string, deps: StyleDeps): Promise<void> { await buildAndSave(profileId, deps); }
-/** Khi khởi động: video kẹt processing → pending; profile aggregating → running (finalize sẽ chạy lại khi có video kế tiếp hoặc người dùng bấm tổng hợp). */
-export async function recoverStyleInterrupted(): Promise<void> {
+export async function aggregateNow(profileId: string, deps: StyleDeps): Promise<void> {
+  if (!(await claimAggregation(profileId, ["running", "failed", "done"]))) throw new Error("Profile đang tổng hợp, thử lại sau.");
+  await buildAndSave(profileId, deps);
+}
+/** Khi khởi động: video kẹt processing → pending; profile aggregating → running.
+ *  Có deps: profile 'running' mà không còn video pending/processing → finalize ngay (tuần tự). */
+export async function recoverStyleInterrupted(deps?: StyleDeps): Promise<void> {
   await runQuery("UPDATE style_videos SET status = 'pending' WHERE status = 'processing'");
   await runQuery("UPDATE style_profiles SET status = 'running' WHERE status = 'aggregating'");
+  if (!deps) return;
+  const stuck = await allQuery<{ id: string }>("SELECT p.id FROM style_profiles p WHERE p.status = 'running' AND NOT EXISTS (SELECT 1 FROM style_videos v WHERE v.profile_id = p.id AND v.status IN ('pending','processing'))");
+  for (const { id } of stuck) {
+    try { await finalizeProfileIfDone(id, deps); } catch (e) { console.error(`[style] recover finalize ${id}:`, e); }
+  }
 }
