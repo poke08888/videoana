@@ -4,7 +4,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { runFfmpeg } from "../studio/ffmpeg.js";
-import { parseShowinfoTimes, parseEbur128, parseSignalstats, parseSilenceStart, parseStreamInfo, cutStats, colorLabels, measureVideo } from "./measure.js";
+import { parseShowinfoTimes, parseEbur128, parseSignalstats, parseSilenceStart, parseStreamInfo, cutStats, colorLabels, frameTimes, measureVideo } from "./measure.js";
 
 test("parseShowinfoTimes lấy pts_time từng cut", () => {
   const s = "[Parsed_showinfo_1 @ 0x1] n:   0 pts:  800 pts_time:26.6667 duration: 1\n[Parsed_showinfo_1 @ 0x1] n:   1 pts:  868 pts_time:28.9333 duration: 1\n";
@@ -37,6 +37,36 @@ test("cutStats: cuts/phút, trung vị shot, P10/P90, cutsIn3s", () => {
 test("colorLabels: V cao hơn U → warm; sat/contrast theo ngưỡng", () => {
   assert.deepEqual(colorLabels({ y: 120, u: 110, v: 150, saturation: 70, contrast: 60 }), { tone: "warm", saturationLevel: "high", contrastLevel: "high" });
   assert.equal(colorLabels({ y: 120, u: 150, v: 110, saturation: 20, contrast: 20 }).tone, "cool");
+});
+test("cutStats: cutsPerMin dùng CÙNG danh sách cut đã lọc+sort với shot length", () => {
+  const r = cutStats([5, 1, 30, 35], 30);
+  assert.equal(r.cutsPerMin, 4, `cutsPerMin=${r.cutsPerMin}`); // 2 cut hợp lệ (1, 5) / 30 s * 60
+  assert.equal(r.shotLenP10, 1, `p10=${r.shotLenP10}`); // shots [1,4,25] (bounds 0,1,5,30 đã sort)
+  assert.equal(r.medianShotLen, 4, `median=${r.medianShotLen}`);
+  assert.equal(r.shotLenP90, 25, `p90=${r.shotLenP90}`);
+});
+
+test("frameTimes: 1 cut, dur 6, count 6 → 6 mốc tăng dần trong [0, 5.7]", () => {
+  const r = frameTimes([3], 6, 6);
+  assert.equal(r.length, 6, `len=${r.length} r=${JSON.stringify(r)}`);
+  for (let i = 1; i < r.length; i++) assert.ok(r[i] > r[i - 1], `không tăng dần tại ${i}: ${JSON.stringify(r)}`);
+  for (const t of r) assert.ok(t >= 0 && t <= 5.7 + 1e-9, `mốc ${t} ngoài [0,5.7]`);
+});
+test("frameTimes: đủ cut phân biệt → mốc giữa lấy từ cut thật", () => {
+  const cuts = [1, 2, 3, 4, 5, 6, 7, 8];
+  const r = frameTimes(cuts, 10, 6);
+  const mid = r.slice(1, -1);
+  assert.equal(mid.length, 4, `mid=${JSON.stringify(mid)}`);
+  for (const t of mid) assert.ok(cuts.some((c) => Math.abs(c - t) < 1e-9), `mốc giữa ${t} không lấy từ danh sách cut`);
+});
+test("frameTimes: dur 0 → [0] hoặc []", () => {
+  const r = frameTimes([], 0, 6);
+  assert.ok(r.length === 0 || (r.length === 1 && r[0] === 0), `r=${JSON.stringify(r)}`);
+});
+test("frameTimes: cut sát cuối (9.99, dur 10) không được vượt trần dur-0.3=9.7", () => {
+  const r = frameTimes([9.99], 10, 3); // count=3 → 1 mốc giữa, đủ 1 cut phân biệt nên phải lấy 9.99 rồi kẹp
+  for (const t of r) assert.ok(t <= 9.7 + 1e-9, `mốc ${t} vượt trần 9.7: ${JSON.stringify(r)}`);
+  assert.ok(r.some((t) => Math.abs(t - 9.7) < 1e-9), `mốc giữa phải bị kẹp về 9.7: ${JSON.stringify(r)}`);
 });
 
 test("measureVideo trên clip lavfi 2 màu 6s → đúng 1 cut ở ~3s, aspect 9:16, có frames", { timeout: 60_000 }, async () => {
