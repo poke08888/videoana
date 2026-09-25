@@ -41,7 +41,8 @@ function shares(inputs: AggInput[], nowSec: number, get: (a: StyleAnalysis) => s
   for (const [k, n] of m) m.set(k, total ? n / total : 0);
   return m;
 }
-const top = (m: Map<string, number>) => [...m.entries()].sort((a, b) => b[1] - a[1])[0] || ["?", 0];
+/** Hoà tần suất thì chọn value tăng dần theo bảng chữ cái để kết quả ổn định, không phụ thuộc thứ tự chèn Map. */
+const top = (m: Map<string, number>) => [...m.entries()].sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0))[0] || ["?", 0];
 
 /** Số lớp video này lệch so với mode của tập (dùng captionStyle, persona, hookType, genre, voice.mode + cutsPerMin ngoài P10–P90). */
 function deviations(v: AggInput, modes: Record<string, string>, cpmRange: [number, number]): string[] {
@@ -53,15 +54,19 @@ function deviations(v: AggInput, modes: Record<string, string>, cpmRange: [numbe
 }
 
 export function aggregateProfile(all: AggInput[], nowSec: number, channel: StyleProfile["channel"], model: string) {
-  // 1. Mode sơ bộ trên toàn tập để phát hiện outlier
-  const modeKeys = ["text.captionStyle", "content.persona", "structure.hookType", "content.genre", "audio.voice.mode"];
-  const modes: Record<string, string> = {};
-  for (const k of modeKeys) { const [layer, ...rest] = k.split("."); modes[k] = top(shares(all, nowSec, FIELDS[layer as Layer][rest.join(".")]))[0]; }
-  const cpms = all.map((v) => v.measure?.cutsPerMin).filter((x): x is number => x !== null && x !== undefined).sort((a, b) => a - b);
-  const cpmRange: [number, number] = [qtl(cpms, 0.1), qtl(cpms, 0.9)];
+  // 1. Mode sơ bộ trên toàn tập để phát hiện outlier — bỏ qua hẳn khi tập quá nhỏ (< outlierMinN): mode/outlier tính trên vài video là ngẫu nhiên, dễ loại nhầm.
   const outliers: { videoId: string; reasons: string[] }[] = [];
-  const used = all.filter((v) => { const d = deviations(v, modes, cpmRange); if (d.length >= STYLE.outlierLayers) { outliers.push({ videoId: v.videoId, reasons: d }); return false; } return true; });
-  const base = used.length ? used : all;
+  let base: AggInput[] = all;
+  if (all.length >= STYLE.outlierMinN) {
+    const modeKeys = ["text.captionStyle", "content.persona", "structure.hookType", "content.genre", "audio.voice.mode"];
+    const modes: Record<string, string> = {};
+    for (const k of modeKeys) { const [layer, ...rest] = k.split("."); modes[k] = top(shares(all, nowSec, FIELDS[layer as Layer][rest.join(".")]))[0]; }
+    const cpms = all.map((v) => v.measure?.cutsPerMin).filter((x): x is number => x !== null && x !== undefined).sort((a, b) => a - b);
+    const cpmRange: [number, number] = [qtl(cpms, 0.1), qtl(cpms, 0.9)];
+    const used = all.filter((v) => { const d = deviations(v, modes, cpmRange); if (d.length >= STYLE.outlierLayers) { outliers.push({ videoId: v.videoId, reasons: d }); return false; } return true; });
+    // Nếu filter loại hết (used rỗng) → giữ nguyên toàn bộ (base = all) và xoá outliers, để used === total nhất quán với outliers rỗng thay vì "dùng hết nhưng vẫn liệt kê outlier".
+    if (used.length > 0) base = used; else outliers.length = 0;
+  }
 
   // 2. Số đo
   const num = (f: (v: AggInput) => number | null | undefined) => stat(base.map(f).filter((x): x is number => x !== null && x !== undefined));
@@ -94,5 +99,14 @@ export function aggregateProfile(all: AggInput[], nowSec: number, channel: Style
   const formulas = { opening: texts((a) => a.content.openingFormula || a.structure.hookText), closing: texts((a) => a.content.closingFormula), cta: texts((a) => a.content.cta) };
 
   const exemplars = all.filter((v) => v.isExemplar).map((v) => ({ videoId: v.videoId, link: v.link, views: v.views, duration: v.measure?.duration ?? null, timeline: v.timeline || [] }));
-  return { channel, analyzedAt: new Date(nowSec * 1000).toISOString(), model, videos: { total: all.length, used: base.length, failed: 0, outliers }, metrics, layers, rules: { hard, soft, never }, formulas, exemplars, evidence };
+  return {
+    channel, analyzedAt: new Date(nowSec * 1000).toISOString(), model,
+    videos: {
+      total: all.length, used: base.length,
+      // aggregateProfile chỉ nhận input đã phân tích thành công; pipeline.ts (đã commit) ghi đè trường này bằng số video phân tích thất bại sau khi gọi hàm này.
+      failed: 0,
+      outliers,
+    },
+    metrics, layers, rules: { hard, soft, never }, formulas, exemplars, evidence,
+  };
 }

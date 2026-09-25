@@ -42,3 +42,25 @@ test("outlier: lệch ≥3 lớp bị loại và ghi lý do; formulas gom câu t
   assert.equal(p.exemplars.length, 2);
   assert.ok(Object.keys(p.evidence).length > 0, "phải có ảnh bằng chứng");
 });
+
+test("outlier fallback: 2 video lệch nhau ≥3 lớp → không loại ai, outliers rỗng, used === total", () => {
+  const vids = [
+    vid(0, (s) => { s.text.captionStyle = "sentence"; s.content.persona = "friendly"; s.structure.hookType = "text-big"; }),
+    vid(1, (s) => { s.text.captionStyle = "word-pop"; s.content.persona = "sassy"; s.structure.hookType = "question"; }),
+  ];
+  const p = aggregateProfile(vids, NOW, CH, "m");
+  assert.equal(p.videos.total, 2, "total phải là 2");
+  assert.equal(p.videos.used, p.videos.total, "fallback: used phải bằng total khi filter loại hết/không chạy");
+  assert.equal(p.videos.outliers.length, 0, "outliers phải rỗng để nhất quán với used === total");
+});
+
+test("outlierMinN: tập 3 video (< mặc định 5) bỏ qua phát hiện outlier dù có video lệch 3 lớp", () => {
+  const vids = [
+    vid(0, () => {}),
+    vid(1, () => {}),
+    vid(2, (s) => { s.text.captionStyle = "word-pop"; s.content.persona = "sassy"; s.structure.hookType = "question"; }),
+  ];
+  const p = aggregateProfile(vids, NOW, CH, "m");
+  assert.equal(p.videos.used, 3, "3 video < outlierMinN(5) → không loại ai");
+  assert.equal(p.videos.outliers.length, 0, "không phát hiện outlier khi tập quá nhỏ");
+});

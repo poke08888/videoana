@@ -37,6 +37,8 @@ export const STYLE = {
   hardShare: num(process.env.STYLE_HARD_SHARE, 0.7),
   softShare: num(process.env.STYLE_SOFT_SHARE, 0.4),
   outlierLayers: Math.max(1, num(process.env.STYLE_OUTLIER_LAYERS, 3)),
+  // Số video tối thiểu để bật phát hiện outlier; tập nhỏ hơn thì mode/lệch chuẩn không đáng tin, bỏ qua hẳn.
+  outlierMinN: Math.max(1, num(process.env.STYLE_OUTLIER_MIN_N, 5)),
   fpsShort: num(process.env.STYLE_FPS_SHORT, 3),
   fpsLong: num(process.env.STYLE_FPS_LONG, 2),
   fpsTimeline: num(process.env.STYLE_FPS_TIMELINE, 5),
