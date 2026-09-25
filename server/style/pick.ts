@@ -28,6 +28,6 @@ export function pickStyleVideos(videos: AccountVideo[], nowSec: number, opts: { 
   }));
   const note = windowDays === STYLE.windowsDays[0]
     ? `Lấy ${out.length} video view cao nhất trong ${windowDays} ngày gần đây.`
-    : `Kênh không đủ ${count} video trong 90 ngày — đã nới cửa sổ lên ${windowDays} ngày (${out.length} video). Video cũ được tính trọng số 0,5 khi tổng hợp.`;
+    : `Kênh không đủ ${count} video trong ${STYLE.windowsDays[0]} ngày — đã nới cửa sổ lên ${windowDays} ngày (${out.length} video). Video cũ hơn ${STYLE.recentDays} ngày được tính trọng số ${String(STYLE.oldWeight).replace(".", ",")} khi tổng hợp.`;
   return { videos: out, exemplarIds, windowDays, note };
 }
