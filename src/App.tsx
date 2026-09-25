@@ -9,6 +9,7 @@ import { analyzeVideo, analyzeVideoBatch, testGemini, authHeaders, importAds, li
 import type { SeedFrameFormInput } from "./lib/api";
 import { embedFrames } from "./lib/frames";
 import { StudioView } from "./studio/StudioView";
+import { StyleView } from "./style/StyleView";
 import type { AdminUser, Analysis, FormState, HistoryEntry, Level, Perms, Screen, User } from "./types";
 
 const STAGES = [
@@ -433,6 +434,7 @@ export default function App() {
     { key: "campaign", label: "Campaign từ khóa", sub: "Tìm video TikTok theo từ khóa + tương tác → điểm chung video viral" },
     { key: "account", label: "Phân tích tài khoản", sub: "Phân tích 1 tài khoản TikTok/Douyin: lọc video mạnh + tổng hợp vì sao thành công" },
     { key: "studio", label: "Xưởng", sub: "Ảnh sản phẩm → clip review affiliate có giọng, phụ đề, nhạc" },
+    { key: "style", label: "Style kênh", sub: "Phân tích phong cách dựng 30 video của một kênh → skill cho AI" },
     { key: "seedframe", label: "Khung hạt giống", sub: "Bản đồ content từ điểm mạnh sản phẩm — 5 khối theo phương pháp hạt giống" },
     { key: "history", label: "Lịch sử phân tích", sub: "Tất cả phiếu phân tích đã tạo" },
     { key: "admin", label: "Quản trị", sub: "Quản lý tài khoản & Cài đặt API key" },
@@ -444,6 +446,7 @@ export default function App() {
     campaign: ["Campaign từ khóa", "Tìm video TikTok theo từ khóa + tương tác → điểm chung video viral"],
     account: ["Phân tích tài khoản", "Phân tích 1 tài khoản TikTok/Douyin: lọc video mạnh + tổng hợp vì sao thành công"],
     studio: ["Xưởng", "Sản xuất video affiliate từ ảnh sản phẩm"],
+    style: ["Style kênh", "Phong cách dựng của kênh theo 6 lớp → Style Profile + skill tải về"],
     seedframe: ["Khung hạt giống", "Điểm mạnh sản phẩm → bản đồ content 5 khối + đối chuẩn 3 ngôn ngữ + kế hoạch test"],
     report: ["Phiếu phân tích", "Kết quả phân tích theo khung Năm Lực"],
     history: ["Lịch sử phân tích", "Tất cả phiếu phân tích đã tạo"],
@@ -832,7 +835,7 @@ export default function App() {
               if (it.key === "history" && !user?.perms?.history) return null;
               if (it.key === "admin" && !user?.perms?.manage) return null;
               // Phân tích chỉ số, Campaign từ khóa, Phân tích tài khoản, Khung hạt giống & Xưởng: chỉ Biên tập và Quản trị.
-              if ((it.key === "ads" || it.key === "campaign" || it.key === "account" || it.key === "seedframe" || it.key === "studio") && !(user?.role === "Quản trị" || user?.role === "Biên tập")) return null;
+              if ((it.key === "ads" || it.key === "campaign" || it.key === "account" || it.key === "seedframe" || it.key === "studio" || it.key === "style") && !(user?.role === "Quản trị" || user?.role === "Biên tập")) return null;
               const on = screen === it.key;
               const icons: Record<string, string> = {
                 dashboard: "◇",
@@ -842,6 +845,7 @@ export default function App() {
                 account: "👤",
                 seedframe: "🌱",
                 studio: "🏭",
+                style: "🎬",
                 report: "📊",
                 history: "≡",
                 admin: "⚙"
@@ -930,6 +934,7 @@ export default function App() {
             {screen === "campaign" && <CampaignView isMobile={isMobile} integration={integration} showToast={showToast} onOpenReport={openReport} isAdmin={user?.role === "Quản trị"} />}
             {screen === "account" && <AccountView isMobile={isMobile} integration={integration} showToast={showToast} onOpenReport={openReport} isAdmin={user?.role === "Quản trị"} />}
             {screen === "studio" && <StudioView isMobile={isMobile} integration={integration} showToast={showToast} isAdmin={user?.role === "Quản trị"} />}
+            {screen === "style" && <StyleView isMobile={isMobile} integration={integration} showToast={showToast} isAdmin={user?.role === "Quản trị"} />}
             {screen === "seedframe" && <SeedFrameView isMobile={isMobile} integration={integration} showToast={showToast} isAdmin={user?.role === "Quản trị"} canExport={!!user?.perms?.export} />}
             {screen === "report" && a && <ReportView a={a} metaList={metaList} videoFile={selectedFiles[0] || null} isMobile={isMobile} />}
             {screen === "admin" && (
@@ -958,13 +963,14 @@ export default function App() {
           {navDef.map((it) => {
             if (it.key === "history" && !user?.perms?.history) return null;
             if (it.key === "admin" && !user?.perms?.manage) return null;
-            if ((it.key === "seedframe" || it.key === "studio") && !(user?.role === "Quản trị" || user?.role === "Biên tập")) return null;
+            if ((it.key === "seedframe" || it.key === "studio" || it.key === "style") && !(user?.role === "Quản trị" || user?.role === "Biên tập")) return null;
             const on = screen === it.key;
             const icons: Record<string, string> = {
               dashboard: "◇",
               upload: "＋",
               seedframe: "🌱",
               studio: "🏭",
+              style: "🎬",
               report: "📊",
               history: "≡",
               admin: "⚙"
