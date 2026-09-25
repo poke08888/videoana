@@ -24,7 +24,7 @@ export function buildSkillMd(p: StyleProfile, n: { overview: string; persona: st
   }).join("\n\n");
   return `---
 name: style-${slugOf(p.channel.handle)}
-description: ${skillDescription(p)}
+description: ${JSON.stringify(skillDescription(p))}
 ---
 
 # Phong cách kênh @${p.channel.handle} (${p.channel.nickname})

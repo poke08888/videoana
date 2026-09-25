@@ -22,6 +22,11 @@ test("slug + description theo mẫu", () => {
 test("SKILL.md: frontmatter hợp lệ, mọi câu rules xuất hiện nguyên văn, 3 đoạn narrate, không TBD", () => {
   const md = buildSkillMd(P, N);
   assert.ok(md.startsWith("---\nname: style-nerman-official\ndescription: "), md.slice(0, 80));
+  // Frontmatter phải là YAML hợp lệ: description chứa "(tiktok): " nên bắt buộc phải nằm trong nháy kép.
+  const fm = md.split("\n---\n")[0].split("\n").slice(1);
+  assert.equal(fm.length, 2, `frontmatter phải đúng 2 dòng: ${fm}`);
+  assert.match(fm[1], /^description: "[^"]*"$/, `description phải được bọc nháy kép: ${fm[1]}`);
+  assert.equal(JSON.parse(fm[1].slice("description: ".length)), skillDescription(P));
   for (const r of [...P.rules.hard, ...P.rules.soft, ...P.rules.never]) assert.ok(md.includes(r), `thiếu quy tắc: ${r}`);
   for (const s of ["Tổng quan.", "Persona.", "Cách dựng.", "KHÔNG BAO GIỜ", "28/30", "Chào mọi người, hôm nay …", "12 lần"]) assert.ok(md.includes(s), `thiếu ${s}`);
   assert.ok(!/TBD|TODO|undefined|null/.test(md), "không được có placeholder");
