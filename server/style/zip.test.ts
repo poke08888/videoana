@@ -19,3 +19,10 @@ test("zip có đủ 4 loại file + ảnh evidence; profile.json không mang evi
   assert.equal(prof.evidence, undefined); assert.equal(prof.channel.handle, "Abc");
   assert.equal(files["style-abc/references/evidence/text-captionStyle-1.jpg"].length, 4);
 });
+
+test("profile không có evidence → vẫn đủ 4 file, không có thư mục evidence", () => {
+  const { buffer } = buildSkillZip({ ...P, evidence: {} }, "---\nname: style-abc\n---\n# x");
+  const keys = Object.keys(unzipSync(new Uint8Array(buffer)));
+  assert.equal(keys.length, 4, `phải đúng 4 file: ${keys}`);
+  assert.ok(keys.every((k) => !k.includes("/evidence/")), `không được có evidence: ${keys}`);
+});
