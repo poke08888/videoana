@@ -23,7 +23,7 @@ const list = (xs: readonly string[]) => xs.map((x) => `"${x}"`).join("|");
 /** Làm sạch tiêu đề video (văn bản cào từ bên thứ ba, không đáng tin): cắt còn 1 dòng, bỏ ký tự có thể phá khối dữ liệu trong prompt, giới hạn 160 ký tự. */
 export function safeTitle(s: string): string {
   return String(s ?? "")
-    .replace(/[\r\n`"]/g, " ")
+    .replace(/[\r\n`"«»]/g, " ") // «» là dấu bao tiêu đề trong prompt — không cho tiêu đề tự thoát khỏi khối dữ liệu
     .slice(0, 160)
     .trim();
 }
