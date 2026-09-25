@@ -33,6 +33,10 @@ import { studioRouter } from "./studio/routes.js";
 import { initStudioTables } from "./studio/db.js";
 import { bootStudioQueue } from "./studio/queue.js";
 import { makeEngines as makeStudioEngines } from "./studio/pipeline.js";
+import { makeStyleRouter } from "./style/routes.js";
+import { initStyleTables } from "./style/db.js";
+import { bootStyleQueue } from "./style/queue.js";
+import { makeStyleDeps } from "./style/pipeline.js";
 import { buildSynthesisPrompt, type SourceVideo } from "./synthesize.js";
 import { buildSeedFramePrompt, isValidSeedPart, normalizeSeedForm, SEED_FRAME_PARTS, type SeedFramePart } from "./seedFrame.js";
 
@@ -49,6 +53,14 @@ const app = express();
 app.use(cors());
 app.use(express.json({ limit: "16mb" })); // phiếu có nhúng ảnh frame thật (data-URL)
 app.use("/api/studio", studioRouter); // Xưởng — sản xuất video affiliate
+
+const styleDeps = makeStyleDeps((process.env.GEMINI_API_KEY || "").trim());
+app.use("/api/style", makeStyleRouter({
+  style: styleDeps,
+  resolveAccount: (input, key) => resolveAccount(input, key),
+  fetchAccountVideos: (account, opts) => fetchAccountVideos(account, { count: opts.count, key: opts.key }),
+  rapidKey: (platform) => (platform === "douyin" ? resolveDouyinKey(undefined) : resolveTokapiKey(undefined)),
+})); // Style kênh — phân tích phong cách dựng → skill
 
 // Ngày giờ thật khi tạo phiếu (thay cho placeholder "Hôm nay"). VD "24/07/2026 14:30".
 const nowVN = (): string =>
@@ -1324,7 +1336,9 @@ async function resumeSearchJobs() {
 async function startServer() {
   await connectDB();
   await initStudioTables();
+  await initStyleTables();
   bootStudioQueue(makeStudioEngines((process.env.GEMINI_API_KEY || "").trim())).catch((e) => console.error("[xuong] khởi động hàng đợi:", e));
+  bootStyleQueue(styleDeps).catch((e) => console.error("[style] khởi động hàng đợi:", e));
   startQueueProcessor(); // Khởi động hàng đợi chạy nền
   resumeSearchJobs();    // Chạy lại job tìm video còn dở (sống sót qua restart/deploy)
   app.listen(PORT, () => {
