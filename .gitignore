@@ -18,3 +18,4 @@ data/
 .env.bak*
 *.pem
 id_rsa*
+.superpowers/
