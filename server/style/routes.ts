@@ -69,7 +69,10 @@ export function makeStyleRouter(deps: RouterDeps): Router {
   r.get("/profile/:id", requireEditor, async (req, res) => {
     const p = await owned(req, res, req.params.id); if (!p) return;
     const videos = (await listVideos(p.id)).map((v) => ({ ...v, measure: parse(v.measure, null), analysis: parse(v.analysis, null), timeline: parse(v.timeline, null), frames: parse<string[]>(v.frames, []).slice(0, 2), warnings: parse(v.warnings, []) }));
-    res.json({ ok: true, profile: { ...p, profile: parse<StyleProfile | null>(p.profile, null) }, videos });
+    // evidence có tới 3 ảnh base64/quy tắc × ~40 trường — UI poll 5 s nên chỉ trả 2 ảnh/quy tắc; zip lấy đủ từ DB.
+    const sp = parse<StyleProfile | null>(p.profile, null);
+    if (sp?.evidence) sp.evidence = Object.fromEntries(Object.entries(sp.evidence).map(([k, v]) => [k, (v || []).slice(0, 2)]));
+    res.json({ ok: true, profile: { ...p, profile: sp }, videos });
   });
 
   r.post("/profile/:id/aggregate", requireEditor, async (req, res) => {

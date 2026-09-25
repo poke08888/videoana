@@ -64,3 +64,14 @@ test("create → profile running + videos pending; owner-scoping; aggregate; ret
   assert.equal((await j(await fetch(`${base}/api/style/profile/${c.profileId}`, { method: "DELETE", headers: H(editor) }))).ok, true);
   assert.equal((await fetch(`${base}/api/style/profile/${c.profileId}`, { headers: H(editor) })).status, 404);
 });
+
+test("aggregate khi còn video pending → 409, không đổi trạng thái", async () => {
+  const pick = await j(await fetch(`${base}/api/style/pick`, { method: "POST", headers: H(editor), body: JSON.stringify({ url: "https://www.tiktok.com/@h", count: 2, exemplars: 1 }) }));
+  const c = await j(await fetch(`${base}/api/style/create`, { method: "POST", headers: H(editor), body: JSON.stringify({ account: pick.account, videos: pick.videos, exemplarIds: pick.exemplarIds }) }));
+  const r = await fetch(`${base}/api/style/profile/${c.profileId}/aggregate`, { method: "POST", headers: H(editor) });
+  assert.equal(r.status, 409);
+  assert.match((await j(r)).message || "", /đang phân tích/);
+  const g = await j(await fetch(`${base}/api/style/profile/${c.profileId}`, { headers: H(editor) }));
+  assert.equal(g.profile.status, "running");
+  for (const v of await listVideos(c.profileId)) await updateVideo(v.id, { status: "failed", error: "dọn" });
+});
