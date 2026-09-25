@@ -49,7 +49,7 @@ function deviations(v: AggInput, modes: Record<string, string>, cpmRange: [numbe
   const r: string[] = []; const a = v.analysis;
   const chk = (k: string, val: string, label: string) => { if (modes[k] && modes[k] !== val) r.push(`${label}: ${val} (kênh: ${modes[k]})`); };
   chk("text.captionStyle", a.text.captionStyle, "caption"); chk("content.persona", a.content.persona, "persona"); chk("structure.hookType", a.structure.hookType, "hook"); chk("content.genre", a.content.genre, "thể loại"); chk("audio.voice.mode", a.audio.voice.mode, "giọng");
-  const cpm = v.measure?.cutsPerMin; if (cpm !== null && cpm !== undefined && (cpm < cpmRange[0] || cpm > cpmRange[1])) r.push(`nhịp cắt ${cpm}/phút ngoài P10–P90 [${cpmRange[0]}–${cpmRange[1]}]`);
+  const cpm = v.measure?.cutsPerMin; if (cpm !== null && cpm !== undefined && (cpm < cpmRange[0] || cpm > cpmRange[1])) r.push(`nhịp cắt ${r2(cpm)}/phút ngoài P10–P90 [${r2(cpmRange[0])}–${r2(cpmRange[1])}]`);
   return r;
 }
 
