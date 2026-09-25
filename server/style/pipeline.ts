@@ -125,6 +125,10 @@ export async function finalizeProfileIfDone(profileId: string, deps: StyleDeps):
 }
 /** Tổng hợp lại theo yêu cầu người dùng (từ phiếu đã có). */
 export async function aggregateNow(profileId: string, deps: StyleDeps): Promise<void> {
+  // Còn video chưa xong thì không tổng hợp tay: nếu profile thành 'done' giữa chừng, các video về sau
+  // sẽ không bao giờ được finalize (finalizeProfileIfDone bỏ qua profile 'done').
+  const busy = (await listVideos(profileId)).filter((r) => r.status === "pending" || r.status === "processing").length;
+  if (busy > 0) throw new Error(`Còn ${busy} video đang phân tích — chờ xong rồi tổng hợp.`);
   if (!(await claimAggregation(profileId, ["running", "failed", "done"]))) throw new Error("Profile đang tổng hợp, thử lại sau.");
   await buildAndSave(profileId, deps);
 }

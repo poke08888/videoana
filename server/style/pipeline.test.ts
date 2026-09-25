@@ -141,3 +141,10 @@ test("recoverStyleInterrupted(deps): profile running mà mọi video done → fi
   await recoverStyleInterrupted(deps());
   assert.equal((await getProfile(p.id))!.status, "done");
 });
+
+test("aggregateNow từ chối khi còn video pending", async () => {
+  const p = await createProfile({ owner: "agg-busy@nerman.asia", platform: "tiktok", handle: "busy", nickname: "B", avatar: "", videos: [{ awemeId: "busy1", link: "https://www.tiktok.com/@busy/video/busy1", title: "", cover: "", views: 1, likes: 0, createTime: 1, isExemplar: false }], exemplarIds: [] });
+  await assert.rejects(aggregateNow(p.id, deps()), /đang phân tích/);
+  assert.equal((await getProfile(p.id))!.status, "running", "không được đổi trạng thái");
+  for (const v of await listVideos(p.id)) await updateVideo(v.id, { status: "failed", error: "dọn" });
+});
