@@ -4,11 +4,12 @@
  */
 import { Router, type Request, type Response } from "express";
 import { requireEditor, verifyToken } from "../auth.js";
+import { runQueryChanges } from "../studio/store.js";
 import { normalizeAccountInput, type Account, type AccountVideo } from "../account.js";
 import { STYLE } from "./config.js";
 import { pickStyleVideos } from "./pick.js";
 import { createProfile, getProfile, listProfiles, listVideos, updateVideo, updateProfile, deleteProfile } from "./store.js";
-import { aggregateNow, type StyleDeps } from "./pipeline.js";
+import { startAggregateNow, type StyleDeps } from "./pipeline.js";
 import { buildSkillZip } from "./zip.js";
 import { styleQueueStatus } from "./queue.js";
 import type { ProfileRow, PickedVideo, StyleProfile } from "./types.js";
@@ -57,18 +58,26 @@ export function makeStyleRouter(deps: RouterDeps): Router {
     try {
       const account = req.body?.account; const incoming: any[] = Array.isArray(req.body?.videos) ? req.body.videos : []; const exemplarIds: string[] = Array.isArray(req.body?.exemplarIds) ? req.body.exemplarIds.map(String) : [];
       if (!account?.platform || !account?.handle) return res.status(400).json({ ok: false, message: "Thiếu thông tin kênh." });
-      const videos: PickedVideo[] = incoming.filter((v) => v && v.awemeId && v.link).slice(0, 100).map((v) => ({ awemeId: String(v.awemeId), link: String(v.link), title: String(v.title || "").slice(0, 120), cover: String(v.cover || ""), views: Number(v.views) || 0, likes: Number(v.likes) || 0, createTime: Number(v.createTime) || 0, isExemplar: exemplarIds.includes(String(v.awemeId)) }));
+      // Chặn chi phí: tối đa STYLE.pickCount video và STYLE.exemplarCount mẫu chuẩn (mẫu chuẩn tốn thêm 1 lượt
+      // timeline). Cắt im lặng, giữ thứ tự client gửi — client đã sắp view cao trước nên phần bị cắt là view thấp.
+      const videos: PickedVideo[] = incoming.filter((v) => v && v.awemeId && v.link).slice(0, STYLE.pickCount).map((v) => ({ awemeId: String(v.awemeId), link: String(v.link), title: String(v.title || "").slice(0, 120), cover: String(v.cover || ""), views: Number(v.views) || 0, likes: Number(v.likes) || 0, createTime: Number(v.createTime) || 0, isExemplar: false }));
       if (!videos.length) return res.status(400).json({ ok: false, message: "Chưa chọn video nào." });
-      const p = await createProfile({ owner: ownerEmail(req), platform: account.platform, handle: String(account.handle), nickname: String(account.nickname || account.handle), avatar: String(account.avatar || ""), videos, exemplarIds: exemplarIds.filter((id) => videos.some((v) => v.awemeId === id)) });
+      if (videos.length < STYLE.minVideos) return res.status(400).json({ ok: false, message: `Cần ít nhất ${STYLE.minVideos} video để tổng hợp style (đang chọn ${videos.length}).` });
+      const keptEx = [...new Set(exemplarIds)].filter((id) => videos.some((v) => v.awemeId === id)).slice(0, STYLE.exemplarCount);
+      for (const v of videos) v.isExemplar = keptEx.includes(v.awemeId);
+      const p = await createProfile({ owner: ownerEmail(req), platform: account.platform, handle: String(account.handle), nickname: String(account.nickname || account.handle), avatar: String(account.avatar || ""), videos, exemplarIds: keptEx });
       res.json({ ok: true, profileId: p.id, count: videos.length });
     } catch (e: any) { console.error("[style] create:", e); res.status(500).json({ ok: false, message: "Lỗi hệ thống khi tạo profile." }); }
   });
 
-  r.get("/profiles", requireEditor, async (req, res) => res.json({ ok: true, profiles: (await listProfiles(isAdmin(req) ? null : ownerEmail(req))).map((p) => ({ ...p, profile: undefined, skill_md: undefined, hasProfile: !!p.profile })) }));
+  // listProfiles đã chỉ chọn cột nhẹ; hasProfile từ SQLite là 0/1 → ép boolean.
+  r.get("/profiles", requireEditor, async (req, res) => res.json({ ok: true, profiles: (await listProfiles(isAdmin(req) ? null : ownerEmail(req))).map((p) => ({ ...p, hasProfile: !!p.hasProfile })) }));
 
   r.get("/profile/:id", requireEditor, async (req, res) => {
     const p = await owned(req, res, req.params.id); if (!p) return;
-    const videos = (await listVideos(p.id)).map((v) => ({ ...v, measure: parse(v.measure, null), analysis: parse(v.analysis, null), timeline: parse(v.timeline, null), frames: parse<string[]>(v.frames, []).slice(0, 2), warnings: parse(v.warnings, []) }));
+    // UI poll 5 s: chỉ trả trường nhẹ cho từng video (không measure/analysis/timeline), 1 khung đầu; zip/tổng hợp đọc đủ từ DB.
+    const videos = (await listVideos(p.id)).map((v) => ({ id: v.id, aweme_id: v.aweme_id, link: v.link, title: v.title, cover: v.cover, views: v.views, likes: v.likes, create_time: v.create_time, is_exemplar: v.is_exemplar, status: v.status, error: v.error, updated_at: v.updated_at,
+      warningsCount: parse<unknown[]>(v.warnings, []).length || 0, frames: parse<string[]>(v.frames, []).slice(0, 1) }));
     // evidence có tới 3 ảnh base64/quy tắc × ~40 trường — UI poll 5 s nên chỉ trả 2 ảnh/quy tắc; zip lấy đủ từ DB.
     const sp = parse<StyleProfile | null>(p.profile, null);
     if (sp?.evidence) sp.evidence = Object.fromEntries(Object.entries(sp.evidence).map(([k, v]) => [k, (v || []).slice(0, 2)]));
@@ -77,7 +86,8 @@ export function makeStyleRouter(deps: RouterDeps): Router {
 
   r.post("/profile/:id/aggregate", requireEditor, async (req, res) => {
     const p = await owned(req, res, req.params.id); if (!p) return;
-    try { await aggregateNow(p.id, deps.style); res.json({ ok: true }); }
+    // Chạy nền (Cloudflare cắt request ~100 s): claim đồng bộ rồi trả 202; UI poll khi status 'aggregating'.
+    try { await startAggregateNow(p.id, deps.style); res.status(202).json({ ok: true, started: true }); }
     catch (e: any) {
       const msg = e?.message || "Tổng hợp lỗi.";
       // Chưa sẵn sàng (đang tổng hợp / còn video đang phân tích) → 409, không phải lỗi hệ thống.
@@ -88,9 +98,15 @@ export function makeStyleRouter(deps: RouterDeps): Router {
 
   r.post("/profile/:id/retry-failed", requireEditor, async (req, res) => {
     const p = await owned(req, res, req.params.id); if (!p) return;
+    // Đang tổng hợp mà đẩy lại video → profile bị ghi 'running' giữa chừng rồi bị buildAndSave ghi đè 'done' → video mới không bao giờ được finalize.
+    if (p.status === "aggregating") return res.status(409).json({ ok: false, message: "Profile đang tổng hợp — chờ xong rồi chạy lại video lỗi." });
     const failed = (await listVideos(p.id)).filter((v) => v.status === "failed");
-    for (const v of failed) await updateVideo(v.id, { status: "pending", error: null });
-    if (failed.length) await updateProfile(p.id, { status: "running", message: null });
+    if (failed.length) {
+      // UPDATE có điều kiện: đóng luôn khe race giữa lúc đọc status ở trên và lúc ghi.
+      const n = await runQueryChanges("UPDATE style_profiles SET status = 'running', message = NULL, updated_at = ? WHERE id = ? AND status <> 'aggregating'", [new Date().toISOString(), p.id]);
+      if (n !== 1) return res.status(409).json({ ok: false, message: "Profile đang tổng hợp — chờ xong rồi chạy lại video lỗi." });
+      for (const v of failed) await updateVideo(v.id, { status: "pending", error: null });
+    }
     res.json({ ok: true, requeued: failed.length });
   });
 

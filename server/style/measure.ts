@@ -139,18 +139,20 @@ export async function measureVideo(file: string): Promise<StyleMeasure> {
   const dur = m.duration || 0;
   // Cut
   try {
-    const s = await stderrOf(["-i", file, "-vf", `select='gt(scene,${STYLE.sceneThreshold})',showinfo`, "-an", "-f", "null", "-"], 120_000);
+    // rawStderr (TOÀN BỘ stderr): runFfmpeg chỉ giữ 20.000 ký tự cuối, mỗi dòng showinfo ~420 ký tự →
+    // > ~45 cut là mất các cut ĐẦU (cut của hook). -nostats bỏ dòng tiến độ để stderr gọn.
+    const s = await rawStderr(["-nostats", "-i", file, "-vf", `select='gt(scene,${STYLE.sceneThreshold})',showinfo`, "-an", "-f", "null", "-"], 120_000);
     m.cuts = parseShowinfoTimes(s).map((t) => Math.round(t * 100) / 100);
     if (dur > 0) Object.assign(m, cutStats(m.cuts, dur));
   } catch { /* giữ null */ }
   // Loudness cả video + 3 s đầu + im lặng đầu
-  try { m.loudness.integratedLufs = parseEbur128(await stderrOf(["-i", file, "-vn", "-af", "ebur128", "-f", "null", "-"])); } catch {}
-  try { m.loudness.first3sLufs = parseEbur128(await stderrOf(["-t", "3", "-i", file, "-vn", "-af", "ebur128", "-f", "null", "-"])); } catch {}
-  try { m.silenceStart = parseSilenceStart(await stderrOf(["-t", "5", "-i", file, "-vn", "-af", `silencedetect=n=${STYLE.silenceDb}dB:d=0.3`, "-f", "null", "-"])); } catch {}
+  try { m.loudness.integratedLufs = parseEbur128(await stderrOf(["-nostats", "-i", file, "-vn", "-af", "ebur128", "-f", "null", "-"])); } catch {}
+  try { m.loudness.first3sLufs = parseEbur128(await stderrOf(["-nostats", "-t", "3", "-i", file, "-vn", "-af", "ebur128", "-f", "null", "-"])); } catch {}
+  try { m.silenceStart = parseSilenceStart(await stderrOf(["-nostats", "-t", "5", "-i", file, "-vn", "-af", `silencedetect=n=${STYLE.silenceDb}dB:d=0.3`, "-f", "null", "-"])); } catch {}
   // Màu: 8 khung lấy đều
   try {
     const step = dur > 0 ? dur / 9 : 1;
-    const s = await stderrOf(["-i", file, "-vf", `fps=1/${step.toFixed(3)},scale=160:-2,signalstats,metadata=print`, "-frames:v", "8", "-an", "-f", "null", "-"], 120_000);
+    const s = await stderrOf(["-nostats", "-i", file, "-vf", `fps=1/${step.toFixed(3)},scale=160:-2,signalstats,metadata=print`, "-frames:v", "8", "-an", "-f", "null", "-"], 120_000);
     const rows = parseSignalstats(s);
     if (rows.length) {
       const avg = (k: "y" | "u" | "v" | "sat") => rows.reduce((a, r) => a + r[k], 0) / rows.length;

@@ -24,9 +24,11 @@ export async function createProfile(a: { owner: string; platform: string; handle
   return (await getProfile(id))!;
 }
 export const getProfile = (id: string) => getQuery<ProfileRow>("SELECT * FROM style_profiles WHERE id = ?", [id]);
+export type ProfileListRow = Pick<ProfileRow, "id" | "owner" | "platform" | "handle" | "nickname" | "avatar" | "status" | "message" | "created_at" | "updated_at"> & { hasProfile: number; done: number; failed: number; total: number };
 export function listProfiles(owner: string | null) {
-  const sql = `SELECT p.*, SUM(v.status='done') AS done, SUM(v.status='failed') AS failed, COUNT(v.id) AS total FROM style_profiles p LEFT JOIN style_videos v ON v.profile_id = p.id ${owner ? "WHERE p.owner = ?" : ""} GROUP BY p.id ORDER BY p.created_at DESC`;
-  return allQuery<ProfileRow & { done: number; failed: number; total: number }>(sql, owner ? [owner] : []);
+  // Cột nhẹ: KHÔNG kéo profile/skill_md (JSON lớn, có ảnh base64) cho màn danh sách.
+  const sql = `SELECT p.id, p.owner, p.platform, p.handle, p.nickname, p.avatar, p.status, p.message, p.created_at, p.updated_at, (p.profile IS NOT NULL) AS hasProfile, SUM(v.status='done') AS done, SUM(v.status='failed') AS failed, COUNT(v.id) AS total FROM style_profiles p LEFT JOIN style_videos v ON v.profile_id = p.id ${owner ? "WHERE p.owner = ?" : ""} GROUP BY p.id ORDER BY p.created_at DESC`;
+  return allQuery<ProfileListRow>(sql, owner ? [owner] : []);
 }
 export const updateProfile = (id: string, patch: Partial<ProfileRow>) => patchRow("style_profiles", PROFILE_COLS, id, patch, "updated_at");
 export async function deleteProfile(id: string) { await runQuery("DELETE FROM style_videos WHERE profile_id = ?", [id]); await runQuery("DELETE FROM style_profiles WHERE id = ?", [id]); }
@@ -34,9 +36,10 @@ export const listVideos = (profileId: string) => allQuery<VideoRow>("SELECT * FR
 export const getVideo = (id: string) => getQuery<VideoRow>("SELECT * FROM style_videos WHERE id = ?", [id]);
 export const updateVideo = (id: string, patch: Partial<VideoRow>) => patchRow("style_videos", VIDEO_COLS, id, patch, "updated_at");
 export const findReusable = (owner: string, link: string) => getQuery<VideoRow>("SELECT v.* FROM style_videos v JOIN style_profiles p ON p.id = v.profile_id WHERE v.link = ? AND v.status = 'done' AND p.owner = ? ORDER BY v.updated_at DESC LIMIT 1", [link, owner]);
-/** Claim nguyên tử: pending → processing. Trả VideoRow hoặc null nếu có worker khác đã lấy. */
+/** Claim nguyên tử: pending → processing. Trả VideoRow hoặc null nếu có worker khác đã lấy.
+ *  Công bằng: profile tạo trước chạy trước (FIFO theo profile), trong 1 profile mẫu chuẩn rồi view cao trước. */
 export async function claimVideo(): Promise<VideoRow | null> {
-  const row = await getQuery<VideoRow>("SELECT * FROM style_videos WHERE status = 'pending' ORDER BY is_exemplar DESC, views DESC LIMIT 1");
+  const row = await getQuery<VideoRow>("SELECT v.* FROM style_videos v JOIN style_profiles p ON p.id = v.profile_id WHERE v.status = 'pending' ORDER BY p.created_at ASC, v.is_exemplar DESC, v.views DESC LIMIT 1");
   if (!row) return null;
   const n = await runQueryChanges("UPDATE style_videos SET status = 'processing', updated_at = ? WHERE id = ? AND status = 'pending'", [NOW(), row.id]);
   return n === 1 ? (await getVideo(row.id)) || null : null;

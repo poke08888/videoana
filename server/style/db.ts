@@ -11,5 +11,6 @@ export async function initStyleTables() {
     views INTEGER, likes INTEGER, create_time INTEGER, is_exemplar INTEGER DEFAULT 0,
     status TEXT DEFAULT 'pending', measure TEXT, analysis TEXT, timeline TEXT, frames TEXT, warnings TEXT, error TEXT, updated_at TEXT)`);
   await runQuery(`CREATE INDEX IF NOT EXISTS idx_style_videos_profile ON style_videos(profile_id)`);
+  await runQuery(`CREATE INDEX IF NOT EXISTS idx_style_videos_status ON style_videos(status)`);
   // Migration về sau thêm ở đây, SAU CREATE TABLE (bài học d84e0e6).
 }

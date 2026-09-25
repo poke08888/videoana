@@ -83,3 +83,15 @@ test("measureVideo trên clip lavfi 2 màu 6s → đúng 1 cut ở ~3s, aspect 9
   assert.ok(m.frames[0].startsWith("data:image/jpeg;base64,"), "frame phải là data-URL");
   assert.equal(m.loopLikely, false);
 });
+
+test("measureVideo giữ cut ĐẦU khi video có rất nhiều cut (stderr > 20.000 ký tự)", { timeout: 180_000 }, async () => {
+  // 40 s đổi đỏ/xanh mỗi 0,5 s → ~79 cut; mỗi dòng showinfo ~420 ký tự nên runFfmpeg (giữ 20.000 ký tự cuối) sẽ mất cut đầu.
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "sm-many-"));
+  const out = path.join(dir, "many.mp4");
+  await runFfmpeg(["-f", "lavfi", "-i", "color=c=black:s=90x160:r=24:d=40,format=rgb24,geq=r='if(mod(floor(T*2),2),0,255)':g='0':b='if(mod(floor(T*2),2),255,0)'",
+    "-t", "40", "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p", "-y", out], { nice: false, timeoutMs: 120_000 });
+  const m = await measureVideo(out);
+  assert.ok(m.cuts.length >= 60, `phải bắt ≥ 60 cut, được ${m.cuts.length}`);
+  assert.ok(m.cuts[0] < 1, `cut đầu tiên phải < 1 s (không bị cắt mất), được ${m.cuts[0]}`);
+  fs.rmSync(dir, { recursive: true, force: true });
+});

@@ -123,14 +123,27 @@ export async function finalizeProfileIfDone(profileId: string, deps: StyleDeps):
   if (!(await claimAggregation(profileId, ["running", "failed"]))) return false;
   await buildAndSave(profileId, deps); return true;
 }
-/** Tổng hợp lại theo yêu cầu người dùng (từ phiếu đã có). */
-export async function aggregateNow(profileId: string, deps: StyleDeps): Promise<void> {
+/** Kiểm tra + giành quyền tổng hợp tay. Ném lỗi "đang phân tích"/"đang tổng hợp" nếu chưa sẵn sàng. */
+async function claimManualAggregation(profileId: string): Promise<void> {
   // Còn video chưa xong thì không tổng hợp tay: nếu profile thành 'done' giữa chừng, các video về sau
   // sẽ không bao giờ được finalize (finalizeProfileIfDone bỏ qua profile 'done').
   const busy = (await listVideos(profileId)).filter((r) => r.status === "pending" || r.status === "processing").length;
   if (busy > 0) throw new Error(`Còn ${busy} video đang phân tích — chờ xong rồi tổng hợp.`);
   if (!(await claimAggregation(profileId, ["running", "failed", "done"]))) throw new Error("Profile đang tổng hợp, thử lại sau.");
+}
+/** Tổng hợp lại theo yêu cầu người dùng (từ phiếu đã có) — CHỜ xong. Dùng cho test/tương thích. */
+export async function aggregateNow(profileId: string, deps: StyleDeps): Promise<void> {
+  await claimManualAggregation(profileId);
   await buildAndSave(profileId, deps);
+}
+/**
+ * Như aggregateNow nhưng KHÔNG chờ: kiểm tra + claim đồng bộ (ném lỗi như aggregateNow), rồi chạy
+ * buildAndSave nền. Route dùng hàm này để không vượt giới hạn ~100 s của Cloudflare; UI poll khi 'aggregating'.
+ */
+export async function startAggregateNow(profileId: string, deps: StyleDeps): Promise<void> {
+  await claimManualAggregation(profileId);
+  // buildAndSave tự bắt lỗi và ghi 'failed'; catch ở đây chỉ phòng lỗi bất ngờ để không thành unhandled rejection.
+  void buildAndSave(profileId, deps).catch((e) => console.error(`[style] Tổng hợp nền profile ${profileId} lỗi:`, e));
 }
 /** Khi khởi động: video kẹt processing → pending; profile aggregating → running.
  *  Có deps: profile 'running' mà không còn video pending/processing → finalize ngay (tuần tự). */
